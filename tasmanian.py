@@ -13,11 +13,11 @@ HELP = """
     -u|--unmask-genome (convert masked bases to upper case and include them in the calculations - default=False)
     -q|--base-quality (default=20)
     -f|--filter-indel (exclude reads with indels default=False)
-    -l|--filter-length (include only reads with x,y range of lengths, default=0,MAX_LENGTH)
+    -l|--filter-length (include only reads with x,y range of lengths, default=0, 76)
     -s|--soft-clip-bypass (Decide when softclipped base is correct(0). Don\'t use these bases(1). Force use them(2).  default=0)
     -m|--mapping-quality (minimum allowed mapping quality -defailt=0)
-    -b|--bed-file-exclude (soft.  Will mask the genome with a bedfile to exclude/softMask regions that might be repetitive?)
     -h|--help
+    -g|--fragment-length (use fragments withi these lengths ONLY)
 
 """
 
@@ -29,6 +29,13 @@ randLogName = str(uuid.uuid4())
 print('log filename: errors_'+randLogName+'.log')
 
 logging = []
+SKIP_READS = {
+    'indel':0,
+    'mapquality':0,
+    'fragLength':0,
+    'softclips':0,
+    'readlength':0
+}
 
 # set default parameters
 _UNMASK_GENOME=False  #don't unmask the genome, aka don't use lower letter from genome but rather keep them out in the error.log file'
@@ -39,6 +46,7 @@ SOFTCLIP_BYPASS=0
 SKIP_INDEL=False
 MIN_LENGTH=0
 MAX_LENGTH=76
+TLEN=np.array([0,10000])
 
 # if there are arguments get them
 for n,i in enumerate(sys.argv):
@@ -63,9 +71,9 @@ for n,i in enumerate(sys.argv):
     if i in ['-m', '--mapping-quality']:
         MinMapQuality = int(sys.argv[n+1])
         print('Filterung out reads with Mapping quality < {}'.format(MinMapQuality))
-    if i in ['-b', '--bed-file-exclude']:
-        bedfile = sys.argv[n+1]
-        print(' masking genome with provided {} file'.format(bedfile))
+    if i in ['-g','--fragment-length']:
+        TLEN = np.array(sys.argv[n+1].split(',')).astype(int)
+        print('Only reads comming from fragments of lengths {}-{} are considered here'.format(TLEN[0], TLEN[1]))
     if i in ['-h', '--help']:
         exit(HELP)
 
@@ -119,34 +127,6 @@ t1 = time.time()
 print('read reference in {} minutes'.format((t1-t0)/60.))
 
 
-
-                                                ###########################
-                                                ## FILTER REFERENCE DATA ##
-                                                ###########################
-if 'bedfile' in globals():
-	header=True
-	with open(bedfile) as f:
-		while True:
-			try:
-				line = next(f)
-
-				if header:
-					header=False
-					if re.search('\t', line): separator='\t'
-					elif re.search(',', line): separator=','
-					else: separator = " "
-					continue
-
-				else:
-					chrom, start, end = line.strip().split(separator)
-					start, end = int(start), int(end)
-					reference[chrom] = reference[chrom][:start] + reference[chrom][start:end+1].lower() + reference[chrom][end+1:]
-					
-			except StopIteration:
-				break
-
-
-
                                                 #########################
                                                 ## LOAD ALIGNMENT DATA ##
                                                 #########################
@@ -164,7 +144,7 @@ for read in [1,2]:
     
 # read bam from "samtools view" and pipe 
 for line in sys.stdin:
-    _, flag, chrom, start, mapq, cigar, _, _, _, seq, phred = line.split('\t')[:11]
+    _, flag, chrom, start, mapq, cigar, _, _, tlen, seq, phred = line.split('\t')[:11]
     
     skip_read = False
     seq_len = len(seq)
@@ -172,6 +152,7 @@ for line in sys.stdin:
     flag = int(flag)
     start = int(start)-1
     end = start + seq_len
+    tlen = int(tlen)
 
     # reasons to skip reads
     # =====================
@@ -180,10 +161,16 @@ for line in sys.stdin:
     # Bad mapping quality
     # unrecognized chromosome
 
-    if cigar=="*" or (SKIP_INDEL and ("I" in cigar or "D" in cigar)) or \
-       seq_len < MIN_LENGTH or seq_len > MAX_LENGTH or \
-       mapq<MinMapQuality or mapq==255 or \
-       chrom not in reference:
+    if cigar=="*" or mapq==255 or chrom not in reference: 
+        continue  
+    elif SKIP_INDEL and ("I" in cigar or "D" in cigar):
+        SKIP_READS['indel']+=1      
+    elif seq_len < MIN_LENGTH or seq_len > MAX_LENGTH:
+        SKIP_READS['readlength']+=1
+    elif mapq<MinMapQuality:
+        SKIP_READS['mapquality']+=1
+    elif tlen<TLEN[0] or tlen>TLEN[1]:
+        SKIP_READS['fragLength']+=1
         continue
 
     # INSTEAD OF EXPAND THE CIGAR, I PARSED MORE EFFICIENTLY THE CONTENT INTO A NUMPY INDEX
@@ -209,6 +196,7 @@ for line in sys.stdin:
                             seq = 'N' * number + seq[number:]
                     elif SOFTCLIP_BYPASS==1:
                         seq = 'N' * number + seq[number:]
+                        SKIP_READS['softclips']+=1 
                 else: # end
                     if SOFTCLIP_BYPASS==0:
                         s1, s2 = seq[position:position+number], reference[chrom][start+position:start+position+number]
@@ -216,6 +204,7 @@ for line in sys.stdin:
                             seq = seq[:position] + 'N' * number
                     elif SOFTCLIP_BYPASS==1:
                         seq = seq[:position] + 'N' * number
+                        SKIP_READS['softclips']+=1 
 
             elif i=='I':
                 seq_idx[position:position+number]=0
@@ -279,6 +268,10 @@ for line in sys.stdin:
 
 t2=time.time()
 print(t2-t0, "seconds")
+print('reads discarded')
+print('===============')
+for k,v in SKIP_READS.items():
+    print('{:<15} {}'.format(k,v))  
 
 # print header
 sys.stdout.write('read,position,a_a,a_t,a_c,a_g,t_a,t_t,t_c,t_g,c_a,c_t,c_c,c_g,g_a,g_t,g_c,g_g\n')
