@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 [![Build Status](https://travis-ci.org/fulcrumgenomics/fgbio.svg?branch=master)](https://travis-ci.org/fulcrumgenomics/fgbio)
 [![codecov](https://codecov.io/gh/fulcrumgenomics/fgbio/branch/master/graph/badge.svg)](https://codecov.io/gh/fulcrumgenomics/fgbio)
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/fc4f5fe8dbe34bf784114435b202fab4)](https://www.codacy.com/app/contact_32/fgbio?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=fulcrumgenomics/fgbio&amp;utm_campaign=Badge_Grade)
@@ -131,6 +132,13 @@ For urgent matters, please contact us directly.
 
 
 
+=======
+<span style="color:green">
+# Tasmanian
+text</span>
+Analysis of artifacts in high throughput sequencing data from genomic DNA.  
+ ![](https://upload.wikimedia.org/wikipedia/en/c/c4/Taz-Looney_Tunes.svg)
+>>>>>>> 3b1bada82b8a52b7c641e5e40d36fa80598e9d4b
 
 
 #### TODO list:
