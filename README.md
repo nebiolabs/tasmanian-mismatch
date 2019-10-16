@@ -5,7 +5,7 @@
 [![Bioconda](https://img.shields.io/conda/dn/bioconda/fgbio.svg?label=Bioconda)](http://bioconda.github.io/recipes/fgbio/README.html)
 [![Javadocs](http://javadoc.io/badge/com.fulcrumgenomics/fgbio_2.13.svg)](http://javadoc.io/doc/com.fulcrumgenomics/fgbio_2.13)
 [![License](http://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/fulcrumgenomics/fgbio/blob/master/LICENSE)
-[![Language](https://www.python.org/static/img/psf-logo.png)](https://www.python.orga)
+[![Language](https://img.shields.io/badge/Made%20with-Python-1f425f.svg)](https://www.python.org)
 
 <!-- Cartoon of tasmanian devil -->
  ![](https://upload.wikimedia.org/wikipedia/en/c/c4/Taz-Looney_Tunes.svg)
