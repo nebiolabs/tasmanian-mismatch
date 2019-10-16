@@ -17,8 +17,12 @@ statistics = []
 
 # load arguments
 for n,i in enumerate(sys.argv):
-    if i=='--bed' or i=='-b' or i=='--bed-file':
+
+    if i in ['--bed','-b','--bed-file']:
         bedfile = sys.argv[n+1]
+
+    if i in ['--output', '-o']:
+        out_prefix = sys.argv[n+1] + "."
 
 
 def main():
@@ -153,7 +157,7 @@ def main():
 
     # save files:
     for data, filename in zip([intersections, differences, statistics],['intersections.sam','differences.sam','statistics.sam']):
-        with open(filename,'w') as f:
+        with open(out_prefix + filename,'w') as f:
             f.write('\n'.join(data))
 
 
