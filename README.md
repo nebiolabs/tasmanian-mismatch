@@ -137,4 +137,5 @@ For urgent matters, please contact us directly.
 
 #### TODO list:
 * Adapt module report_intersect to be standalone or called by tasmanian.
+* write a test suite to automatically check that everything works. --> nose test
 
