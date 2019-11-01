@@ -9,7 +9,7 @@
 
 <!-- Cartoon of tasmanian devil -->
 <!--[](https://upload.wikimedia.org/wikipedia/en/c/c4/Taz-Looney_Tunes.svg) -->
-![](https://github.com/nebiolabs/tasmanian/blob/master/kissclipart-cartoon-devil-bugs-bunny-clipart-tasmanian-devil-b-d7d7781bbbc9a4a9.png | width=100)
+![](https://github.com/nebiolabs/tasmanian/blob/master/kissclipart-cartoon-devil-bugs-bunny-clipart-tasmanian-devil-b-d7d7781bbbc9a4a9.png&s=100)
 <!-- image from https://www.kissclipart.com/cartoon-devil-bugs-bunny-clipart-tasmanian-devil-b-ryiinn/ NO COPYRIGHTS-->
 
 
