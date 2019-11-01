@@ -8,7 +8,8 @@
 [![Language](https://img.shields.io/badge/Made%20with-Python-1f425f.svg)](https://www.python.org)
 
 <!-- Cartoon of tasmanian devil -->
-![](https://upload.wikimedia.org/wikipedia/en/c/c4/Taz-Looney_Tunes.svg) 
+<!--[](https://upload.wikimedia.org/wikipedia/en/c/c4/Taz-Looney_Tunes.svg) -->
+![](https://github.com/nebiolabs/tasmanian/blob/master/kissclipart-cartoon-devil-bugs-bunny-clipart-tasmanian-devil-b-d7d7781bbbc9a4a9.png)
 <!-- image from https://www.kissclipart.com/cartoon-devil-bugs-bunny-clipart-tasmanian-devil-b-ryiinn/ NO COPYRIGHTS-->
 
 
