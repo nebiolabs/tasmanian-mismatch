@@ -54,9 +54,12 @@ class reads:
         # or not, we need to keep the bed id in the read
         self.bed_id = None
 
+        # extra information to incorporate in the sam output file to correlate later 
+        self.bed_extra_info = None
+
 
     def expand_cigar(self):
-        # converts cigar into string to slice as needed
+        ''' converts cigar into string to slice as needed'''
         cigarString = []
         num=''
         for i in self.cigar:
@@ -69,30 +72,31 @@ class reads:
         self.expanded_cigar = ''.join(cigarString)
         return
 
+
     def print(self, sequence='original'):
+        ''' prints sam read '''
+
+        # This will allow to use 'masked' as argument as 'original'. One sentence instead of 
+        # repeating this for read1 and read2 in the main.
+        if self.masked_seq == None: 
+            self.masked_seq = self.seq
 
         if sequence == 'original':      seq = self.seq
         elif sequence == 'masked':      seq = self.masked_seq
         elif sequence == 'intersect':   seq = self.intersect_seq
 
-        #print(self.category_positions, 'ASIIIII')
-
         if self.category_positions == [None, None]: self.category_positions = ['nan','nan']
         categories = "categories " + ':'.join([str(i) for i in self.category_positions] + [str(self.category)])
-        '''
-        print('estas son las categories: ' + categories)
-        print(type(self._id))
-        print(type(str(self.flag)))
-        print(type(self.chrom))
-        print(type(str(self.start)))
-        print(type(str(self.mapq)))
-        print(type(self.cigar))
-        print(type(self._2))
-        print(type(self._3))
-        print(type(str(self.tlen)))
-        print(seq)
-        print(self.seq)
-        print(type(self.phred))
-        print(type(categories))
-        '''
-        return '\t'.join([self._id, str(self.flag), self.chrom, str(self.start), str(self.mapq), self.cigar, self._2, self._3, str(self.tlen), seq, self.phred, categories])
+        
+        try: 
+            return '\t'.join([self._id, str(self.flag), self.chrom, str(self.start), 
+                              str(self.mapq), self.cigar, self._2, self._3, 
+                              str(self.tlen), seq, self.phred, categories, ':'.join(self.bed_extra_info)
+                             ])
+        except Exception as e:
+            tmp = '\t'.join([self._id, str(self.flag), self.chrom, str(self.start), 
+                              str(self.mapq), self.cigar, self._2, self._3, 
+                              str(self.tlen), seq, self.phred, categories])
+
+            print(self.bed_extra_info, 'problem: ', str(e), tmp)
+            return tmp
