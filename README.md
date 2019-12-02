@@ -101,22 +101,6 @@ Java SE 8 is required.
 
 `java -jar target/scala-2.13/fgbio-<version>.jar` to see the commands supported.  Use `java -jar target/scala-2.13/fgbio-<version>.jar <command>` to see the help message for a particular command.
 
-## Include fgbio in your project
-
-You can include `fgbio` in your project using:
-
-```
-"com.fulcrumgenomics" %% "fgbio" % "1.0.0"
-```
-
-for the latest released version or (buyer beware):
-
-```
-"com.fulcrumgenomics" %% "fgbio" % "0.9.0-<commit-hash>-SNAPSHOT"
-```
-
-for the latest development snapshot.
-
 ## Contributing
 
 Contributions are welcome and encouraged.
@@ -125,8 +109,8 @@ For urgent matters, please contact us directly.
 
 ## Authors
 
-* [Tim Fennell](https://github.com/tfenne) (maintainer)
-* [Nils Homer](https://github.com/nh13) (maintainer)
+* [Ariel Erijman](https://github.com/aerijman) (maintainer)
+* [Brad Langhorst](https://github.com/bwlang) (maintainer)
 
 ## License
 
