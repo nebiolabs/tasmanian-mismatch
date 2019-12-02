@@ -109,8 +109,8 @@ For urgent matters, please contact us directly.
 
 ## Authors
 
-* [Ariel Erijman](https://github.com/aerijman) (maintainer)
-* [Brad Langhorst](https://github.com/bwlang) (maintainer)
+* [Brad Langhorst](https://github.com/bwlang) (comander/strategist)
+* [Ariel Erijman](https://github.com/aerijman) (worker/maintainer)
 
 ## License
 
