@@ -1,0 +1,90 @@
+<tool id="Tasmanian" name="Analysis of artifacts with Tasmanian" version="0.1.0" python_template_version="3.5">
+    <requirements>
+        <requirement type="package" version="3.7.4">python</requirement>
+        <requirement type="package" version="1.17.2">numpy</requirement>
+        <requirement type="package">samtools</requirement>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+
+        #set $reference_fasta_filename = "localref.fa"
+
+        #if str( $reference_source.reference_source_selector ) == "history":
+            ln -s '${reference_source.ref_file}' '${reference_fasta_filename}' &&
+        #else:
+            #set $reference_fasta_filename = str( $reference_source.ref_file.fields.path )
+        #end if
+
+        samtools view '$input1' | python3 '$__tool_directory__/tasmanian.py' -r '$reference_fasta_filename' > '$output1'
+
+    ]]></command>
+    <inputs>
+        <param type="data" name="input1" format="bam" />
+        <!--<param type="data" name="input2" format="fa" />-->
+
+        <conditional name="reference_source">
+            <param name="reference_source_selector" type="select" label="Load reference genome from">
+                <option value="cached">Local cache</option>
+                <option value="history">History</option>
+            </param>
+            <when value="cached">
+                <param name="ref_file" type="select" label="Use dictionary from the list" help="Select genome from the list">
+                    <options from_data_table="tasmanian_indexes">
+                        <filter type="sort_by" column="2" />
+                        <validator type="no_options" message="No indexes are available" />
+                    </options>
+                    <validator type="no_options" message="A built-in dictionary is not available for the build associated with the selected input file"/>
+                </param>
+            </when>
+            <when value="history">
+                <param name="ref_file" type="data" format="fasta" label="Use the following dataset to create dictionary" help="You can upload a FASTA sequence to the history from which Picard will automatically generate dictionary using CreateSequenceDictionary command" />
+            </when>
+        </conditional>
+
+    </inputs>
+    <outputs>
+        <data name="output1" format="output" />
+    </outputs>
+    <tests>
+        <!-- test when reference from history -->
+        <test>
+            <param name="input1" value="test.bam"/>
+            <param name="reference_source_selector" value="history"/>
+            <param name="ref_file" value="small_region.fa"/>
+            <output name="output1" file="test.output" lines_diff="10"/>
+        </test>
+        <!-- test when reference from cached-->
+        <test>
+            <param name="input1" value="test.bam" ftype="bam" dbkey="chrI"/>
+            <param name="reference_source_selector" value="cached"/>
+            <output name="output1" file="test.output" lines_diff="10"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+
+    required
+    -r|--reference-fasta
+
+    optional
+    -u|--unmask-genome (convert masked bases to upper case and include them in the calculations - default=False)
+    -q|--base-quality (default=20)
+    -f|--filter-indel (exclude reads with indels default=False)
+    -l|--filter-length (include only reads with x,y range of lengths, default=0, 76)
+    -s|--soft-clip-bypass (Decide when softclipped base is correct(0). Don't use these bases(1). Force use them(2).  default=0)
+    -m|--mapping-quality (minimum allowed mapping quality -defailt=0)
+    -h|--help
+    -g|--fragment-length (use fragments withi these lengths ONLY)
+
+
+    ]]></help>
+    <citations>
+        <citation type="bibtex">
+@misc{githubtasmanian,
+  author = {LastTODO, FirstTODO},
+  year = {TODO},
+  title = {tasmanian},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  url = {https://github.com/nebiolabs/tasmanian},
+}</citation>
+    </citations>
+</tool>
