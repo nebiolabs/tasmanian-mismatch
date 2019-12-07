@@ -1,5 +1,21 @@
 #!/bin/python
 
+'''
+    The idea is to observe patterns within the first 20 nucleotides of reads
+    that intersect repeats. Why do we see these artifacts enriched in the 
+    5' end of read 2?
+    
+    The results consist on matrices where the first dimention is 1 to 20, 
+    representing the first 20 nucleotides from the splitting point between 
+    the region of the read that intersects a repeat and the region that does
+    not. The other dimentions are the nucleotide types.
+
+    ALSO, include 20mer map of CG and GC (I don't yet fully understand wether
+    methylation on one strand could affect the opposite strand or not). 
+'''
+
+
+
 import os,sys,re
 import numpy as np
 import pandas as pd
@@ -18,12 +34,46 @@ for n,i in enumerate(sys.argv):
 
 def main():
 
+    print('reading genome...')
 	genome = read_genome(genome_file)
+    os.system('clear')
 	print('read genome... DONE!')
 
-	results = {'GC':[],
-			   'CpG':[]
-			  }
+    # save statistics on a category basis on read-intersection category
+    # but also on a repeat family category
+    repeat_families = [
+		'DNA',
+		'DNA?',
+		'LINE',
+		'LTR',
+		'LTR?',
+		'Low_complexity',
+		'RC',
+		'RC?',
+		'RNA',
+		'Retroposon',
+		'SINE',
+		'SINE?',
+		'Satellite',
+		'Simple_repeat',
+		'Unknown',
+		'rRNA',
+		'scRNA',
+		'snRNA',
+		'srpRNA',
+		'tRNA'
+    ]
+
+    positional = {'A':0,'C':0,'T':0,'G':0}
+	basic_dict = {'GC':dict(zip(range(20),[positional]*20)), 
+                  'CpG':np.zeros(20)}
+    
+    results = {i: basic_dict for i in repeat_families}
+    
+        
+'''
+THIS HAS BEEN USED TO EVALUATE GC AND CPG CONETNT IN REPEAT REGIONS WITHOUT
+ANY CORRELATION TO READS FROM OUR DATA
 
 	for line in sys.stdin:
 
@@ -55,7 +105,7 @@ def main():
 		
 	with open(output_file + '.pkl', 'wb') as f:
 		pickle.dump(results, f)
-
+'''
 
 
 
