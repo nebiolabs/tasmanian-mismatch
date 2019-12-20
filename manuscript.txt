@@ -1,0 +1,26 @@
+# INTRODUCTION
+
+High throughput sequencing technologies are becoming standard techniques in biomedical research and personalized medicine. Identification of generic variations and their association with characterized phenotypes facilitates assessment of the risk of genetic-driven disorders and developement of treatments and cures [PMID: 19474294; PMID: 19584936; PMID: 18460330; PMID: 22908194; PMID: 21199653].
+
+The most common type of DNA sequence variations found in the genome are single nucleotide polymorphism SNPs[PMID: 14685227; A global reference for human genetic variation Nature 526, 68–74 (01 October 2015)].
+Mutations associated with cancer are often found to be at low frequency (defined in the literature as low allele frequency) [PMID: 29123093; PMID: 29178133; PMID: 23415222; PMID: 21160474]. Previous work have reported mutations, found at low frequencies, that where the results of systematic errors during DNA storage and library preparation, such as "oxo-G" and "cytosine deamination", rather than true variants [PMID: 23303777; PMID: 28209900].
+
+Chen and co-authors, moreover, prooved that damage can not be neglected as it leads to wrong variant calling at low allele frequencies, which are often associated with desease.
+
+Most cancer tumors are formalin-fixed-parafin-embedded (FFPE) prior to storage. FFPE treatment is associated with DNA mutations at low allele frequencies. Ancient DNA [PMID: 20028723] or ultrasonic shearing of the DNA [PMID: 23303777] have been also associated with systematic mutations of the DNA. 
+
+Deamination is normally a signature of FFPE treated samples[PMID: 31477010]. A previous work found no evidence of immediate deamination of DNA upon FFPE treatment (allele frequencies <2%) compared to the fresh frozen matched tissue [PMID: 29698444]. However, the mentioned study is restricted to the FFPE process itself and did not evaluate the impact of storage in such samples. In practice, we observe systematic artifact associated with FFPE treatment and storage. 
+
+A thourough assessment of the damage of a sequenced DNA sample is crucial as it can be used to compute a threshold or confidence level for acceptance or rejection of low allele fraction variants before reporting association with phenotype, making a diagnosis or planning a treatment.
+
+Several methods/tools have been developed...
+
+
+Pipcard does not report positional bias which is a key feature to diagnose the level of damage.
+
+Damage estimator, has a very high standard of readability but it discards half of the data, the runtime is longer than ideal for rutine analysis and it uses too much disk space.
+
+Moreover, in the science study, repetitive regions were not included in the analysis, leaving aside up to 80% of high quality (Qread>XX and Qmap>XX) data in FFPE samples. 
+
+In order to provide a 
+
