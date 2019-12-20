@@ -22,5 +22,6 @@ Damage estimator, has a very high standard of readability but it discards half o
 
 Moreover, in the science study, repetitive regions were not included in the analysis, leaving aside up to 80% of high quality (Qread>XX and Qmap>XX) data in FFPE samples. 
 
-In order to provide a 
+In order to provide a robust and efficient tool to analyze and assess damage from DNA alignemnt data we developed tasmanian... We keep readability as a major component in this tool and any bioinformatician can alter the code without having to spend excesive ammounts of time.
+
 
