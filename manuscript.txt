@@ -1,24 +1,28 @@
 # INTRODUCTION
 
-High throughput sequencing technologies are becoming standard techniques in biomedical research and personalized medicine. Identification of generic variations and their association with characterized phenotypes facilitates assessment of the risk of genetic-driven disorders and developement of treatments and cures [PMID: 19474294; PMID: 19584936; PMID: 18460330; PMID: 22908194; PMID: 21199653].
+High throughput sequencing technologies are standard techniques in biomedical research and personalized medicine. Identification of genetic variations and their association with characterized phenotypes facilitates assessment of the risk of genetic-driven disorders and developement of treatments and cures [PMID: 19474294; PMID: 19584936; PMID: 18460330; PMID: 22908194; PMID: 21199653].
 
 The most common type of DNA sequence variations found in the genome are single nucleotide polymorphism SNPs[PMID: 14685227; A global reference for human genetic variation Nature 526, 68–74 (01 October 2015)].
 Mutations associated with cancer are often found to be at low frequency (defined in the literature as low allele frequency) [PMID: 29123093; PMID: 29178133; PMID: 23415222; PMID: 21160474]. Previous work have reported mutations, found at low frequencies, that where the results of systematic errors during DNA storage and library preparation, such as "oxo-G" and "cytosine deamination", rather than true variants [PMID: 23303777; PMID: 28209900].
 
-Chen and co-authors, moreover, prooved that damage can not be neglected as it leads to wrong variant calling at low allele frequencies, which are often associated with desease.
+Chen and co-authors showed that damage can not be neglected as it leads to wrong variant calling at low allele frequencies, which are often associated with desease.
 
-Most cancer tumors are formalin-fixed-parafin-embedded (FFPE) prior to storage. FFPE treatment is associated with DNA mutations at low allele frequencies. Ancient DNA [PMID: 20028723] or ultrasonic shearing of the DNA [PMID: 23303777] have been also associated with systematic mutations of the DNA. 
+Most cancer tumor samples available for research are formalin-fixed-parafin-embedded (FFPE) prior to storage. FFPE treatment is associated with DNA damge and concomitant mutations at low allele frequencies. Ancient DNA [PMID: 20028723] or ultrasonic shearing of the DNA [PMID: 23303777] have been also associated with systematic mutations of the DNA. Such data is usually scarce, leading to low sequencing coverage and subsequently to low statistical power to accept or reject low allele fraction variants.
 
 Deamination is normally a signature of FFPE treated samples[PMID: 31477010]. A previous work found no evidence of immediate deamination of DNA upon FFPE treatment (allele frequencies <2%) compared to the fresh frozen matched tissue [PMID: 29698444]. However, the mentioned study is restricted to the FFPE process itself and did not evaluate the impact of storage in such samples. In practice, we observe systematic artifact associated with FFPE treatment and storage. 
 
-A thourough assessment of the damage of a sequenced DNA sample is crucial as it can be used to compute a threshold or confidence level for acceptance or rejection of low allele fraction variants before reporting association with phenotype, making a diagnosis or planning a treatment.
+Experimental protocols to assess the level of damage of DNA (most commonly associated to FFPE treatment but potentially usefull for other cases) have been developed in the past [PMID: 16333309, kappa kit?]. The samples can be classified into good and down to very-poor quality.
 
-Several methods/tools have been developed...
+Bioinformatic assessment of the damage of a sequenced DNA sample can be used to compute an analytical threshold for acceptance or rejection of low allele fraction variants, leading to higher sensitity and specificity improving asertivity in associations with phenotype, making a diagnosis or planning a treatment.
 
+In a pioneering study, Costello and co-workers developed a Phred-like score, termed ArtQ, to evaluate the difference on counts of a mutation in its forward or reverse complement forms. Such score, though usefull to classify the DNA sample in a particular quiality bin, might not be extensible to influence downstream analysis, such as variant calling.
 
-Pipcard does not report positional bias which is a key feature to diagnose the level of damage.
+Another similar score, developed by Chen and co-workers, computes the degree of imbalance between variants detected in read1 and read2 in paired-read sequencing [Chen at al.]. This score, termed Global Imbalance Value (GIV) is an alternative to ArtQ and is usefull within the same restrictions as the ArtQ.
 
-Damage estimator, has a very high standard of readability but it discards half of the data, the runtime is longer than ideal for rutine analysis and it uses too much disk space.
+Tools available for detection of artifacts in ngs data do not incorporate positional bias along the read [Costello et al.], discard half of the data [Chen et al.] or have not been optimized for speed of execution or disk space.
+
+Here, we report a new tool for the analysis of artifacts in ngs data and we outline empirically derived cryteria to include such analysis into different pipelines. We offer 
+
 
 Moreover, in the science study, repetitive regions were not included in the analysis, leaving aside up to 80% of high quality (Qread>XX and Qmap>XX) data in FFPE samples. 
 
