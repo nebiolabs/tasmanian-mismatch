@@ -1,2 +1,5 @@
 ._.DS_Store
-.manuscript.txt.swp
+.*pyc
+/dist/
+/*.egg-info
+*.swp
