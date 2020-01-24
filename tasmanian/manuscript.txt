@@ -44,6 +44,9 @@ We applied tasmanian to the analysis of systematic positional artifacts in sampl
 
 We also applied tasmanian to FFPE data and compared samples originated from protocols including or not an enzymatic repair step. Sorprisingly, we found that while repair has a profound impact in regions with unique sequences, it did not show any effect within repetitive regions. While the mechanism of such difference is beyond the scope of this study, such observation would not have been possible without dissecting the regions of the reads, keeping their position unaffected. 
 
+Tasmanian tool can read sam files. However, the recommended use is to pipe the text from the standard input. This way, files are stored as binaries and read with samtools or sambamba and filters and/or subsampling can be executed on the fly and piped into tasmanian.
+
+The output consists in tables with counts for all detected observed_reference "observations" and each row corresponds to the base position within the read, for both read1 and read2.
 
 
 
