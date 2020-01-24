@@ -30,7 +30,7 @@ In order to provide a robust and efficient tool to analyze and assess damage fro
 
 
 
-Results:
+# RESULTS:
 
 How Tasmanian compares to other tools in the analysis of NGS missmatches? Picard collectSequencingArtifactMetrics [pmid:...] does not consider the positional information of the missmatches. It provides summarized tables containing error rates and phred-scale quality scores for each type of missmatches. Damage estimator [pmid...] wraps samtools mpileup [pmid:...] and provides detailed information about the position of the missmatch within each of the reads in paired end sequencing data. Nevertheless, second strand is not included in the analysis, leaving aside half of the available data. MPileup is a very powerfull tool for producing binnary VCF files containing all genomic positions. This information is produced at the expense of very intensive computation but is necessary to call variants. However, such information includes irrelevant details for assessment of randomly distributed, systematic errors. Hence, the time consumed by mpileup alone is not justified in this case. 
 
@@ -38,13 +38,16 @@ Tasmanian tool compares the aligned data to the reference genome and counts each
 Often times, the analysis of mismatches is restricted to genomic positions such as non-repetitive regions. Other times different regions could contain different types of missmatches, depending on sample preparation (e.g. target capturing different regions in different samples). While tools like bedtools [pmid:...] can split reads provided a file containing the regions of interest, such information is not sufficient to identify the position of a missmatch in the read. To solve that issue, tasmanian provides am optimized routine to include such information in the analysis, provided a file with the genomic positions of interests. 
 When a read overlaps with a defined genomic location, tasmanian can split the read and mask the intersecting and the complementary bases into different subreads, keeping the information about the position of such bases in the read. This procedure is done "on the fly" with an insignificant addition of time and computation power. 
 The user can also execute the analysis in a debugging mode, which will allow to serialize two complementary masked bam files. 
+After comparing our tool to available and well established alternatives, we found unexpected behaviours in simulated data. to assess such "errors" or ... we provide a suite with minimal sets of data to manually and minimalistically simulate artifacts to assess the results provided by the software and to ensure the absence of errors or even report otherwise.
 
-We analize FFPE data that undergo repair with [...] and without repair. We found that while repair has a profound impact in regions with unique sequences, it did not repetitive regions did not sho 
+We applied tasmanian to the analysis of systematic positional artifacts in samples differing in the solution used during acustic fragmentation of the DNA (water vs TE buffer?). Our results are consistent with previously published results [pmid...science Chen], with more G to T counts in read 1 for water sheared samples and more C to A counts in read 2. This data do not show a positional bias.
+
+We also applied tasmanian to FFPE data and compared samples originated from protocols including or not an enzymatic repair step. Sorprisingly, we found that while repair has a profound impact in regions with unique sequences, it did not show any effect within repetitive regions. While the mechanism of such difference is beyond the scope of this study, such observation would not have been possible without dissecting the regions of the reads, keeping their position unaffected. 
 
 
 
 
-Discussion:
+# DISCUSSION:
 
 Analysis of missmatches usually preceedes calling variants. It can be used as a first screen to decide if the sample is suitable to further variant calling analysis or it can be used as a cryteria to assign a qualitative measure to potential variants associated with desease. 
 While the extent of systematic missmatches due to artifacts associated to DNA manipulation have very low frequency, it has a big impact in variant calling where frequencies are as low or even lower than potential systematic evaluated artifacts. Hence, half of the data discarded by damage estimator will have a profound impact in further assesment of variant calling results.  <!-- ANALYZE DATA WITH  DIFFERENT AMOUNTS OF READS AND ASSESS THE IMPACT IN THE RESULTS -->
