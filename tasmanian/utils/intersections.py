@@ -12,34 +12,35 @@ sys.path.append(sys.path[0] + '/utils')
 from sam_reads import reads
 from utils import *
 
-HELP = '''
-\t\tsamtools view <bam_file> | python -b <bed_file/bedGraph> -o <output.table> 
-'''
-
-# initialize lists to contain reads (sam) and statistics (e.g. length of intersections)
-statistics = []      
-sam_masked = []
-sam_intersections = []
-
-# load global arguments
-out_prefix = ''
-
-for n,i in enumerate(sys.argv):
-    if i in ['--bed','-b','--bed-file']:
-        bedfile = sys.argv[n+1]
-
-    if i in ['--output', '-o']:
-        out_prefix = sys.argv[n+1] + "."
-
-    if i in ['-h','--help']:
-        print(HELP)
-        sys.exit(1)
-
-# define the name of the logging file for debugging
-logFileName = out_prefix + 'log'
-
 
 def main():
+
+    HELP = '''
+    \t\tsamtools view <bam_file> | python -b <bed_file/bedGraph> -o <output.table> 
+    '''
+
+    # initialize lists to contain reads (sam) and statistics (e.g. length of intersections)
+    statistics = []      
+    sam_output = []
+    sam_output = []
+
+    # load global arguments
+    out_prefix = ''
+
+    for n,i in enumerate(sys.argv):
+        if i in ['--bed','-b','--bed-file']:
+            bedfile = sys.argv[n+1]
+
+        if i in ['--output', '-o']:
+            out_prefix = sys.argv[n+1] + "."
+
+        if i in ['-h','--help']:
+            print(HELP)
+            sys.exit(1)
+
+    # define the name of the logging file for debugging
+    logFileName = out_prefix + 'log'
+
 
     # load bed_file
     try:
@@ -70,9 +71,17 @@ def main():
 
     # read bam file from stdin and 
     for line in sys.stdin:
-        n_tester +=1
 
-        line = line.strip('\n') 
+        # parse the header UNmodified as this script could be used to save the intersections file.
+        # without being parsed into tasmanian
+        if line[0]=='@': 
+            sys.stdout.write(line)
+            continue
+
+        line = line.strip('\n')
+            
+        # In case this is a regular read
+        n_tester +=1
 
         if len(line) < 50:  # avoid potential empty lines at the end.
             logger.warning('line {} had less than 50 characters'.format(n_tester))
@@ -80,8 +89,10 @@ def main():
 
         # instantiate object "current_read"
         try:
-            _id, flag, chrom, start, mapq, cigar, _2, _3, tlen, seq, phred = line.split('\t')[:11]
-            current_read = reads(_id, flag, chrom, start, mapq, cigar, _2, _3, tlen, seq, phred)
+            line = line.split('\t')
+            _id, flag, chrom, start, mapq, cigar, _2, _3, tlen, seq, phred = line[:11]
+            tags = '\t'.join(line[11:])  # This will be added to the otuput sam file
+            current_read = reads(_id, flag, chrom, start, mapq, cigar, _2, _3, tlen, seq, phred, tags)
 
             # assume read is not paired yet
             paired_read = None # assume there is no paired_read yet
@@ -96,7 +107,7 @@ def main():
 
         # if chromosome not in bed, read is non overlapping
         if current_read.chrom not in bed:
-            sam_masked.append(current_read.print('original'))
+            sam_output.append(current_read.print('original'))
             continue
 
         # new chromosome -> zero bed_index!
@@ -109,6 +120,7 @@ def main():
             if total_beds >= total_bed_lens:    # Have we finished reading the bed file?
                 finito = True
             last_chrom = current_read.chrom
+
 
         # Check-point ====================================================================================
         '''
@@ -146,10 +158,11 @@ def main():
                     bed_index +=1
                     total_beds+=1
 
+
         # If: 1.bam was lower than bed  2.we skipped bed with no bam coverage 3.we got to a bed that's after 
         # the bam region 4. Even though current_read.category is None, no "ab" (see the following section) 
         # will be assigned. Hence, we can already assign a category=1 here.
-        if current_read.end <= bed[chrom][bed_index,0]:
+        if current_read.end <= bed[chrom][bed_index,0] or skip_chrom:
             current_read.category=1
         
         # We can already assign bed_id       
@@ -180,10 +193,21 @@ def main():
             # add feature to read to classify it later
             current_read.category_positions = [a,b] 
             
-            # mask intersections with "N"
-            intersect_size = len(current_read.seq[a:b])  
-            current_read.masked_seq = current_read.seq[:a] + ''.join(['N'] * intersect_size) + current_read.seq[b:]
-            current_read.intersect_seq = ''.join(['N'] * a) + current_read.seq[a:b] + ''.join(['N'] * b0)
+            # mask intersections with lower-case letters instead of "N" --> I end up with ~half # reads
+            #intersect_size = len(current_read.seq[a:b])
+            #current_read.masked_seq = current_read.seq[:a] + ''.join(['N'] * intersect_size) + current_read.seq[b:]
+            #current_read.intersect_seq = ''.join(['N'] * a) + current_read.seq[a:b] + ''.join(['N'] * b0)
+    
+            
+            intersect = current_read.seq[a:b]
+            current_read.masked_seq = current_read.seq[:a] + intersect.lower() + current_read.seq[b:]
+            current_read.intersect_seq = current_read.seq[:a].lower() + intersect + current_read.seq[b:].lower()
+            b = b if b>=0 else current_read.seq_len+b
+            current_read.junction = '{}.{}'.format(a,b)
+
+
+            #print(current_read.masked_seq)
+
 
             # cigar is to correlate clips with intersections. It might happen that most 
             # intersections are not correctly mapped and therefore, are softcliped
@@ -199,25 +223,51 @@ def main():
         else:  
             current_read.category = assign_category(current_read, paired_read)
             paired_read.category = current_read.category # category is shared by the paired reads
-            sam_masked.append(paired_read.print('masked'))   # if masked_seq==None goes for 'original' by default.
-            sam_masked.append(current_read.print('masked'))  # same here!
-    
-            for READ in [paired_read, current_read]:
-                if READ.intersect_seq != None:
-                    if READ.masked_seq == None: logging.critical('This should not be happening, masked is None and intersect is not...?')
-                    sam_intersections.append(READ.print('intersect'))
+            sam_output.append(paired_read.print('masked'))   # if masked_seq==None goes for 'original' by default.
+            sam_output.append(current_read.print('masked'))  # same here!
+        
+
+            #for READ in [paired_read, current_read]:
+            #    if READ.intersect_seq != None:
+            #        if READ.masked_seq == None: logging.critical('This should not be happening, masked is None and intersect is not...?')
+            #        sam_output.append(READ.print('intersect'))
 
 
     # save files:
-    for mtx, fle in zip([sam_masked, sam_intersections], ['masked','intersections']):
-        with gzip.open(out_prefix + fle + '.sam.gz', 'wb') as f:
-            f.write('\n'.join(mtx).encode())
+    #for mtx, fle in zip([sam_output, sam_output], ['masked','intersections']):
+    #    with gzip.open(out_prefix + fle + '.sam.gz', 'wb') as f:
+    #        f.write('\n'.join(mtx).encode())
+    # 
+    #    print(fle, ' written!')
+    #    #del mtx
+    #    #del f
     
-        print(fle, ' written!')
-        del mtx
-        del f
+    '''
+    # pipe into 2 subprocess that will run on parallel 
+    # from https://gist.github.com/waylan/2353749
+    from subprocess import Popen, PIPE
+    import errno
+    
+    p = Popen(['run_tasmanian','-r','/mnt/galaxy/data/genome/grch38_full/bwa/GRCh38_full_analysis_set_plus_decoy_hla.fa'], stdin=PIPE)
+    to_print = '\n'.join(sam_output)
 
-    return "Done!"
+    try:
+        p.stdin.write(b'to_print')
+    except IOError as e:
+        if e.errno == errno.EPIPE or e.errno == errno.EINVAL:
+            exit('Oh OH!!!')
+        else:
+            raise
+
+    p.stdin.close()
+    p.wait()
+    '''
+    
+
+    # instead, pipe it to sys.stdout
+    sys.stdout.write('\n'.join(sam_output))
+    
+    
 
 
 

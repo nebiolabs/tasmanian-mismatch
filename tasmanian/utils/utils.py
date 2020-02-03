@@ -3,15 +3,7 @@ from sam_reads import reads
 import logging 
 import sys,os
 sys.path.append(os.path.abspath('../'))
-from intersections import logFileName
 
-
-logging.basicConfig(filename = logFileName,
-                    format = '%(asctime)s %(message)s',
-                    filemode = 'w')
-
-logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
 
 def read_bed(bedfile):
     '''
@@ -120,3 +112,80 @@ def subcategory(read):
     elif not ab[0] and not ab[1]:   return 'b'
     elif ab[0] and ab[1]:           return 'c'
     elif not ab[0] and ab[1]:       return 'd'
+
+
+def load_reference(ref_file):
+    '''
+        open reference file into dictionary of chromosomes and their sequences
+        INPUT: name of reference file
+        OUTPUT: reference dictionary
+    '''
+    reference = {}
+    with open(ref_file) as f:
+        while True:
+            try:
+                line = next(f).strip()
+                if line[0] == ">":
+                    if 'current_key' in locals():
+                        reference[current_key] = ''.join(tmp)
+                    current_key = line.split(' ')[0][1:].replace(' ','')
+                    tmp = []
+
+                else: 
+                    tmp.append(line.strip())
+
+            except StopIteration:
+                reference[current_key] = ''.join(tmp)
+                break
+    
+    return reference
+    
+
+# Alert in case the inputs are incorrect
+class cols:
+    bold = '\x1b[0;30;47m'
+    normal = '\x1b[0m'
+
+def revcomp(base):
+    d={'A':'T','T':'A','C':'G','G':'C',
+       'a':'t','t':'a','c':'g','g':'c'}
+    return d[base]
+
+def simple_deltas_is_this_garbage(s1,s2,fraction_correct=0.66): # since strings should have same length, this is simple
+    l=len(s1)
+    if len(s2) != l:
+        logging.append('{} and {} have different lengths'.format(s1,s2))
+        return
+
+    if np.sum([1 for i in range(l) if s1[i]==s2[i]]) >= fraction_correct*l:
+        return False
+    else:
+        return True
+
+
+def init_artifacts_table(READ_LENGTH):
+    '''
+        Initialize a dictionary to store artifact results
+        INPUT: READ_LENGTH (the length of the reads)
+        OUTPUT: errors table of all possible missmatches
+    '''
+    errors = {}
+    for read in [1,2]:
+        errors[read] = {}
+        for pos in np.arange(READ_LENGTH):
+            errors[read][pos] = {}
+            for ref in ['A','C','G','T']:
+                errors[read][pos][ref] = {}
+                for alt in ['A','C','G','T']:
+                    errors[read][pos][ref][alt] = 0
+    return errors
+
+
+# define a table of flags of proper paired reads
+proper_flags = {
+    99: 'first fwd',
+    147:'second fwd',
+    83: 'first rev',
+    163:'second rev'
+}
+

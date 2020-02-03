@@ -4,7 +4,7 @@ class reads:
     '''
         read attrubutes are it's sam columns
     '''
-    def __init__(self, _id, flag, chrom, start, mapq, cigar, _2, _3, tlen, seq, phred):
+    def __init__(self, _id, flag, chrom, start, mapq, cigar, _2, _3, tlen, seq, phred, tags):
         self._id = _id
         self.flag = int(flag)
         self.chrom = chrom
@@ -16,6 +16,7 @@ class reads:
         self.tlen = int(tlen)
         self.seq = seq
         self.phred = phred
+        self.tags = tags
 
         self.seq_len = len(seq)
         self.end = self.start + self.seq_len
@@ -49,6 +50,7 @@ class reads:
         # intersect_seq is the complement (oposite) of masked
         self.masked_seq = None # update when reading bed and bam or leave it in tasmanian.
         self.intersect_seq = None # 
+        self.junction = '-1'  # updated in intersections
 
         # to know if the read and it's paired read intersect the same bed region
         # or not, we need to keep the bed id in the read
@@ -81,22 +83,29 @@ class reads:
         if self.masked_seq == None: 
             self.masked_seq = self.seq
 
-        if sequence == 'original':      seq = self.seq
-        elif sequence == 'masked':      seq = self.masked_seq
-        elif sequence == 'intersect':   seq = self.intersect_seq
+        if sequence == 'original':      
+            seq = self.seq
+            tag = '0 '
+        elif sequence == 'masked':      
+            seq = self.masked_seq
+            tag = '1 '
+        elif sequence == 'intersect':   
+            seq = self.intersect_seq
+            tag = '2 '
 
         if self.category_positions == [None, None]: self.category_positions = ['nan','nan']
         categories = "categories " + ':'.join([str(i) for i in self.category_positions] + [str(self.category)])
-        
+        self.tags = self.tags + '\ttm:Z:' + self.junction #tag + str(self.category) +' '+ self.junction
+
         try: 
             return '\t'.join([self._id, str(self.flag), self.chrom, str(self.start), 
                               str(self.mapq), self.cigar, self._2, self._3, 
-                              str(self.tlen), seq, self.phred, categories, ':'.join(self.bed_extra_info)
+                              str(self.tlen), seq, self.phred, self.tags
                              ])
         except Exception as e:
             tmp = '\t'.join([self._id, str(self.flag), self.chrom, str(self.start), 
                               str(self.mapq), self.cigar, self._2, self._3, 
-                              str(self.tlen), seq, self.phred, categories])
+                              str(self.tlen), seq, self.phred, self.tags
+                            ])
 
-            print(self.bed_extra_info, 'problem: ', str(e), tmp)
-            return tmp
+            sys.stderr.write(self.bed_extra_info, 'problem: ', str(e), tmp)

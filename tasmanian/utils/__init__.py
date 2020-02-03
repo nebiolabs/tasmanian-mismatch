@@ -1,2 +1,2 @@
-from sam_reads import *
-from utils import *
+from .sam_reads import *
+from .utils import *
