@@ -116,6 +116,15 @@ if __name__=='__main__':
     errors_intersection = init_artifacts_table(READ_LENGTH)
     errors_complement = init_artifacts_table(READ_LENGTH)
     errors_unrelated = init_artifacts_table(READ_LENGTH)
+
+    # bamfile has to be sorted in order for this algorithm to work. The following variable 
+    # is to enforce that the bam file is indeed sorted
+    last_coordinate = 0
+    last_chrom = ''
+    
+    # to check that there are tasmanian flags in sam file and if not, use unrelateds table only.
+    bed_tag = False
+    bed_tag_counter = 0
      
     # read bam from "samtools view" and pipe 
     for line in sys.stdin:
@@ -125,8 +134,22 @@ if __name__=='__main__':
             continue
 
         _, flag, chrom, start, mapq, cigar, _, _, tlen, seq, phred = line.split('\t')[:11]
-        #tags = re.search('tm:Z:[-,0-9]*\.[-,0-9]*', line[11:])
-        tm_tag = np.array(re.search('tm:Z:([-.0-9]*)', line).group(1).split('.')).astype(int)
+
+        # If sam data does not have the tasmanian tag, there is no intersection with bed and proceed to a single output table
+        if bed_tag_counter<10 and bed_tag==False:
+            try:
+                tm_tag = np.array(re.search('tm:Z:([-.0-9]*;)', line).group(1).replace(';','').split('.')).astype(int)
+                bed_tag = True
+            except AttributeError:
+                tm_tag = -1
+            bed_tag_counter+=1
+
+        elif bed_tag==True:
+             tm_tag = np.array(re.search('tm:Z:([-.0-9]*;)', line).group(1).replace(';','').split('.')).astype(int)
+
+        else:
+            tm_tag = -1
+
        
         skip_read = False
         seq_len = len(seq)
@@ -135,6 +158,20 @@ if __name__=='__main__':
         start = int(start)-1
         end = start + seq_len
         tlen = abs(int(tlen))
+
+        # If file is not sorted, exit and alarm the user
+        if last_chrom != chrom:
+            last_chrom = chrom
+            last_coordinate = 0
+
+        else:
+            if flag in ['99','163']:
+                #assert start > last_coordinate, '\x1b[5;37;41m' + 'Error: BAM file should be sorted!!' + '\x1b[0m'
+                if start < last_coordinate:
+                    sys.stdout.write( '\x1b[5;37;41m' + 'Error:' + '\x1b[0m' + 'BAM file should be sorted!!\n')
+                    sys.exit(1)
+                
+                last_coordinate = start
 
         # reasons to skip reads
         # =====================

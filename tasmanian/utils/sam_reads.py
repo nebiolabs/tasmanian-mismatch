@@ -50,7 +50,7 @@ class reads:
         # intersect_seq is the complement (oposite) of masked
         self.masked_seq = None # update when reading bed and bam or leave it in tasmanian.
         self.intersect_seq = None # 
-        self.junction = '-1'  # updated in intersections
+        self.junction = '-1;'  # updated in intersections
 
         # to know if the read and it's paired read intersect the same bed region
         # or not, we need to keep the bed id in the read

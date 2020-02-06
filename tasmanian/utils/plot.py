@@ -14,9 +14,9 @@ def plot_html(table):
         INPUT: table = dictionary with keys: 'intersections','complement','non_intersection'
     '''
 
-    def table_to_json(df):
+    def table_to_json(df, normalize=True):
         #df = table['intersection'] #pd.read_csv(sys.argv[1])
-
+        
         a = ['a_a','a_t','a_c','a_g']
         c = ['c_a','c_t','c_c','c_g']
         g = ['g_a','g_t','g_c','g_g']
@@ -30,9 +30,11 @@ def plot_html(table):
         # normalize the data to later rescale the data to between 0-1
         dfc = df.copy()
         errors = {'a': a, 'c': c, 'g': g, 't': t}
-        for i in errors.keys():
-            dfc.loc[:, errors[i]] /= (dfc.loc[:, errors[i]].sum(axis=1).values.reshape(-1,1) + 10e-6 )
-
+        
+        if normalize:
+            for i in errors.keys():
+                dfc.loc[:, errors[i]] /= (dfc.loc[:, errors[i]].sum(axis=1).values.reshape(-1,1) + 10e-6 )
+            
         table_max = dfc[mutations].max().max() * 1.1
         table_min = dfc[mutations].min().min() * 0.5
 
@@ -83,7 +85,8 @@ def plot_html(table):
 
             fig['data'][n]['marker']['color']=colors[m]
             fig['data'][n+1]['marker']['color']=colors[m]
-            
+
+
         # final aestetic touches
         fig.update_traces(mode='markers', marker_line_width=2, marker_size=10) #, visible="legendonly")
         fig.update_layout(height=800, xaxis_title="Position in read", yaxis_title="Normalized counts")
@@ -96,9 +99,14 @@ def plot_html(table):
 
         return fig_json
 
-    fig_json_i = table_to_json(table['intersection'])
-    fig_json_c = table_to_json(table['complement'])
-    fig_json_n = table_to_json(table['non_intersection'])
+
+    fig_json_i = table_to_json(table['intersection'], normalize=False)
+    fig_json_c = table_to_json(table['complement'], normalize=False)
+    fig_json_n = table_to_json(table['non_intersection'], normalize=False)
+
+    fig_json_i_norm = table_to_json(table['intersection'])
+    fig_json_c_norm = table_to_json(table['complement'])
+    fig_json_n_norm = table_to_json(table['non_intersection'])
 
 
     # HTML template
@@ -107,33 +115,132 @@ def plot_html(table):
         <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/css/bootstrap.min.css">
         <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
         <title>Tasmanian Report</title>
+
+        <style>
+            .button {{
+              background-color: white; /* Green */
+              border: 2px solid #8bd9ff;
+              color: black;
+              padding: 16px 32px 0px -10px;
+              text-align: center;
+              text-decoration: none;
+              display: inline-block;
+              font-size: 16px;
+              margin: 20px 2px 0px 100px;
+              transition-duration: 0.4s;
+              cursor: pointer;
+            }}
+
+            .button:hover {{
+              background-color: #8bd9ff;
+              color: white;
+            }}
+            h1{{ 
+                background-color: #8bd9ff;
+                padding: 30px 0px 30px 0px;
+                margin: 10px 120px 0px 80px;
+            }}
+        </style>
+
     </head>
     <body>
+        <script type="text/javascript">
+           function toggle_visibility(id1, id2, id3, id4, id5, id6) {{
+               var e = document.getElementById(id1);
+               var f = document.getElementById(id2);
+               var g = document.getElementById(id3);
+               var h = document.getElementById(id4);
+               var i = document.getElementById(id5);
+               var j = document.getElementById(id6);
+
+               if(e.style.display == 'block') {{
+                  e.style.display = 'none';
+                  f.style.display = 'block';
+                  g.style.display = 'none';
+                  h.style.display = 'block';
+                  i.style.display = 'none';
+                  j.style.display = 'block';
+                }}
+               else {{
+                  e.style.display = 'block';
+                  f.style.display = 'none';
+                  g.style.display = 'block';
+                  h.style.display = 'none';
+                  i.style.display = 'block';
+                  j.style.display = 'none';
+                }}
+           }}
+        </script>
+
         <h1 align="center">Tasmanian artifacts metrics results </h1>
 
+        <button class="button button1"; onclick="toggle_visibility('divPlotly1_norm', 'divPlotly1', 'divPlotly2_norm', 'divPlotly2', 'divPlotly3_norm', 'divPlotly3');">Counts/Normalize Counts</button>
+    
         <h2 style="padding-left: 40px; padding-top: 90px;">Intersections</h2>
         <h3 style="padding-left: 40px; padding-right: 800; ">Includes all bases that intersect some fragment provided in the bed-file</h3>
-        <div id='divPlotly1'></div>
+
+
+
+        <!-- plot 1 -->
+
+        <div id='divPlotly1_norm'>
+        <script>
+            var plotly_data = {}
+            Plotly.react('divPlotly1_norm', plotly_data.data, plotly_data.layout);
+        </script>
+        </div>
+
+        <div id='divPlotly1'>
         <script>
             var plotly_data = {}
             Plotly.react('divPlotly1', plotly_data.data, plotly_data.layout);
         </script>
+        </div>
 
         <h2 style="padding-left: 40px;padding-top: 60px;">Complements</h2>
         <h3 style="padding-left: 40px; padding-right: 800;">Includes all bases from that do not intersect a fragment, from reads that intersect a fragment provided in the bed-file</h3>
-        <div id='divPlotly2'></div>
+
+        <!-- plot 2 -->
+
+        <div id='divPlotly2_norm'>
+        <script>
+            var plotly_data = {}
+            Plotly.react('divPlotly2_norm', plotly_data.data, plotly_data.layout);
+        </script>
+        </div>
+
+        <div id='divPlotly2'>
         <script>
             var plotly_data = {}
             Plotly.react('divPlotly2', plotly_data.data, plotly_data.layout);
-            var plotly_data = {}
         </script>
+        </div>
 
         <h2 style="padding-left: 40px;padding-top: 60px;">Non-intersections</h2>
         <h3 style="padding-left: 40px; padding-right: 800;">Includes all bases from reads with no intersections with the bed-file</h3>
-        <div id='divPlotly3'></div>
+
+        <!-- plot 3 -->
+
+        <div id='divPlotly3_norm'>
         <script>
+            var plotly_data = {}
+            Plotly.react('divPlotly3_norm', plotly_data.data, plotly_data.layout);
+        </script>
+        </div>
+
+        <div id='divPlotly3'>
+        <script>
+            var plotly_data = {}
             Plotly.react('divPlotly3', plotly_data.data, plotly_data.layout);
         </script>
+        </div>
+        
+        <script> 
+            divPlotly1_norm.style.display = 'none'; 
+            divPlotly2_norm.style.display = 'none'; 
+            divPlotly3_norm.style.display = 'none'; 
+        </script>
+
     </body>
 
     </html>"""
@@ -141,4 +248,15 @@ def plot_html(table):
     # write the JSON to the HTML template
     #with open('Tasmanian_artifact_metrics_report.html', 'w') as f:
     #   f.write(template.format(fig_json))
-    return template.format(fig_json_i, fig_json_c, fig_json_n)
+    return template.format(fig_json_i_norm, fig_json_i, fig_json_c_norm, fig_json_c, fig_json_n_norm, fig_json_n)
+
+
+
+#if __name__=='__main__':
+#    
+#    normalize = False
+#    for n,i in enumerate(sys.argv):
+#        if i in ["-normalize","--normalize","-n","--n","--norm","-norm"]:
+#            normalize=True
+#        if i in ["--table", "-t","--t","-table"]:
+#            

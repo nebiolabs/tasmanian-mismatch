@@ -203,7 +203,7 @@ def main():
             current_read.masked_seq = current_read.seq[:a] + intersect.lower() + current_read.seq[b:]
             current_read.intersect_seq = current_read.seq[:a].lower() + intersect + current_read.seq[b:].lower()
             b = b if b>=0 else current_read.seq_len+b
-            current_read.junction = '{}.{}'.format(a,b)
+            current_read.junction = '{}.{};{}.{}'.format(a,b,bed[chrom][bed_index][0], bed[chrom][bed_index][1])
 
 
             #print(current_read.masked_seq)
