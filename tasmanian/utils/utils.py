@@ -154,7 +154,7 @@ def revcomp(base):
 def simple_deltas_is_this_garbage(s1,s2,fraction_correct=0.66): # since strings should have same length, this is simple
     l=len(s1)
     if len(s2) != l:
-        logging.append('{} and {} have different lengths'.format(s1,s2))
+        logging.error('{} and {} have different lengths'.format(s1,s2))
         return
 
     if np.sum([1 for i in range(l) if s1[i]==s2[i]]) >= fraction_correct*l:

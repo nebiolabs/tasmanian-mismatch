@@ -50,7 +50,7 @@ def plot_html(table):
 
             fig.add_trace(
                 go.Scatter(
-                    x=np.arange(df1.shape[0]),
+                    x=np.arange(1,df1.shape[0]+1),
                     y=df1[mut],
                     mode='markers',
                     name= mut + ' - R1'
@@ -60,7 +60,7 @@ def plot_html(table):
 
             fig.add_trace(
                 go.Scatter(
-                    x = np.arange(df2.shape[0]),
+                    x = np.arange(1,df2.shape[0]+1),
                     y = df2[mut],
                     mode = 'markers',
                     name = mut + ' - R2',

@@ -116,11 +116,6 @@ if __name__=='__main__':
     errors_intersection = init_artifacts_table(READ_LENGTH)
     errors_complement = init_artifacts_table(READ_LENGTH)
     errors_unrelated = init_artifacts_table(READ_LENGTH)
-
-    # bamfile has to be sorted in order for this algorithm to work. The following variable 
-    # is to enforce that the bam file is indeed sorted
-    last_coordinate = 0
-    last_chrom = ''
     
     # to check that there are tasmanian flags in sam file and if not, use unrelateds table only.
     bed_tag = False
@@ -150,7 +145,6 @@ if __name__=='__main__':
         else:
             tm_tag = -1
 
-       
         skip_read = False
         seq_len = len(seq)
         mapq = int(mapq)
@@ -158,20 +152,6 @@ if __name__=='__main__':
         start = int(start)-1
         end = start + seq_len
         tlen = abs(int(tlen))
-
-        # If file is not sorted, exit and alarm the user
-        if last_chrom != chrom:
-            last_chrom = chrom
-            last_coordinate = 0
-
-        else:
-            if flag in ['99','163']:
-                #assert start > last_coordinate, '\x1b[5;37;41m' + 'Error: BAM file should be sorted!!' + '\x1b[0m'
-                if start < last_coordinate:
-                    sys.stdout.write( '\x1b[5;37;41m' + 'Error:' + '\x1b[0m' + 'BAM file should be sorted!!\n')
-                    sys.exit(1)
-                
-                last_coordinate = start
 
         # reasons to skip reads
         # =====================

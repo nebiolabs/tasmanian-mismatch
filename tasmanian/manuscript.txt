@@ -54,3 +54,10 @@ The output consists in tables with counts for all detected observed_reference "o
 
 Analysis of missmatches usually preceedes calling variants. It can be used as a first screen to decide if the sample is suitable to further variant calling analysis or it can be used as a cryteria to assign a qualitative measure to potential variants associated with desease. 
 While the extent of systematic missmatches due to artifacts associated to DNA manipulation have very low frequency, it has a big impact in variant calling where frequencies are as low or even lower than potential systematic evaluated artifacts. Hence, half of the data discarded by damage estimator will have a profound impact in further assesment of variant calling results.  <!-- ANALYZE DATA WITH  DIFFERENT AMOUNTS OF READS AND ASSESS THE IMPACT IN THE RESULTS -->
+
+
+
+# Datasets:
+For the TOPMed Phase 3 and CCDG projects, library core technicians used 600ng of DNA starting material with a minimum starting amount of 450ng. The library construction technicians fragmented the DNA with the Covaris LE220 Focused Ultrasonicator. A mean fragment size of ~375 bp was achieved. The library core technicians then prepared KAPA Hyper PCR-free libraries (Roche) using Perkin Elmer SciClone NGS (96-well configuration). The dual-same index system from Illumina was utilized to ensure DNA molecule integrity and data quality, which allows identification and elimination of chimeric molecules formed by cross-sample "index hopping". The library construction technicians assessed the libraries for quality and quantity using the HT DNA Hi Sens Dual Protocol Assay with the DNA Extended Range LabChip (GX, GX Touch HT) on the Perkin Elmer LabChip GX instrument using the manufacturer’s instructions. The library construction team passed undiluted libraries to the loading team for qPCR, pooling, and sequencing.
+
+

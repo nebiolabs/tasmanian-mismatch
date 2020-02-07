@@ -16,11 +16,11 @@ from utils import *
 def main():
 
     HELP = '''
-    \t\tsamtools view <bam_file> | python -b <bed_file/bedGraph> -o <output.table> 
+    \t\tsamtools view <bam_file> | python -b <bed_file/bedGraph> -o <output.table>
     '''
 
     # initialize lists to contain reads (sam) and statistics (e.g. length of intersections)
-    statistics = []      
+    statistics = []
     sam_output = []
     sam_output = []
 
@@ -92,6 +92,15 @@ def main():
             line = line.split('\t')
             _id, flag, chrom, start, mapq, cigar, _2, _3, tlen, seq, phred = line[:11]
             tags = '\t'.join(line[11:])  # This will be added to the otuput sam file
+
+            # check that bam file is sorted. Use first 200 reads for that
+            # current_read.start is the previous coordinate. Should be lower than the start of the 
+            # current read (to be assigned).
+            if n_tester>1 and n_tester<500:
+                if current_read.chrom == chrom and flag in ['99','163'] and current_read.start > int(start):
+                    sys.stdout.write( '\x1b[5;37;41m' + 'Error:' + '\x1b[0m' + 'BAM file should be sorted!!\n')
+                    sys.exit(1)
+
             current_read = reads(_id, flag, chrom, start, mapq, cigar, _2, _3, tlen, seq, phred, tags)
 
             # assume read is not paired yet
@@ -264,10 +273,21 @@ def main():
     '''
     
 
-    # instead, pipe it to sys.stdout
+    import socket, errno
+    
+    from signal import signal, SIGPIPE, SIG_DFL
+    signal(SIGPIPE, SIG_DFL)
+
+    #try:
+    #    sys.stdout.write('\n'.join(sam_output))
+    #except socket.error as e:
+    #    print('A socket error')
+    #except IOError as e:
+    #    if e.errno == errno.EPIPE:
+    #        print('EPIPE error')
+    #    else:
+    #        print('something else...')
     sys.stdout.write('\n'.join(sam_output))
-    
-    
 
 
 

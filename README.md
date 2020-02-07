@@ -1,22 +1,18 @@
 [![Build Status](https://travis-ci.org/fulcrumgenomics/fgbio.svg?branch=master)](https://travis-ci.org/fulcrumgenomics/fgbio)
-[![codecov](https://codecov.io/gh/fulcrumgenomics/fgbio/branch/master/graph/badge.svg)](https://codecov.io/gh/fulcrumgenomics/fgbio)
-[![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.fulcrumgenomics/fgbio_2.13/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.fulcrumgenomics/fgbio_2.13)
 [![Bioconda](https://img.shields.io/conda/dn/bioconda/fgbio.svg?label=Bioconda)](http://bioconda.github.io/recipes/fgbio/README.html)
-[![Javadocs](http://javadoc.io/badge/com.fulcrumgenomics/fgbio_2.13.svg)](http://javadoc.io/doc/com.fulcrumgenomics/fgbio_2.13)
-[![License](http://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/fulcrumgenomics/fgbio/blob/master/LICENSE)
+[![License](http://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/nebiolabs/tasmanian/blob/master/LICENSE)
 [![Language](https://img.shields.io/badge/Made%20with-Python-1f425f.svg)](https://www.python.org)
 
 <!-- Cartoon of tasmanian devil -->
 <!--[](https://upload.wikimedia.org/wikipedia/en/c/c4/Taz-Looney_Tunes.svg) -->
-<img src="https://github.com/nebiolabs/tasmanian/blob/master/kissclipart-cartoon-devil-bugs-bunny-clipart-tasmanian-devil-b-d7d7781bbbc9a4a9.png" width="100" height="100">
+<img src="https://github.com/nebiolabs/tasmanian/blob/master/figures/kissclipart-cartoon-devil-bugs-bunny-clipart-tasmanian-devil-b-d7d7781bbbc9a4a9.png" width="100" height="100">
 <!-- image from https://www.kissclipart.com/cartoon-devil-bugs-bunny-clipart-tasmanian-devil-b-ryiinn/ NO COPYRIGHTS-->
 
 
 Tasmanian
 ====
 
-A tool for the analysis of artifacts in high throughput sequencing data from genomic DNA. Detailed user documentation is available on the [project website](http://fulcrumgenomics.github.io/fgbio/) including [tool usage](http://fulcrumgenomics.github.io/fgbio/tools/latest) and [documentation of metrics produced](http://fulcrumgenomics.github.io/fgbio/metrics/latest).  Detailed developer documentation can be found [here](http://javadoc.io/doc/com.fulcrumgenomics/fgbio_2.13). Detailed developer documentation can be found [here](http://javadoc.io/doc/com.fulcrumgenomics/fgbio_2.13).
-
+A tool for the analysis of artifacts (mutations with a systematic stamp/pattern) in high throughput sequencing data from DNA samples. This is specially relevant in allele variations studies.
 
 <!---toc start-->
   * [Goals](#goals)
@@ -33,10 +29,10 @@ A tool for the analysis of artifacts in high throughput sequencing data from gen
 
 # Goals
 
-There are many toolkits available for analyzing genomic data; fgbio does not aim to be all things to all people but is specifically focused on providing:
+The main goal is to identify systematic missmatches that might confound SNPs or other variations that should or should not be associated to biological outcomes. Since we noticed a set of regions, which might not necessarily be missplaced in the reference genome, have dramatic effects in this analysis, we provide a way of spliting these reads and incorporate the information in different tables, so that intersecting/non intersecting reads are not filtered out. Also, the researcher has a more accurate picture of the influence of these regions in the observed artifacts.
 
-* Robust, well-tested tools.
-* An easy to use command-line.
+* Easy to use command-line and next-flow implementation.
+* Includes a Galaxy wrapper 
 * Clear and thorough documentation for each tool.
 * Open source development for the benefit of the community and our clients.
 
