@@ -3,7 +3,7 @@
 [![License](http://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/nebiolabs/tasmanian/blob/master/LICENSE)
 [![Language](https://img.shields.io/badge/Made%20with-Python-1f425f.svg)](https://www.python.org)
 
-![Image of Tasmanian Devil](https://commons.wikimedia.org/wiki/File:Sarcophilus_harrisii_taranna.jpg)
+![Image of Tasmanian Devil](https://upload.wikimedia.org/wikipedia/commons/thumb/4/43/Sarcophilus_harrisii_taranna.jpg/512px-Sarcophilus_harrisii_taranna.jpg)
 
 Tasmanian
 ====
