@@ -335,6 +335,11 @@ def analyze_artifacts(Input, Args):
     for DF, dfName in zip([dfi, dfc, dfn],['intersection','complement','non_intersection']):
         DF.columns = col_names
         table[dfName] = DF.astype(int)
+
+    # Report errors to a logging file
+    f = open('errors_'+randLogName+'.log','w',)
+    f.write('\n'.join(logging))
+    f.close()
     
     return table
 
@@ -364,9 +369,3 @@ if __name__=='__main__':
     
     with open(report_filename, 'w') as f:
         f.write(report_html)
-    
-    # Report errors to a logging file
-    f = open('errors_'+randLogName+'.log','w',)
-    f.write('\n'.join(logging))
-    f.close()
-

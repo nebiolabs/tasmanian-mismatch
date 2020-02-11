@@ -15,12 +15,25 @@ def read_bed(bedfile):
     '''
     bed = {}
     bed_others = {}   # here I keep other fields than the coordinates
+
     with open(bedfile) as f:
         while True:
             try:
-                #chrom, start, end = next(f).strip().split('\t')[:3]
+                line =  next(f).strip().split('\t')
+                num_fields = len(line)
+
                 # Now we include information of repeats in columns>3
-                chrom, start, end, strand, rep_name, rep_class, rep_family = next(f).strip().split('\t')[:7]
+                if num_fields >=7:
+                    chrom, start, end, strand, rep_name, rep_class, rep_family = line[:7]
+
+                elif num_fields == 3: 
+                    chrom, start, end = line
+
+                    # worth the overhead if we use this data in intersections.py when exists
+                    strand, rep_name, rep_class, rep_family = '','','',''                  
+                else:
+                    sys.stderr.write('bed_file is not formatted as expected... see help menu')
+                    exit(1)
 
                 if chrom not in bed:
                     bed[chrom] = []

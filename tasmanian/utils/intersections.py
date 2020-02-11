@@ -16,10 +16,10 @@ from tasmanian.utils.utils import *
 def main():
 
     HELP = '''
-    \t\tsamtools view <bam_file> | python -b <bed_file/bedGraph> -o <output.table>
-    the bedGraph file should contain 6 columns:
-    ------------------------------------------
-    chrI    850     879     +       L1P5    LINE    L1
+    \t\tsamtools view <bam_file> | python -b <bed_file/bedGraph> -o <output.table>\n
+    \t\tthe bedGraph file should contain 3 or more columns separated by tabs:
+    \t\t------------------------------------------
+    \t\tchrI    850     879     +       L1P5    LINE    L1
 
     '''
 
@@ -52,8 +52,7 @@ def main():
         logging.info('bedfile {} was succesfully read'.format(bedfile))
     except Exception as e:
         logging.error('{} happened in excecution of read_bed in main()'.format(str(e)))
-        exit("there was a problem reading {}. Make sure is tab delimited and all columns \
-             and rows are correct.")
+        exit("there was a problem reading {}. Make sure is tab delimited and all columns and rows are correct.")
 
     # to avoid going over the entire chromosome on each read,
     # keep an updated index of the bedfile to start from
