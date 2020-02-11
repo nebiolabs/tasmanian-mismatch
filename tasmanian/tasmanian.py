@@ -143,6 +143,11 @@ def analyze_artifacts(Input, Args):
         else:
             tm_tag = -1
 
+
+        print(tm_tag,"****")
+
+
+
         skip_read = False
         seq_len = len(seq)
         mapq = int(mapq)
@@ -265,7 +270,7 @@ def analyze_artifacts(Input, Args):
                     #if pos == 0:
                     #    sys.stderr.write(seq[0], strand, ref_pos, Base)
 
-                    if tm_tag[0] == -1:
+                    if tm_tag == -1:
                         assert base in ['A','C','G','T'], "{} should be upper case".format(base)
                         errors_unrelated[read][read_pos][ref_pos][Base] += 1
  

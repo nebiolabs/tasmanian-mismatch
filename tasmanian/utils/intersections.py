@@ -17,6 +17,10 @@ def main():
 
     HELP = '''
     \t\tsamtools view <bam_file> | python -b <bed_file/bedGraph> -o <output.table>
+    the bedGraph file should contain 6 columns:
+    ------------------------------------------
+    chrI    850     879     +       L1P5    LINE    L1
+
     '''
 
     # initialize lists to contain reads (sam) and statistics (e.g. length of intersections)
