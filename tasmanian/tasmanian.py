@@ -134,14 +134,14 @@ def analyze_artifacts(Input, Args):
                 tm_tag = np.array(re.search('tm:Z:([-.0-9]*;)', line).group(1).replace(';','').split('.')).astype(int)
                 bed_tag = True
             except AttributeError:
-                tm_tag = -1
+                tm_tag = [-1]
             bed_tag_counter+=1
 
         elif bed_tag==True:
              tm_tag = np.array(re.search('tm:Z:([-.0-9]*;)', line).group(1).replace(';','').split('.')).astype(int)
 
         else:
-            tm_tag = -1
+            tm_tag = [-1]
 
 
         print(tm_tag,"****")
@@ -270,7 +270,7 @@ def analyze_artifacts(Input, Args):
                     #if pos == 0:
                     #    sys.stderr.write(seq[0], strand, ref_pos, Base)
 
-                    if tm_tag == -1:
+                    if tm_tag[0] == -1:
                         assert base in ['A','C','G','T'], "{} should be upper case".format(base)
                         errors_unrelated[read][read_pos][ref_pos][Base] += 1
  
