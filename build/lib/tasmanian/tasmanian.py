@@ -7,21 +7,16 @@ import numpy as np
 import pandas as pd
 from itertools import product
 import uuid
-randLogName = str(uuid.uuid4())
-sys.stderr.write('log filename: errors_'+randLogName+'.log\n')
-sys.path.append(os.path.abspath(os.path.dirname(__file__)) + '/utils/')
-from utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference
-from plot import plot_html
+#sys.path.append(os.path.abspath(os.path.dirname(__file__)) + '/utils/')
+from tasmanian.utils.utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference
+from tasmanian.utils.plot import plot_html
 
-#logging.basicConfig(filename = logFileName,
-#                    format = '%(asctime)s %(message)s',
-#                    filemode = 'w')
+###############################################################################
+# In order to make the binary scripts work, make all these scripts modular.   # 
+# Then, I can import the function from thee module into the scripts in bin/   #
+###############################################################################
 
-#logger = logging.getLogger()
-#logger.setLevel(logging.DEBUG)
-
-
-if __name__=='__main__':
+def analyze_artifacts(Input, Args):
 
     HELP = """
 
@@ -39,9 +34,8 @@ if __name__=='__main__':
         -m|--mapping-quality (minimum allowed mapping quality -defailt=0)
         -h|--help
         -g|--fragment-length (use fragments withi these lengths ONLY)
-
+        -o|--output-prefix (use this prefix for the output and logging files)
     """
-
 
     logging = []
     SKIP_READS = {
@@ -54,17 +48,18 @@ if __name__=='__main__':
 
     # set default parameters
     _UNMASK_GENOME=False  #don't unmask the genome, aka don't use lower letter from genome but rather keep them out in the error.log file'
-    READ_LENGTH=76
+    READ_LENGTH=200
     MinMapQuality = 0
     PHRED = 20 + 33
     SOFTCLIP_BYPASS=0
     SKIP_INDEL=False
     MIN_LENGTH=0
-    MAX_LENGTH=76
+    MAX_LENGTH=200
     TLEN=np.array([0,10000])
+    randLogName = str(uuid.uuid4())
 
     # if there are arguments get them
-    for n,i in enumerate(sys.argv):
+    for n,i in enumerate(Args):
         if i in ['-r','--reference-fasta']:
             ref_file = sys.argv[n+1]
             sys.stderr.write('using {} as reference genome\n'.format(ref_file))
@@ -91,10 +86,13 @@ if __name__=='__main__':
             sys.stderr.write('Only reads comming from fragments of lengths {}-{} are considered here\n'.format(TLEN[0], TLEN[1]))
         if i in ['-h', '--help']:
             exit(HELP)
+        if i in ['-o','--output-prefix']:
+            randLogName = sys.argv[n+1]
 
     if len(sys.argv)==1: exit('\n-h|--help\n') # there should be at least one argument = '--reference-genome'
 
     #if os.path.isfile(outputFile): os.remove(outputFile) # avoid clashes and remove file.
+    sys.stderr.write('log filename: errors_'+randLogName+'.log\n')
 
                                                     #########################
                                                     ## LOAD REFERENCE DATA ##
@@ -333,6 +331,22 @@ if __name__=='__main__':
         DF.columns = col_names
         table[dfName] = DF.astype(int)
     
+    return table
+
+
+
+if __name__=='__main__':
+
+    # logging in debug mode
+    if '--debugging-mode' in sys.argv:
+        logging.basicConfig(filename = logFileName,
+                            format = '%(asctime)s %(message)s',
+                            filemode = 'w')
+        logger = logging.getLogger()
+        logger.setLevel(logging.DEBUG)
+
+    # run tasmanian
+    table = analyze_artifacts(sys.stdin, sys.argv)
 
     # avoid overrighting report file before saving.
     report_filename, file_num = 'Tasmanian_artifact_report.html', 0
@@ -350,3 +364,4 @@ if __name__=='__main__':
     f = open('errors_'+randLogName+'.log','w',)
     f.write('\n'.join(logging))
     f.close()
+
