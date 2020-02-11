@@ -6,6 +6,7 @@ import sys, os, re, time
 import numpy as np
 import pandas as pd
 from itertools import product
+import logging
 import uuid
 #sys.path.append(os.path.abspath(os.path.dirname(__file__)) + '/utils/')
 from tasmanian.utils.utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference
@@ -37,7 +38,6 @@ def analyze_artifacts(Input, Args):
         -o|--output-prefix (use this prefix for the output and logging files)
     """
 
-    logging = []
     SKIP_READS = {
         'indel':0,
         'mapquality':0,
@@ -88,6 +88,14 @@ def analyze_artifacts(Input, Args):
             exit(HELP)
         if i in ['-o','--output-prefix']:
             randLogName = sys.argv[n+1]
+
+
+    # if debugging create this logfile    
+    logging.basicConfig(filename = randLogName + '.log',
+                        format = '%(asctime)s %(message)s',
+                        filemode = 'w')
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
 
     if len(sys.argv)==1: exit('\n-h|--help\n') # there should be at least one argument = '--reference-genome'
 
@@ -142,11 +150,6 @@ def analyze_artifacts(Input, Args):
 
         else:
             tm_tag = [-1]
-
-
-        print(tm_tag,"****")
-
-
 
         skip_read = False
         seq_len = len(seq)
@@ -223,7 +226,7 @@ def analyze_artifacts(Input, Args):
             seq = [seq[i] for i in range(len(seq_idx)) if seq_idx[i]==1][:l]
             ref = [ref[i] for i in range(len(ref_idx)) if ref_idx[i]==1][:l]
         except Exception as e:
-            logging.append('error: {} occurred while fixing for different lengths of seq and ref'.format(str(e)))
+            logger.warning('error: {} occurred while fixing for different lengths of seq and ref'.format(str(e)))
 
         # if bin(int(flag))[2:][-5]=='1' or make it easy for now...
         if flag==99: 
@@ -241,7 +244,7 @@ def analyze_artifacts(Input, Args):
             ref = ''.join(ref).upper() # re-think before doing this.
 
         if len(seq) != len(ref):
-            logging.append('seq ={} and ref={} have different lengths'.format(seq,ref))
+            logger.warning('seq ={} and ref={} have different lengths'.format(seq,ref))
             continue
     
         #if strand=='rev':
@@ -251,7 +254,7 @@ def analyze_artifacts(Input, Args):
         for pos,base in enumerate(seq):
 
             if pos > len(ref) or pos > len(phred): 
-                logging.append('ERROR processing read {}, with ref={}, phred={} and seq={}'.format(_,ref,phred,seq))
+                logger.warning('ERROR processing read {}, with ref={}, phred={} and seq={}'.format(_,ref,phred,seq))
                 continue
 
             if base=='N' or ref[pos]=='N' or ord(phred[pos]) < PHRED: # or (CIGAR[pos] not in ['M','X','=']):
@@ -283,7 +286,7 @@ def analyze_artifacts(Input, Args):
                         errors_complement[read][read_pos][ref_pos][Base] += 1
 
                 except Exception as e:
-                    logging.append('error:{} in chr:{}, position:{}, read:{}, base:{}, seq:{}, start:{} and ref_pos:{}'.format(\
+                    logger.warning('error:{} in chr:{}, position:{}, read:{}, base:{}, seq:{}, start:{} and ref_pos:{}'.format(\
                                                                  str(e), chrom, pos, read, base, ''.join(seq), start, ref[pos]))
 
     #######################
@@ -337,9 +340,9 @@ def analyze_artifacts(Input, Args):
         table[dfName] = DF.astype(int)
 
     # Report errors to a logging file
-    f = open('errors_'+randLogName+'.log','w',)
-    f.write('\n'.join(logging))
-    f.close()
+    #f = open('errors_'+randLogName+'.log','w',)
+    #f.write('\n'.join(logging))
+    #f.close()
     
     return table
 
@@ -349,14 +352,12 @@ if __name__=='__main__':
 
     # logging in debug mode
     if '--debugging-mode' in sys.argv:
-        logging.basicConfig(filename = logFileName,
-                            format = '%(asctime)s %(message)s',
-                            filemode = 'w')
-        logger = logging.getLogger()
-        logger.setLevel(logging.DEBUG)
+        Args = sys.argv + ['--debugging-mode']
+    else:
+        Args = sys.argv
 
     # run tasmanian
-    table = analyze_artifacts(sys.stdin, sys.argv)
+    table = analyze_artifacts(sys.stdin, Args) 
 
     # avoid overrighting report file before saving.
     report_filename, file_num = 'Tasmanian_artifact_report.html', 0
