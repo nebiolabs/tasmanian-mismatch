@@ -9,8 +9,9 @@ from itertools import product
 import logging
 import uuid
 #sys.path.append(os.path.abspath(os.path.dirname(__file__)) + '/utils/')
-from tasmanian.utils.utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference
+from tasmanian.utils.utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table
 from tasmanian.utils.plot import plot_html
+from scipy.stats import mode
 
 ###############################################################################
 # In order to make the binary scripts work, make all these scripts modular.   # 
@@ -57,6 +58,8 @@ def analyze_artifacts(Input, Args):
     MAX_LENGTH=200
     TLEN=np.array([0,10000])
     randLogName = str(uuid.uuid4())
+    check_lengths = [READ_LENGTH] # this is to rezise the results table from READ_LENGTHS to the mode of the lengths
+    check_lengths_counter = 0
 
     # if there are arguments get them
     for n,i in enumerate(Args):
@@ -239,14 +242,18 @@ def analyze_artifacts(Input, Args):
             strand='rev'; read=2
         else: continue
 
+        # At this point only accepted reads are analyzed. incorporate the fist X read length and later get mode
+        if check_lengths_counter < 100:
+            check_lengths.append(seq_len)
+            check_lengths_counter +=1
 
         if _UNMASK_GENOME: 
             ref = ''.join(ref).upper() # re-think before doing this.
 
         if len(seq) != len(ref):
             logger.warning('seq ={} and ref={} have different lengths'.format(seq,ref))
-            continue
-    
+            continue    
+
         #if strand=='rev':
         #    rev_seq = revcomp(seq)
         #    sys.stderr.write(seq, rev_seq)
@@ -289,10 +296,22 @@ def analyze_artifacts(Input, Args):
                     logger.warning('error:{} in chr:{}, position:{}, read:{}, base:{}, seq:{}, start:{} and ref_pos:{}'.format(\
                                                                  str(e), chrom, pos, read, base, ''.join(seq), start, ref[pos]))
 
+    # fix tables on length
+    READ_LENGTH = mode(check_lengths)[0][0]
+    
+
+    logger.info('MODE READ LENGTH: '.format(str(READ_LENGTH)))
+
+
+    errors_intersection = trim_table(errors_intersection, READ_LENGTH)
+    errors_complement = trim_table(errors_complement, READ_LENGTH)
+    errors_unrelated = trim_table(errors_unrelated, READ_LENGTH)
+    
+
     #######################
     ## REPORTING SECTION ##
     #######################
-
+    
     # Report performance and less relevant statistics
     t2=time.time()
     sys.stderr.write('tasmanian finished the analysis in {} seconds \n'.format(str(t2-t0)))

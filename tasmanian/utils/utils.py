@@ -194,6 +194,28 @@ def init_artifacts_table(READ_LENGTH):
     return errors
 
 
+def trim_table(table, mode_length):
+    '''
+        table is initialized with a read_length that is most ofter
+        way longer than the reads actually are. Here we trim the 
+        excess length.
+        INPUT: artifact_table
+        OUTPU: artifact_table
+    '''
+    trimmed_table = {}
+    
+    for read in [1,2]:
+        trimmed_table[read] = {}
+        for pos in range(mode_length):
+            trimmed_table[read][pos] = {}
+            for ref in ['A','C','G','T']:
+                trimmed_table[read][pos][ref] = {}
+                for alt in ['A','C','G','T']:
+                    trimmed_table[read][pos][ref][alt] = table[read][pos][ref][alt]
+
+    return trimmed_table
+
+
 # define a table of flags of proper paired reads
 proper_flags = {
     99: 'first fwd',
