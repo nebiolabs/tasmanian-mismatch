@@ -1,5 +1,6 @@
 <!-- [![CircleCI](https://circleci.com/github/nebiolabs/tasmanian.svg?style=svg&circle-token=<c634a27d6a61f118af602803df3aea94ead652d8>)](https://app.circleci.com/github/nebiolabs/tasmanian/pipelines) -->
 
+<!-- copy pasted from circle CI...? -->
 [![CircleCI](https://circleci.com/gh/nebiolabs/tasmanian.svg?style=svg)](https://circleci.com/gh/nebiolabs/tasmanian)
 
 [![Bioconda](https://img.shields.io/conda/dn/bioconda/fgbio.svg?label=Bioconda)](http://bioconda.github.io/recipes/fgbio/README.html)
