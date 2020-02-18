@@ -15,6 +15,7 @@ def read_bed(bedfile):
     '''
     bed = {}
     bed_others = {}   # here I keep other fields than the coordinates
+    wrong_syntax_lines = 0
 
     with open(bedfile) as f:
         while True:
@@ -32,8 +33,13 @@ def read_bed(bedfile):
                     # worth the overhead if we use this data in intersections.py when exists
                     strand, rep_name, rep_class, rep_family = '','','',''                  
                 else:
-                    sys.stderr.write('bed_file is not formatted as expected... see help menu')
-                    exit(1)
+                    wrong_syntax_lines+=1
+                    if wrong_syntax_lines>50:
+                        sys.stderr.write('bed_file is not formatted as expected... see help menu')
+                        exit(1)
+
+                if not start.isnumeric() or not end.isnumeric():  # this migh be the header or empty lines
+                    continue
 
                 if chrom not in bed:
                     bed[chrom] = []

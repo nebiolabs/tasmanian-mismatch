@@ -11,7 +11,7 @@ import uuid
 #sys.path.append(os.path.abspath(os.path.dirname(__file__)) + '/utils/')
 from tasmanian.utils.utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table
 from tasmanian.utils.plot import plot_html
-from scipy.stats import mode
+#from scipy.stats import mode
 
 ###############################################################################
 # In order to make the binary scripts work, make all these scripts modular.   # 
@@ -44,18 +44,23 @@ def analyze_artifacts(Input, Args):
         'mapquality':0,
         'fragLength':0,
         'softclips':0,
-        'readlength':0
+        'readlength':0,
+        'others':0  # this could include cigar=* or mapq=255
+    }
+    SKIP_BASES = {
+        'quality':0,
+        'softclips':0
     }
 
     # set default parameters
     _UNMASK_GENOME=False  #don't unmask the genome, aka don't use lower letter from genome but rather keep them out in the error.log file'
     READ_LENGTH=200
-    MinMapQuality = 0
+    MinMapQuality = 20
     PHRED = 20 + 33
     SOFTCLIP_BYPASS=0
     SKIP_INDEL=False
     MIN_LENGTH=0
-    MAX_LENGTH=200
+    MAX_LENGTH=350
     TLEN=np.array([0,10000])
     randLogName = str(uuid.uuid4())
     check_lengths = [READ_LENGTH] # this is to rezise the results table from READ_LENGTHS to the mode of the lengths
@@ -154,7 +159,6 @@ def analyze_artifacts(Input, Args):
         else:
             tm_tag = [-1]
 
-        skip_read = False
         seq_len = len(seq)
         mapq = int(mapq)
         flag = int(flag)
@@ -170,13 +174,17 @@ def analyze_artifacts(Input, Args):
         # unrecognized chromosome
 
         if cigar=="*" or mapq==255 or chrom not in reference: 
+            SKIP_READS['others']+=1
             continue  
         elif SKIP_INDEL and ("I" in cigar or "D" in cigar):
-            SKIP_READS['indel']+=1      
+            SKIP_READS['indel']+=1
+            continue
         elif seq_len < MIN_LENGTH or seq_len > MAX_LENGTH:
             SKIP_READS['readlength']+=1
+            continue
         elif mapq<MinMapQuality:
             SKIP_READS['mapquality']+=1
+            continue
         elif tlen<TLEN[0] or tlen>TLEN[1]:
             SKIP_READS['fragLength']+=1
             continue
@@ -202,17 +210,19 @@ def analyze_artifacts(Input, Args):
                             s1, s2 = seq[:number], reference[chrom][start:start+number]
                             if simple_deltas_is_this_garbage(s1,s2):
                                 seq = 'N' * number + seq[number:]
+                                SKIP_BASES['softclips']+=number
                         elif SOFTCLIP_BYPASS==1:
                             seq = 'N' * number + seq[number:]
-                            SKIP_READS['softclips']+=1 
+                            SKIP_BASES['softclips']+=number 
                     else: # end
                         if SOFTCLIP_BYPASS==0:
                             s1, s2 = seq[position:position+number], reference[chrom][start+position:start+position+number]
                             if simple_deltas_is_this_garbage(s1,s2):
                                 seq = seq[:position] + 'N' * number
+                                SKIP_BASES['softclips']+=number
                         elif SOFTCLIP_BYPASS==1:
                             seq = seq[:position] + 'N' * number
-                            SKIP_READS['softclips']+=1 
+                            SKIP_BASES['softclips']+=number
 
                 elif i=='I':
                     seq_idx[position:position+number]=0
@@ -265,6 +275,7 @@ def analyze_artifacts(Input, Args):
                 continue
 
             if base=='N' or ref[pos]=='N' or ord(phred[pos]) < PHRED: # or (CIGAR[pos] not in ['M','X','=']):
+                #SKIP_BASES['quality']+=1  # report this in stderr. 
                 continue
             else:
                 read_pos = [pos if strand=='fwd' else seq_len-pos-1][0]
@@ -297,10 +308,11 @@ def analyze_artifacts(Input, Args):
                                                                  str(e), chrom, pos, read, base, ''.join(seq), start, ref[pos]))
 
     # fix tables on length
-    READ_LENGTH = mode(check_lengths)[0][0]
+    #READ_LENGTH = mode(check_lengths)[0][0]
+    READ_LENGTH = np.max(check_lengths)
     
 
-    logger.info('MODE READ LENGTH: '.format(str(READ_LENGTH)))
+    logger.info('MODE READ LENGTH: {}'.format(str(READ_LENGTH)))
 
 
     errors_intersection = trim_table(errors_intersection, READ_LENGTH)
@@ -318,7 +330,11 @@ def analyze_artifacts(Input, Args):
     sys.stderr.write('reads discarded\n')
     sys.stderr.write('===============\n')
     for k,v in SKIP_READS.items():
-        sys.stderr.write('{:<15} {}\n'.format(k,v))  
+        sys.stderr.write('{:<15} {}\n'.format(k,v))
+    sys.stderr.write('\nBases discarded\n')
+    sys.stderr.write('===============\n')
+    for k,v in SKIP_BASES.items():
+        sys.stderr.write('{:<15} {}\n'.format(k,v))
 
     # print table header
     sys.stdout.write('read,position,' + ','.join \
@@ -379,13 +395,19 @@ if __name__=='__main__':
     table = analyze_artifacts(sys.stdin, Args) 
 
     # avoid overrighting report file before saving.
-    report_filename, file_num = 'Tasmanian_artifact_report.html', 0
-    while os.path.isfile(report_filename):
+    report_filename = 'Tasmanian_artifact_report.html'
+    for n,i in enumerate(Args):
+        if i in ['-o','--output-prefix']:
+            report_filename = Args[n+1] + '.html'
+
+    file_num = 0
+    while os.path.isfile(report_filename) and report_filename == 'Tasmanian_artifact_report.html':
         file_num += 1
         report_filename = 'Tasmanian_artifact_report-' + str(file_num) + '.html'
 
-    # create html template with plot      
+    # create html template with plot
     report_html = plot_html(table)
-    
+
     with open(report_filename, 'w') as f:
         f.write(report_html)
+
