@@ -6,10 +6,12 @@ import sys, os, re, time
 import numpy as np
 import pandas as pd
 from itertools import product
+import logging
 import uuid
 #sys.path.append(os.path.abspath(os.path.dirname(__file__)) + '/utils/')
-from tasmanian.utils.utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference
+from tasmanian.utils.utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table
 from tasmanian.utils.plot import plot_html
+#from scipy.stats import mode
 
 ###############################################################################
 # In order to make the binary scripts work, make all these scripts modular.   # 
@@ -37,26 +39,32 @@ def analyze_artifacts(Input, Args):
         -o|--output-prefix (use this prefix for the output and logging files)
     """
 
-    logging = []
     SKIP_READS = {
         'indel':0,
         'mapquality':0,
         'fragLength':0,
         'softclips':0,
-        'readlength':0
+        'readlength':0,
+        'others':0  # this could include cigar=* or mapq=255
+    }
+    SKIP_BASES = {
+        'quality':0,
+        'softclips':0
     }
 
     # set default parameters
     _UNMASK_GENOME=False  #don't unmask the genome, aka don't use lower letter from genome but rather keep them out in the error.log file'
     READ_LENGTH=200
-    MinMapQuality = 0
+    MinMapQuality = 20
     PHRED = 20 + 33
     SOFTCLIP_BYPASS=0
     SKIP_INDEL=False
     MIN_LENGTH=0
-    MAX_LENGTH=200
+    MAX_LENGTH=350
     TLEN=np.array([0,10000])
     randLogName = str(uuid.uuid4())
+    check_lengths = [READ_LENGTH] # this is to rezise the results table from READ_LENGTHS to the mode of the lengths
+    check_lengths_counter = 0
 
     # if there are arguments get them
     for n,i in enumerate(Args):
@@ -88,6 +96,14 @@ def analyze_artifacts(Input, Args):
             exit(HELP)
         if i in ['-o','--output-prefix']:
             randLogName = sys.argv[n+1]
+
+
+    # if debugging create this logfile    
+    logging.basicConfig(filename = randLogName + '.log',
+                        format = '%(asctime)s %(message)s',
+                        filemode = 'w')
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
 
     if len(sys.argv)==1: exit('\n-h|--help\n') # there should be at least one argument = '--reference-genome'
 
@@ -134,16 +150,15 @@ def analyze_artifacts(Input, Args):
                 tm_tag = np.array(re.search('tm:Z:([-.0-9]*;)', line).group(1).replace(';','').split('.')).astype(int)
                 bed_tag = True
             except AttributeError:
-                tm_tag = -1
+                tm_tag = [-1]
             bed_tag_counter+=1
 
         elif bed_tag==True:
              tm_tag = np.array(re.search('tm:Z:([-.0-9]*;)', line).group(1).replace(';','').split('.')).astype(int)
 
         else:
-            tm_tag = -1
+            tm_tag = [-1]
 
-        skip_read = False
         seq_len = len(seq)
         mapq = int(mapq)
         flag = int(flag)
@@ -159,13 +174,17 @@ def analyze_artifacts(Input, Args):
         # unrecognized chromosome
 
         if cigar=="*" or mapq==255 or chrom not in reference: 
+            SKIP_READS['others']+=1
             continue  
         elif SKIP_INDEL and ("I" in cigar or "D" in cigar):
-            SKIP_READS['indel']+=1      
+            SKIP_READS['indel']+=1
+            continue
         elif seq_len < MIN_LENGTH or seq_len > MAX_LENGTH:
             SKIP_READS['readlength']+=1
+            continue
         elif mapq<MinMapQuality:
             SKIP_READS['mapquality']+=1
+            continue
         elif tlen<TLEN[0] or tlen>TLEN[1]:
             SKIP_READS['fragLength']+=1
             continue
@@ -191,17 +210,19 @@ def analyze_artifacts(Input, Args):
                             s1, s2 = seq[:number], reference[chrom][start:start+number]
                             if simple_deltas_is_this_garbage(s1,s2):
                                 seq = 'N' * number + seq[number:]
+                                SKIP_BASES['softclips']+=number
                         elif SOFTCLIP_BYPASS==1:
                             seq = 'N' * number + seq[number:]
-                            SKIP_READS['softclips']+=1 
+                            SKIP_BASES['softclips']+=number 
                     else: # end
                         if SOFTCLIP_BYPASS==0:
                             s1, s2 = seq[position:position+number], reference[chrom][start+position:start+position+number]
                             if simple_deltas_is_this_garbage(s1,s2):
                                 seq = seq[:position] + 'N' * number
+                                SKIP_BASES['softclips']+=number
                         elif SOFTCLIP_BYPASS==1:
                             seq = seq[:position] + 'N' * number
-                            SKIP_READS['softclips']+=1 
+                            SKIP_BASES['softclips']+=number
 
                 elif i=='I':
                     seq_idx[position:position+number]=0
@@ -218,7 +239,7 @@ def analyze_artifacts(Input, Args):
             seq = [seq[i] for i in range(len(seq_idx)) if seq_idx[i]==1][:l]
             ref = [ref[i] for i in range(len(ref_idx)) if ref_idx[i]==1][:l]
         except Exception as e:
-            logging.append('error: {} occurred while fixing for different lengths of seq and ref'.format(str(e)))
+            logger.warning('error: {} occurred while fixing for different lengths of seq and ref'.format(str(e)))
 
         # if bin(int(flag))[2:][-5]=='1' or make it easy for now...
         if flag==99: 
@@ -231,14 +252,18 @@ def analyze_artifacts(Input, Args):
             strand='rev'; read=2
         else: continue
 
+        # At this point only accepted reads are analyzed. incorporate the fist X read length and later get mode
+        if check_lengths_counter < 100:
+            check_lengths.append(seq_len)
+            check_lengths_counter +=1
 
         if _UNMASK_GENOME: 
             ref = ''.join(ref).upper() # re-think before doing this.
 
         if len(seq) != len(ref):
-            logging.append('seq ={} and ref={} have different lengths'.format(seq,ref))
-            continue
-    
+            logger.warning('seq ={} and ref={} have different lengths'.format(seq,ref))
+            continue    
+
         #if strand=='rev':
         #    rev_seq = revcomp(seq)
         #    sys.stderr.write(seq, rev_seq)
@@ -246,10 +271,11 @@ def analyze_artifacts(Input, Args):
         for pos,base in enumerate(seq):
 
             if pos > len(ref) or pos > len(phred): 
-                logging.append('ERROR processing read {}, with ref={}, phred={} and seq={}'.format(_,ref,phred,seq))
+                logger.warning('ERROR processing read {}, with ref={}, phred={} and seq={}'.format(_,ref,phred,seq))
                 continue
 
             if base=='N' or ref[pos]=='N' or ord(phred[pos]) < PHRED: # or (CIGAR[pos] not in ['M','X','=']):
+                #SKIP_BASES['quality']+=1  # report this in stderr. 
                 continue
             else:
                 read_pos = [pos if strand=='fwd' else seq_len-pos-1][0]
@@ -278,20 +304,37 @@ def analyze_artifacts(Input, Args):
                         errors_complement[read][read_pos][ref_pos][Base] += 1
 
                 except Exception as e:
-                    logging.append('error:{} in chr:{}, position:{}, read:{}, base:{}, seq:{}, start:{} and ref_pos:{}'.format(\
+                    logger.warning('error:{} in chr:{}, position:{}, read:{}, base:{}, seq:{}, start:{} and ref_pos:{}'.format(\
                                                                  str(e), chrom, pos, read, base, ''.join(seq), start, ref[pos]))
+
+    # fix tables on length
+    #READ_LENGTH = mode(check_lengths)[0][0]
+    READ_LENGTH = np.max(check_lengths)
+    
+
+    logger.info('MODE READ LENGTH: {}'.format(str(READ_LENGTH)))
+
+
+    errors_intersection = trim_table(errors_intersection, READ_LENGTH)
+    errors_complement = trim_table(errors_complement, READ_LENGTH)
+    errors_unrelated = trim_table(errors_unrelated, READ_LENGTH)
+    
 
     #######################
     ## REPORTING SECTION ##
     #######################
-
+    
     # Report performance and less relevant statistics
     t2=time.time()
     sys.stderr.write('tasmanian finished the analysis in {} seconds \n'.format(str(t2-t0)))
     sys.stderr.write('reads discarded\n')
     sys.stderr.write('===============\n')
     for k,v in SKIP_READS.items():
-        sys.stderr.write('{:<15} {}\n'.format(k,v))  
+        sys.stderr.write('{:<15} {}\n'.format(k,v))
+    sys.stderr.write('\nBases discarded\n')
+    sys.stderr.write('===============\n')
+    for k,v in SKIP_BASES.items():
+        sys.stderr.write('{:<15} {}\n'.format(k,v))
 
     # print table header
     sys.stdout.write('read,position,' + ','.join \
@@ -330,6 +373,11 @@ def analyze_artifacts(Input, Args):
     for DF, dfName in zip([dfi, dfc, dfn],['intersection','complement','non_intersection']):
         DF.columns = col_names
         table[dfName] = DF.astype(int)
+
+    # Report errors to a logging file
+    #f = open('errors_'+randLogName+'.log','w',)
+    #f.write('\n'.join(logging))
+    #f.close()
     
     return table
 
@@ -339,29 +387,27 @@ if __name__=='__main__':
 
     # logging in debug mode
     if '--debugging-mode' in sys.argv:
-        logging.basicConfig(filename = logFileName,
-                            format = '%(asctime)s %(message)s',
-                            filemode = 'w')
-        logger = logging.getLogger()
-        logger.setLevel(logging.DEBUG)
+        Args = sys.argv + ['--debugging-mode']
+    else:
+        Args = sys.argv
 
     # run tasmanian
-    table = analyze_artifacts(sys.stdin, sys.argv)
+    table = analyze_artifacts(sys.stdin, Args) 
 
     # avoid overrighting report file before saving.
-    report_filename, file_num = 'Tasmanian_artifact_report.html', 0
-    while os.path.isfile(report_filename):
+    report_filename = 'Tasmanian_artifact_report.html'
+    for n,i in enumerate(Args):
+        if i in ['-o','--output-prefix']:
+            report_filename = Args[n+1] + '.html'
+
+    file_num = 0
+    while os.path.isfile(report_filename) and report_filename == 'Tasmanian_artifact_report.html':
         file_num += 1
         report_filename = 'Tasmanian_artifact_report-' + str(file_num) + '.html'
 
-    # create html template with plot      
+    # create html template with plot
     report_html = plot_html(table)
-    
+
     with open(report_filename, 'w') as f:
         f.write(report_html)
-    
-    # Report errors to a logging file
-    f = open('errors_'+randLogName+'.log','w',)
-    f.write('\n'.join(logging))
-    f.close()
 

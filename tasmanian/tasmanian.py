@@ -11,7 +11,7 @@ import uuid
 #sys.path.append(os.path.abspath(os.path.dirname(__file__)) + '/utils/')
 from tasmanian.utils.utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table
 from tasmanian.utils.plot import plot_html
-#from scipy.stats import mode
+from scipy.stats import mode
 
 ###############################################################################
 # In order to make the binary scripts work, make all these scripts modular.   # 
@@ -308,8 +308,8 @@ def analyze_artifacts(Input, Args):
                                                                  str(e), chrom, pos, read, base, ''.join(seq), start, ref[pos]))
 
     # fix tables on length
-    #READ_LENGTH = mode(check_lengths)[0][0]
-    READ_LENGTH = np.max(check_lengths)
+    READ_LENGTH = mode(check_lengths)[0][0]
+    #READ_LENGTH = np.max(check_lengths)
     
 
     logger.info('MODE READ LENGTH: {}'.format(str(READ_LENGTH)))

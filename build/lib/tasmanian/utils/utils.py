@@ -15,12 +15,31 @@ def read_bed(bedfile):
     '''
     bed = {}
     bed_others = {}   # here I keep other fields than the coordinates
+    wrong_syntax_lines = 0
+
     with open(bedfile) as f:
         while True:
             try:
-                #chrom, start, end = next(f).strip().split('\t')[:3]
+                line =  next(f).strip().split('\t')
+                num_fields = len(line)
+
                 # Now we include information of repeats in columns>3
-                chrom, start, end, strand, rep_name, rep_class, rep_family = next(f).strip().split('\t')[:7]
+                if num_fields >=7:
+                    chrom, start, end, strand, rep_name, rep_class, rep_family = line[:7]
+
+                elif num_fields == 3: 
+                    chrom, start, end = line
+
+                    # worth the overhead if we use this data in intersections.py when exists
+                    strand, rep_name, rep_class, rep_family = '','','',''                  
+                else:
+                    wrong_syntax_lines+=1
+                    if wrong_syntax_lines>50:
+                        sys.stderr.write('bed_file is not formatted as expected... see help menu')
+                        exit(1)
+
+                if not start.isnumeric() or not end.isnumeric():  # this migh be the header or empty lines
+                    continue
 
                 if chrom not in bed:
                     bed[chrom] = []
@@ -179,6 +198,28 @@ def init_artifacts_table(READ_LENGTH):
                 for alt in ['A','C','G','T']:
                     errors[read][pos][ref][alt] = 0
     return errors
+
+
+def trim_table(table, mode_length):
+    '''
+        table is initialized with a read_length that is most ofter
+        way longer than the reads actually are. Here we trim the 
+        excess length.
+        INPUT: artifact_table
+        OUTPU: artifact_table
+    '''
+    trimmed_table = {}
+    
+    for read in [1,2]:
+        trimmed_table[read] = {}
+        for pos in range(mode_length):
+            trimmed_table[read][pos] = {}
+            for ref in ['A','C','G','T']:
+                trimmed_table[read][pos][ref] = {}
+                for alt in ['A','C','G','T']:
+                    trimmed_table[read][pos][ref][alt] = table[read][pos][ref][alt]
+
+    return trimmed_table
 
 
 # define a table of flags of proper paired reads

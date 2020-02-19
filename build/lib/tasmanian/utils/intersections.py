@@ -16,8 +16,15 @@ from tasmanian.utils.utils import *
 def main():
 
     HELP = '''
-    \t\tsamtools view <bam_file> | python -b <bed_file/bedGraph> -o <output.table>
+    \t\tsamtools view <bam_file> | python -b <bed_file/bedGraph> -o <output.table>\n
+    \t\tthe bedGraph file should contain 3 or more columns separated by tabs:
+    \t\t------------------------------------------
+    \t\tchrI    850     879     +       L1P5    LINE    L1
+
     '''
+
+    if len(sys.argv)==1: exit('\n-h|--help\n') # there should be at least one argument = '--reference-genome'
+
 
     # initialize lists to contain reads (sam) and statistics (e.g. length of intersections)
     statistics = []
@@ -39,17 +46,22 @@ def main():
             sys.exit(1)
 
     # define the name of the logging file for debugging
-    logFileName = out_prefix + 'log'
+    logFileName = out_prefix + 'intersections.log'
 
+    # if debugging create this logfile    
+    logging.basicConfig(filename = logFileName,
+                        format = '%(asctime)s %(message)s',
+                        filemode = 'w')
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
 
     # load bed_file
     try:
         bed, bed_lens, total_bed_lens, bed_other_info = read_bed(bedfile)
-        logging.info('bedfile {} was succesfully read'.format(bedfile))
+        logger.info('bedfile {} was succesfully read'.format(bedfile))
     except Exception as e:
-        logging.error('{} happened in excecution of read_bed in main()'.format(str(e)))
-        exit("there was a problem reading {}. Make sure is tab delimited and all columns \
-             and rows are correct.")
+        logger.error('{} happened in excecution of read_bed in main()'.format(str(e)))
+        exit("there was a problem reading {}. Make sure is tab delimited and all columns and rows are correct.")
 
     # to avoid going over the entire chromosome on each read,
     # keep an updated index of the bedfile to start from
@@ -107,7 +119,7 @@ def main():
             paired_read = None # assume there is no paired_read yet
 
         except Exception as e:
-            logging.error('read {} could\'t be loaded properly'.format(n_tester))
+            logger.error('read {} could\'t be loaded properly'.format(n_tester))
             continue            
 
         # only consider uniquely mapped and proper pair
@@ -121,8 +133,8 @@ def main():
 
         # new chromosome -> zero bed_index!
         if current_read.chrom != last_chrom:
-            #logging.critical('This should ONLY happen ONCE!!! {} != {}'.format(current_read.chrom, last_chrom))
-            logging.info('still have {} reads in buffer for chromosome {}. Thrown to trash  --  {}'.format(len(buffer), last_chrom, n_tester))
+            #logger.critical('This should ONLY happen ONCE!!! {} != {}'.format(current_read.chrom, last_chrom))
+            logger.info('still have {} reads in buffer for chromosome {}. Thrown to trash  --  {}'.format(len(buffer), last_chrom, n_tester))
             skip_chrom=False                    # in case this was on for the previous chromosome
             bed_index=0                         # new chromosome, new bed_index
             buffer = {}                         # restart buffer for the new chromosome
@@ -145,7 +157,7 @@ def main():
         # sanity check
         if paired_read != None: # TESTED
             if current_read.chrom != paired_read.chrom:
-                logging.warning('current_read and paired_read have different chromosomes = chimeras')
+                logger.warning('current_read and paired_read have different chromosomes = chimeras')
                 continue
 
         # Bam Block ====================================================================================== 
@@ -238,7 +250,7 @@ def main():
 
             #for READ in [paired_read, current_read]:
             #    if READ.intersect_seq != None:
-            #        if READ.masked_seq == None: logging.critical('This should not be happening, masked is None and intersect is not...?')
+            #        if READ.masked_seq == None: logger.critical('This should not be happening, masked is None and intersect is not...?')
             #        sam_output.append(READ.print('intersect'))
 
 
