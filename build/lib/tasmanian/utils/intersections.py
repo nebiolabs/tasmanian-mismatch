@@ -225,7 +225,7 @@ def main():
             current_read.intersect_seq = current_read.seq[:a].lower() + intersect + current_read.seq[b:].lower()
             b = b if b>=0 else current_read.seq_len+b
             current_read.junction = '{}.{};{}.{}'.format(a,b,bed[chrom][bed_index][0], bed[chrom][bed_index][1])
-
+            current_read.complement = b - a 
 
             #print(current_read.masked_seq)
 
@@ -244,6 +244,11 @@ def main():
         else:  
             current_read.category = assign_category(current_read, paired_read)
             paired_read.category = current_read.category # category is shared by the paired reads
+
+            # Here include how many bases in the complementary region for both reads (this will also give us 
+            # how many in the intersection regions indirectly)
+            current_read.complement = current_read.complement + paired_read.complement
+        
             sam_output.append(paired_read.print('masked'))   # if masked_seq==None goes for 'original' by default.
             sam_output.append(current_read.print('masked'))  # same here!
         

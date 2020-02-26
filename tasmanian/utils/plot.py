@@ -103,10 +103,14 @@ def plot_html(table):
     fig_json_i = table_to_json(table['intersection'], normalize=False)
     fig_json_c = table_to_json(table['complement'], normalize=False)
     fig_json_n = table_to_json(table['non_intersection'], normalize=False)
+    fig_json_ic = table_to_json(table[ 'intersection_C'], normalize=False)
+    fig_json_cc = table_to_json(table['complement_C'], normalize=False)
 
     fig_json_i_norm = table_to_json(table['intersection'])
     fig_json_c_norm = table_to_json(table['complement'])
     fig_json_n_norm = table_to_json(table['non_intersection'])
+    fig_json_ic_norm = table_to_json(table[ 'intersection_C'])
+    fig_json_cc_norm = table_to_json(table['complement_C'])
 
 
     # HTML template
@@ -145,13 +149,18 @@ def plot_html(table):
     </head>
     <body>
         <script type="text/javascript">
-           function toggle_visibility(id1, id2, id3, id4, id5, id6) {{
+           function toggle_visibility(id1, id2, id3, id4, id5, id6, id7, id8, id9, id10) {{
                var e = document.getElementById(id1);
                var f = document.getElementById(id2);
                var g = document.getElementById(id3);
                var h = document.getElementById(id4);
                var i = document.getElementById(id5);
                var j = document.getElementById(id6);
+               var k = document.getElementById(id7);
+               var l = document.getElementById(id8);
+               var m = document.getElementById(id9);
+               var n = document.getElementById(id10);
+
 
                if(e.style.display == 'block') {{
                   e.style.display = 'none';
@@ -160,6 +169,13 @@ def plot_html(table):
                   h.style.display = 'block';
                   i.style.display = 'none';
                   j.style.display = 'block';
+                  k.style.display = 'none';
+                  l.style.display = 'block';
+                  m.style.display = 'none';
+                  n.style.display = 'block';
+
+
+
                 }}
                else {{
                   e.style.display = 'block';
@@ -168,18 +184,25 @@ def plot_html(table):
                   h.style.display = 'none';
                   i.style.display = 'block';
                   j.style.display = 'none';
+                  k.style.display = 'block';
+                  l.style.display = 'none';
+                  m.style.display = 'block';
+                  n.style.display = 'none';
                 }}
            }}
         </script>
 
         <h1 align="center">Tasmanian artifacts metrics results </h1>
 
-        <button class="button button1"; onclick="toggle_visibility('divPlotly1_norm', 'divPlotly1', 'divPlotly2_norm', 'divPlotly2', 'divPlotly3_norm', 'divPlotly3');">Counts/Normalize Counts</button>
+        <button class="button button1"; onclick="toggle_visibility('divPlotly1_norm', 'divPlotly1',
+                                                                   'divPlotly2_norm', 'divPlotly2',
+                                                                   'divPlotly3_norm', 'divPlotly3',
+                                                                   'divPlotly4_norm', 'divPlotly4',
+                                                                   'divPlotly5_norm', 'divPlotly5'
+                                                  );">Counts/Normalize Counts</button>
     
         <h2 style="padding-left: 40px; padding-top: 90px;">Intersections</h2>
         <h3 style="padding-left: 40px; padding-right: 800; ">Includes all bases that intersect some fragment provided in the bed-file</h3>
-
-
 
         <!-- plot 1 -->
 
@@ -234,6 +257,46 @@ def plot_html(table):
             Plotly.react('divPlotly3', plotly_data.data, plotly_data.layout);
         </script>
         </div>
+
+        <h2 style="padding-left: 40px; padding-top: 90px;">Intersections confidence</h2>
+        <h3 style="padding-left: 40px; padding-right: 800; ">Includes all bases that intersect some fragment provided in the bed-file in confidence reads</h3>
+
+        <!-- plot 4 -->
+
+        <div id='divPlotly4_norm'>
+        <script>
+            var plotly_data = {}
+            Plotly.react('divPlotly4_norm', plotly_data.data, plotly_data.layout);
+        </script>
+        </div>
+
+        <div id='divPlotly4'>
+        <script>
+            var plotly_data = {}
+            Plotly.react('divPlotly4', plotly_data.data, plotly_data.layout);
+        </script>
+        </div>
+
+        <h2 style="padding-left: 40px; padding-top: 90px;">Complement confidence</h2>
+        <h3 style="padding-left: 40px; padding-right: 800; ">Includes all complement bases in confidence reads</h3>
+
+        <!-- plot 5 -->
+
+        <div id='divPlotly5_norm'>
+        <script>
+            var plotly_data = {}
+            Plotly.react('divPlotly5_norm', plotly_data.data, plotly_data.layout);
+        </script>
+        </div>
+
+        <div id='divPlotly5'>
+        <script>
+            var plotly_data = {}
+            Plotly.react('divPlotly5', plotly_data.data, plotly_data.layout);
+        </script>
+        </div>
+
+
         
         <script> 
             divPlotly1_norm.style.display = 'none'; 
@@ -248,7 +311,7 @@ def plot_html(table):
     # write the JSON to the HTML template
     #with open('Tasmanian_artifact_metrics_report.html', 'w') as f:
     #   f.write(template.format(fig_json))
-    return template.format(fig_json_i_norm, fig_json_i, fig_json_c_norm, fig_json_c, fig_json_n_norm, fig_json_n)
+    return template.format(fig_json_i_norm, fig_json_i, fig_json_c_norm, fig_json_c, fig_json_n_norm, fig_json_n, fig_json_ic_norm, fig_json_ic, fig_json_cc_norm, fig_json_cc)
 
 
 

@@ -11,7 +11,7 @@ import uuid
 #sys.path.append(os.path.abspath(os.path.dirname(__file__)) + '/utils/')
 from tasmanian.utils.utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table
 from tasmanian.utils.plot import plot_html
-#from scipy.stats import mode
+from scipy.stats import mode
 
 ###############################################################################
 # In order to make the binary scripts work, make all these scripts modular.   # 
@@ -37,6 +37,7 @@ def analyze_artifacts(Input, Args):
         -h|--help
         -g|--fragment-length (use fragments withi these lengths ONLY)
         -o|--output-prefix (use this prefix for the output and logging files)
+        -c|--confidence (number of bases in the complement region of the read) 
     """
 
     SKIP_READS = {
@@ -65,6 +66,7 @@ def analyze_artifacts(Input, Args):
     randLogName = str(uuid.uuid4())
     check_lengths = [READ_LENGTH] # this is to rezise the results table from READ_LENGTHS to the mode of the lengths
     check_lengths_counter = 0
+    confidence = 20
 
     # if there are arguments get them
     for n,i in enumerate(Args):
@@ -96,6 +98,8 @@ def analyze_artifacts(Input, Args):
             exit(HELP)
         if i in ['-o','--output-prefix']:
             randLogName = sys.argv[n+1]
+        if i in ['-c', '--confidence']:
+            confidence = int(sys.argv[n+1])
 
 
     # if debugging create this logfile    
@@ -130,7 +134,12 @@ def analyze_artifacts(Input, Args):
     errors_intersection = init_artifacts_table(READ_LENGTH)
     errors_complement = init_artifacts_table(READ_LENGTH)
     errors_unrelated = init_artifacts_table(READ_LENGTH)
+
+    # in thee tables the CONFIDENCE reads ONLY. These are reads with >= CONFIDENCE bases in the complement
+    errors_intersectionB = init_artifacts_table(READ_LENGTH)
+    errors_complementB = init_artifacts_table(READ_LENGTH)
     
+
     # to check that there are tasmanian flags in sam file and if not, use unrelateds table only.
     bed_tag = False
     bed_tag_counter = 0
@@ -268,6 +277,13 @@ def analyze_artifacts(Input, Args):
         #    rev_seq = revcomp(seq)
         #    sys.stderr.write(seq, rev_seq)
 
+        # If there are more than "N" bases in the complement area and (of course) the read intersects a bed region
+        # include complement and interections in differents tables
+        
+        ######if tm_tag[0] != -1:
+        ######    if tm_tag[1] - tm_tag[1] >= confidence:
+
+
         for pos,base in enumerate(seq):
 
             if pos > len(ref) or pos > len(phred): 
@@ -308,8 +324,8 @@ def analyze_artifacts(Input, Args):
                                                                  str(e), chrom, pos, read, base, ''.join(seq), start, ref[pos]))
 
     # fix tables on length
-    #READ_LENGTH = mode(check_lengths)[0][0]
-    READ_LENGTH = np.max(check_lengths)
+    READ_LENGTH = mode(check_lengths)[0][0]
+    #READ_LENGTH = np.max(check_lengths)
     
 
     logger.info('MODE READ LENGTH: {}'.format(str(READ_LENGTH)))

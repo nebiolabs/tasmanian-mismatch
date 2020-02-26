@@ -5,7 +5,7 @@ def readme():
         return f.read()
 
 setup(name='tasmanian missmatch analysis tool',
-      version='0.0.27',
+      version='0.0.29',
       description='Tasmanian tool to analyze mismatches at read and position in high throughput sequencing data',
       url='https://github.com/nebiolabs/tasmanian',
       author='Ariel Erijman and Brad Langhorst',
@@ -15,6 +15,8 @@ setup(name='tasmanian missmatch analysis tool',
       install_requires=[
           'numpy',
           'pandas',
+          'scipy',
+          'plotly'
       ],
       zip_safe=False,
       python_requires='>=3.6',

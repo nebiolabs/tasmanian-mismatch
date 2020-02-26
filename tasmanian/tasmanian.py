@@ -37,6 +37,7 @@ def analyze_artifacts(Input, Args):
         -h|--help
         -g|--fragment-length (use fragments withi these lengths ONLY)
         -o|--output-prefix (use this prefix for the output and logging files)
+        -c|--confidence (number of bases in the complement region of the read) 
     """
 
     SKIP_READS = {
@@ -65,6 +66,7 @@ def analyze_artifacts(Input, Args):
     randLogName = str(uuid.uuid4())
     check_lengths = [READ_LENGTH] # this is to rezise the results table from READ_LENGTHS to the mode of the lengths
     check_lengths_counter = 0
+    confidence = 20
 
     # if there are arguments get them
     for n,i in enumerate(Args):
@@ -96,6 +98,8 @@ def analyze_artifacts(Input, Args):
             exit(HELP)
         if i in ['-o','--output-prefix']:
             randLogName = sys.argv[n+1]
+        if i in ['-c', '--confidence']:
+            confidence = int(sys.argv[n+1])
 
 
     # if debugging create this logfile    
@@ -130,7 +134,12 @@ def analyze_artifacts(Input, Args):
     errors_intersection = init_artifacts_table(READ_LENGTH)
     errors_complement = init_artifacts_table(READ_LENGTH)
     errors_unrelated = init_artifacts_table(READ_LENGTH)
+
+    # in thee tables the CONFIDENCE reads ONLY. These are reads with >= CONFIDENCE bases in the complement
+    errors_intersectionB = init_artifacts_table(READ_LENGTH)
+    errors_complementB = init_artifacts_table(READ_LENGTH)
     
+
     # to check that there are tasmanian flags in sam file and if not, use unrelateds table only.
     bed_tag = False
     bed_tag_counter = 0
@@ -158,6 +167,10 @@ def analyze_artifacts(Input, Args):
 
         else:
             tm_tag = [-1]
+
+        # Here tag reads based on their level of confidence. If there was an intersection, use this level of confidence
+        # include the bases in the 4th table.
+        confidence_value = int(re.search('tc:i:([0-9]*)', line).group(1))
 
         seq_len = len(seq)
         mapq = int(mapq)
@@ -268,6 +281,11 @@ def analyze_artifacts(Input, Args):
         #    rev_seq = revcomp(seq)
         #    sys.stderr.write(seq, rev_seq)
 
+        # If there are more than "N" bases in the complement area and (of course) the read intersects a bed region
+        # include complement and interections in differents tables
+        
+
+
         for pos,base in enumerate(seq):
 
             if pos > len(ref) or pos > len(phred): 
@@ -299,9 +317,14 @@ def analyze_artifacts(Input, Args):
                         assert base in ['a','c','t','g'], "{} should be lower case".format(base) 
                         errors_intersection[read][read_pos][ref_pos][Base.upper()] += 1
 
+                        if confidence_value >= confidence:
+                             errors_intersectionB[read][read_pos][ref_pos][Base.upper()] += 1     
+
                     else:
                         assert base in ['A','C','G','T'], "{} should be upper case".format(base)
                         errors_complement[read][read_pos][ref_pos][Base] += 1
+                        if confidence_value >= confidence:
+                             errors_complementB[read][read_pos][ref_pos][Base.upper()] += 1
 
                 except Exception as e:
                     logger.warning('error:{} in chr:{}, position:{}, read:{}, base:{}, seq:{}, start:{} and ref_pos:{}'.format(\
@@ -318,7 +341,9 @@ def analyze_artifacts(Input, Args):
     errors_intersection = trim_table(errors_intersection, READ_LENGTH)
     errors_complement = trim_table(errors_complement, READ_LENGTH)
     errors_unrelated = trim_table(errors_unrelated, READ_LENGTH)
-    
+ 
+    errors_intersectionB = trim_table(errors_intersectionB, READ_LENGTH)
+    errors_complementB = trim_table(errors_complementB, READ_LENGTH)
 
     #######################
     ## REPORTING SECTION ##
@@ -340,7 +365,7 @@ def analyze_artifacts(Input, Args):
     sys.stdout.write('read,position,' + ','.join \
         ([','.join([
             Sample+mut for mut in 'a_a,a_t,a_c,a_g,t_a,t_t,t_c,t_g,c_a,c_t,c_c,c_g,g_a,g_t,g_c,g_g'.split(',')
-            ]) for Sample in ['I','C','N']
+            ]) for Sample in ['I','C','N','cI','cC']
         ]) + '\n')
 
     # print rows
@@ -349,7 +374,7 @@ def analyze_artifacts(Input, Args):
         for pos in np.arange(READ_LENGTH): 
             prnt.append(str(read) + ',' + str(pos+1) + ',' + ','.join([ \
                 ','.join([str(Table[read][pos][i][j]) for i,j in zip(['A','A','A','A','T','T','T','T','C','C','C','C','G','G','G','G'], ['A','T','C','G']*4)])
-            for Table in [errors_intersection, errors_complement, errors_unrelated]]))
+            for Table in [errors_intersection, errors_complement, errors_unrelated, errors_intersectionB, errors_complementB]]))
 
     sys.stdout.write('\n'.join(prnt))
 
@@ -364,13 +389,17 @@ def analyze_artifacts(Input, Args):
     ids_intersection    = np.hstack([np.array([0,1]), np.arange(2,2+16)])
     ids_complement      = np.hstack([np.array([0,1]), np.arange(18,18+16)])
     ids_nonintersection =  np.hstack([np.array([0,1]), np.arange(34,34+16)]) 
+    ids_intersectionB    = np.hstack([np.array([0,1]), np.arange(50,50+16)])
+    ids_complementB      = np.hstack([np.array([0,1]), np.arange(66,66+16)])
 
     dfi = df.iloc[:, ids_intersection]
     dfc = df.iloc[:, ids_complement]
-    dfn = df.iloc[:, ids_nonintersection]    
+    dfn = df.iloc[:, ids_nonintersection] 
+    dfiB = df.iloc[:, ids_intersectionB]
+    dfcB = df.iloc[:, ids_complementB]
 
     table = {}
-    for DF, dfName in zip([dfi, dfc, dfn],['intersection','complement','non_intersection']):
+    for DF, dfName in zip([dfi, dfc, dfn, dfiB, dfcB],['intersection','complement','non_intersection', 'intersection_C','complement_C']):
         DF.columns = col_names
         table[dfName] = DF.astype(int)
 
