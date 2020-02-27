@@ -161,6 +161,11 @@ def main():
         if current_read._id in buffer:
             paired_read = buffer.pop(current_read._id) #, "None")   error is better than None here
         
+
+
+        print(type(paired_read), paired_read)
+
+
         # sanity check
         if paired_read != None: # TESTED
             if current_read.chrom != paired_read.chrom:
@@ -255,6 +260,11 @@ def main():
 
             # Here include how many bases in the complementary region for both reads (this will also give us 
             # how many in the intersection regions indirectly)
+
+
+            print(type(current_read), "lalala")
+
+
             current_read.complement = current_read.complement + paired_read.complement
             paired_read.complement = current_read.complement
         
