@@ -13,13 +13,14 @@ try:
     from tasmanian.utils.utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table
     from tasmanian.utils.plot import plot_html
 except Exception as e: #ImportError: #ModuleNotFoundError:
-    #sys.path.append(os.path.abspath(os.path.dirname(__file__)) + '/utils/')
-    #try:
-    from utils.utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table
-    from utils.plot import plot_html
-    #except Exception as e: #ModuleNotFoundError:
-    #    from utils.utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table
-    #    from utils.plot import plot_html
+    # Either tests or base_dir, it's downstream of ../tasmanian/tasmanian/
+    p = os.path.abspath(os.path.dirname(__file__))
+    p = re.search("(.*tasmanian/tasmanian/).*",p).group(1)
+    utils_path = p + 'utils'
+    sys.path = [utils_path] + sys.path
+
+    from utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table
+    from plot import plot_html
 
 ###############################################################################
 # In order to make the binary scripts work, make all these scripts modular.   # 
