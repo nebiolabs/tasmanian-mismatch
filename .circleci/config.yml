@@ -5,4 +5,9 @@ jobs:
       - image: circleci/python:3.7.3  #node:4.8.2 # the primary container, where your job's commands are run
     steps:
       - checkout # check out the code in the project directory
-      - run: bash tasmanian/tests/basic_tests.sh # run the `echo` command
+      - run: 
+          command: | # install dependencies
+            sudo pip install pipenv
+            pipenv install
+      - run:
+          bash tasmanian/tests/basic_tests.sh # run test
