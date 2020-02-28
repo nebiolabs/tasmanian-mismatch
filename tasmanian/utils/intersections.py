@@ -4,7 +4,7 @@
     bedfile as one of the arguments (chromosome, start, end - delimiter=tab)
 
 '''
-import os, sys, gzip
+import os, sys, gzip, re
 import numpy as np
 #from pathlib import Path
 #sys.path.append(str(Path(__file__).parent.parent.parent) + '/utils/')
@@ -21,6 +21,7 @@ except Exception as e:
 
     from sam_reads import reads
     from utils import *
+
 
 
 def main():
@@ -129,6 +130,8 @@ def main():
                     sys.exit(1)
 
             current_read = reads(_id, flag, chrom, start, mapq, cigar, _2, _3, tlen, seq, phred, tags)
+
+            #print(current_read.__dict__)        
 
             # assume read is not paired yet
             paired_read = None # assume there is no paired_read yet

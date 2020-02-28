@@ -1,6 +1,6 @@
 import numpy as np
 import logging 
-import sys,os
+import sys, os, re
 
 try:
     from tasmanian.utils.sam_reads import reads
