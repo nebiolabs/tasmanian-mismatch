@@ -1,1 +1,0 @@
-/Users/aerijman/Documents/projects/Maggie/remote/scripts/tasmanian/tasmanian.py

@@ -1,4 +1,4 @@
-<tool id="Tasmanian" name="Analysis of artifacts with Tasmanian" version="0.1.0" python_template_version="3.5">
+<tool id="Tasmanian" name="Analysis of artifacts with Tasmanian" version="0.1.0" python_template_version="3.7">
     <requirements>
         <requirement type="package" version="3.7.4">python</requirement>
         <requirement type="package" version="1.17.2">numpy</requirement>
@@ -13,8 +13,8 @@
         #else:
             #set $reference_fasta_filename = str( $reference_source.ref_file.fields.path )
         #end if
-
-        samtools view '$input1' | python3 '$__tool_directory__/tasmanian.py' -r '$reference_fasta_filename' > '$output1'
+		
+        samtools view '$input1' | python '$__tool_directory__/tasmanian_galaxy,py' -r '$reference_fasta_filename' > '$output1'
 
     ]]></command>
     <inputs>
@@ -43,6 +43,8 @@
     </inputs>
     <outputs>
         <data name="output1" format="output" />
+		<data format="html" name="html_file" from_work_dir="output.html" label="Tasmanian results" />
+		<output name="html_file" file="fastqc_report_contaminants.html" ftype="html" compare="sim_size" delta="5000"/>
     </outputs>
     <tests>
         <!-- test when reference from history -->
