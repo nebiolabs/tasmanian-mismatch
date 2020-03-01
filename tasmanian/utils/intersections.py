@@ -12,9 +12,13 @@ import numpy as np
 try:
     from tasmanian.utils.sam_reads import reads
     from tasmanian.utils.utils import *
+
 except Exception as e:
     # Either tests or base_dir, it's downstream of ../tasmanian/tasmanian/
     p = os.path.abspath(os.path.dirname(__file__))
+
+    #print('sanity check: __file__ = {}'.format(p))
+
     p = re.search("(.*tasmanian/tasmanian/).*",p).group(1)
     utils_path = p + 'utils'
     sys.path = [utils_path] + sys.path

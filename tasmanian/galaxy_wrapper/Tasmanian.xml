@@ -44,7 +44,6 @@
     <outputs>
         <data name="output1" format="output" />
 		<data format="html" name="html_file" from_work_dir="output.html" label="Tasmanian results" />
-		<output name="html_file" file="fastqc_report_contaminants.html" ftype="html" compare="sim_size" delta="5000"/>
     </outputs>
     <tests>
         <!-- test when reference from history -->
