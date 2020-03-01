@@ -10,7 +10,6 @@ import numpy as np
 
 
 p = os.path.abspath(os.path.dirname(__file__))
-p = re.search("(.*tasmanian/tasmanian/).*",p).group(1)
 print('****************',p)
 
 #from pathlib import Path
