@@ -6,12 +6,6 @@
 '''
 import os, sys, gzip, re
 import numpy as np
-
-
-
-p = os.path.abspath(os.path.dirname(__file__))
-print('****************',p)
-
 #from pathlib import Path
 #sys.path.append(str(Path(__file__).parent.parent.parent) + '/utils/')
 #sys.path.append(sys.path[0] + '/utils')
