@@ -5,3 +5,4 @@
 *.swp
 tasmanian/tests/*html
 ./tasmanian_venv/
+tasmanian_venv/*
