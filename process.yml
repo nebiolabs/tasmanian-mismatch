@@ -12,7 +12,7 @@ jobs:
     - run:
         command: sudo chown -R circleci:circleci /usr/local/lib/python3.7/site-packages
     - run:
-        command: "python3 -m venv ./tasmanian_venv\nsource ./tasmanian_venv/bin/activate\n#pip install -r requirements.txt \nbash tasmanian/tests/basic_tests.sh\n#sudo pip install pipenv\n#pipenv install\n"
+        command: "python3 -m venv ./tasmanian_venv\nsource ./tasmanian_venv/bin/activate\npip install -r requirements.txt \nbash tasmanian/tests/basic_tests.sh\n#sudo pip install pipenv\n#pipenv install\n"
 workflows:
   version: 2
   workflow:
@@ -36,7 +36,7 @@ workflows:
 #           command: |
 #              python3 -m venv ./tasmanian_venv
 #              source ./tasmanian_venv/bin/activate
-#              #pip install -r requirements.txt 
+#              pip install -r requirements.txt 
 #              bash tasmanian/tests/basic_tests.sh
 #              #sudo pip install pipenv
 #              #pipenv install

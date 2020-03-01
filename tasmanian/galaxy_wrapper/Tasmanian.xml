@@ -2,6 +2,7 @@
     <requirements>
         <requirement type="package" version="3.7.4">python</requirement>
         <requirement type="package" version="1.17.2">numpy</requirement>
+        <requirement type="pachage" version="0.25.1">pandas</requirement>
         <requirement type="package">samtools</requirement>
     </requirements>
     <command detect_errors="exit_code"><![CDATA[
@@ -14,7 +15,7 @@
             #set $reference_fasta_filename = str( $reference_source.ref_file.fields.path )
         #end if
 		
-        samtools view '$input1' | python '$__tool_directory__/tasmanian_galaxy,py' -r '$reference_fasta_filename' > '$output1'
+        samtools view '$input1' | python '$__tool_directory__/tasmanian_galaxy.py' -r '$reference_fasta_filename' > '$output1'
 
     ]]></command>
     <inputs>
