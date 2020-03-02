@@ -337,13 +337,14 @@ def analyze_artifacts(Input, Args):
                         errors_intersection[read][read_pos][ref_pos][Base.upper()] += 1
 
                         if confidence_value >= confidence:
-                             errors_intersectionB[read][read_pos][ref_pos][Base.upper()] += 1     
+                             errors_intersectionB[read][read_pos][ref_pos][Base.upper()] += 1
 
                     else:
                         assert base in ['A','C','G','T'], "{} should be upper case".format(base)
-                        errors_complement[read][read_pos][ref_pos][Base] += 1
                         if confidence_value >= confidence:
                              errors_complementB[read][read_pos][ref_pos][Base.upper()] += 1
+                        else:
+                             errors_complement[read][read_pos][ref_pos][Base] += 1
 
                 except Exception as e:
                     if debug:
