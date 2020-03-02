@@ -12,17 +12,7 @@ jobs:
     - run:
         command: sudo chown -R circleci:circleci /usr/local/lib/python3.7/site-packages
     - run:
-        command: |
-          sudo pip install pipenv
-          pipenv install
-    - save_cache:
-        key: deps9-{{ .Branch }}-{{ checksum "Pipfile.lock" }}
-        paths:
-        - .venv
-        - /usr/local/bin
-        - /usr/local/lib/python3.6/site-packages
-    - run:
-        command: bash tasmanian/tests/basic_tests.sh
+        command: "python3 -m venv ./tasmanian_venv\nsource ./tasmanian_venv/bin/activate\npip install -r requirements.txt \nbash tasmanian/tests/basic_tests.sh\n#sudo pip install pipenv\n#pipenv install\n"
 workflows:
   version: 2
   workflow:
@@ -44,15 +34,19 @@ workflows:
 #       - run: sudo chown -R circleci:circleci /usr/local/lib/python3.7/site-packages
 #       - run: 
 #           command: |
-#             sudo pip install pipenv
-#             pipenv install
+#              python3 -m venv ./tasmanian_venv
+#              source ./tasmanian_venv/bin/activate
+#              pip install -r requirements.txt 
+#              bash tasmanian/tests/basic_tests.sh
+#              #sudo pip install pipenv
+#              #pipenv install
 # 
-#       - save_cache: # cache Python dependencies using checksum of Pipfile as the cache-key
-#           key: deps9-{{ .Branch }}-{{ checksum \"Pipfile.lock\" }}
-#           paths:
-#             - \".venv\"
-#             - \"/usr/local/bin\"
-#             - \"/usr/local/lib/python3.6/site-packages\"
+#       #- save_cache: # cache Python dependencies using checksum of Pipfile as the cache-key
+#       #    key: deps9-{{ .Branch }}-{{ checksum \"Pipfile.lock\" }}
+#       #    paths:
+#       #      - \".venv\"
+#       #      - \"/usr/local/bin\"
+#       #      - \"/usr/local/lib/python3.6/site-packages\"
 # 
-#       - run:
-#           bash tasmanian/tests/basic_tests.sh # run test
+#       #- run:
+#       #    bash tasmanian/tests/basic_tests.sh # run test

@@ -15,8 +15,10 @@ try:
 except Exception as e: #ImportError: #ModuleNotFoundError:
     # Either tests or base_dir, it's downstream of ../tasmanian/tasmanian/
     p = os.path.abspath(os.path.dirname(__file__))
-    p = re.search("(.*tasmanian/tasmanian/).*",p).group(1)
-    utils_path = p + 'utils'
+    #p = re.search("(.*tasmanian/tasmanian/).*",p).group(1)
+    p_start = [i for i in re.finditer('/tasmanian',p)][-1].end()
+    p = p[:p_start]
+    utils_path = p + '/utils'
     sys.path = [utils_path] + sys.path
 
     from utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table
@@ -335,13 +337,14 @@ def analyze_artifacts(Input, Args):
                         errors_intersection[read][read_pos][ref_pos][Base.upper()] += 1
 
                         if confidence_value >= confidence:
-                             errors_intersectionB[read][read_pos][ref_pos][Base.upper()] += 1     
+                             errors_intersectionB[read][read_pos][ref_pos][Base.upper()] += 1
 
                     else:
                         assert base in ['A','C','G','T'], "{} should be upper case".format(base)
-                        errors_complement[read][read_pos][ref_pos][Base] += 1
                         if confidence_value >= confidence:
                              errors_complementB[read][read_pos][ref_pos][Base.upper()] += 1
+                        else:
+                             errors_complement[read][read_pos][ref_pos][Base] += 1
 
                 except Exception as e:
                     if debug:
