@@ -234,7 +234,7 @@ def plot_html(table):
           <a href="#divPlotly4">Intersections - confidence</a>
           <a href="#divPlotly5">Complements - confidence</a>
             
-          <a href="#" style="font-size:30px; background-color:#8bd9ff;">Normalized Couts</a
+          <a href="#" style="font-size:30px; background-color:#8bd9ff;">Normalized Couts</a>
           <a href="#divPlotly1_norm">Intersections</a>
           <a href="#divPlotly2_norm">Complementss</a>
           <a href="#divPlotly4_norm">Intersections - confidence</a>
