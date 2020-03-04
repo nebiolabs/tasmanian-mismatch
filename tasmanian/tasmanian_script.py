@@ -334,10 +334,10 @@ def analyze_artifacts(Input, Args):
  
                     elif pos >= tm_tag[0] and pos < tm_tag[1]:
                         assert base in ['a','c','t','g'], "{} should be lower case".format(base) 
-                        errors_intersection[read][read_pos][ref_pos][Base.upper()] += 1
-
                         if confidence_value >= confidence:
                              errors_intersectionB[read][read_pos][ref_pos][Base.upper()] += 1
+                        else:
+                            errors_intersection[read][read_pos][ref_pos][Base.upper()] += 1
 
                     else:
                         assert base in ['A','C','G','T'], "{} should be upper case".format(base)
