@@ -200,11 +200,11 @@ def plot_html(table):
         
          <div class="sidebar">
           <a href="#" style="font-size:30px; background-color:#8bd9ff;">Raw Couts</a>
-          <a href="#divPlotly1">Contained</a>
-          <a href="#divPlotly2">Boundary</a>
-          <a href="#divPlotly3">non-overlapping</a>
-          <a href="#divPlotly4">Contained - confidence</a>
-          <a href="#divPlotly5">Boundary - confidence</a>
+          <a href="#section_divPlotly1">Contained</a>
+          <a href="#section_divPlotly2">Boundary</a>
+          <a href="#section_divPlotly3">non-overlapping</a>
+          <a href="#section_divPlotly4">Contained - confidence</a>
+          <a href="#section_divPlotly5">Boundary - confidence</a>
             
           <!--<a href="#" style="font-size:30px; background-color:#8bd9ff;">Normalized Couts</a>
           <a href="#divPlotly1_norm">Intersections</a>
@@ -218,104 +218,104 @@ def plot_html(table):
     
             <h1 align="center">Tasmanian artifacts metrics results </h1>
         
-            <h2 style="padding-left: 40px; padding-top: 90px;">Intersections</h2>
-            <h3 style="padding-left: 40px; padding-right: 800; ">Includes all bases that intersect some fragment provided in the bed-file</h3>
-            <button class="button button1"; onclick="normalize('divPlotly1_norm', 'divPlotly1');">Counts/Normalize Counts</button>
-
             <!-- plot 1 -->
 
-            <div id='divPlotly1_norm'>
-            <script>
-                var plotly_data = {}
-                Plotly.react('divPlotly1_norm', plotly_data.data, plotly_data.layout);
-            </script>
+            <div id='section_divPlotly1'>
+              <h2 style="padding-left: 40px; padding-top: 90px;">Intersections</h2>
+              <h3 style="padding-left: 40px; padding-right: 800; ">Includes all bases that intersect some fragment provided in the bed-file</h3>
+              <button class="button button1"; onclick="normalize('divPlotly1_norm', 'divPlotly1');">Counts/Normalize Counts</button>
+              <div id='divPlotly1_norm'>
+                <script>
+                    var plotly_data = {};
+                    Plotly.react('divPlotly1_norm', plotly_data.data, plotly_data.layout);
+                </script>
+              </div>
+              <div id='divPlotly1'>
+                <script>
+                    var plotly_data2 = {}
+                    Plotly.react('divPlotly1', plotly_data.data, plotly_data.layout);
+                </script>
+              </div>
             </div>
-
-            <div id='divPlotly1'>
-            <script>
-                var plotly_data = {}
-                Plotly.react('divPlotly1', plotly_data.data, plotly_data.layout);
-            </script>
-            </div>
-
-            <h2 style="padding-left: 40px;padding-top: 60px;">Complements</h2>
-            <h3 style="padding-left: 40px; padding-right: 800;">Includes all bases from that do not intersect a fragment, from reads that intersect a fragment provided in the bed-file</h3>
-            <button class="button button1"; onclick="normalize('divPlotly2_norm', 'divPlotly2');">Counts/Normalize Counts</button>
 
             <!-- plot 2 -->
 
-            <div id='divPlotly2_norm'>
-            <script>
-                var plotly_data = {}
-                Plotly.react('divPlotly2_norm', plotly_data.data, plotly_data.layout);
-            </script>
+            <div id='section_divPlotly2'>
+              <h2 style="padding-left: 40px;padding-top: 60px;">Complements</h2>
+              <h3 style="padding-left: 40px; padding-right: 800;">Includes all bases from that do not intersect a fragment, from reads that intersect a fragment provided in the bed-file</h3>
+              <button class="button button1"; onclick="normalize('divPlotly2_norm', 'divPlotly2');">Counts/Normalize Counts</button>
+              <div id='divPlotly2_norm'>
+                <script>
+                    var plotly_data = {};
+                    Plotly.react('divPlotly2_norm', plotly_data.data, plotly_data.layout);
+                </script>
+              </div>
+              <div id='divPlotly2'>
+                <script>
+                    var plotly_data2 = {}
+                    Plotly.react('divPlotly2', plotly_data.data, plotly_data.layout);
+                </script>
+              </div>
             </div>
-
-            <div id='divPlotly2'>
-            <script>
-                var plotly_data = {}
-                Plotly.react('divPlotly2', plotly_data.data, plotly_data.layout);
-            </script>
-            </div>
-
-            <h2 style="padding-left: 40px;padding-top: 60px;">Non-intersections</h2>
-            <h3 style="padding-left: 40px; padding-right: 800;">Includes all bases from reads with no intersections with the bed-file</h3>
-            <button class="button button1"; onclick="normalize('divPlotly3_norm', 'divPlotly3');">Counts/Normalize Counts</button>
 
             <!-- plot 3 -->
 
-            <div id='divPlotly3_norm'>
-            <script>
-                var plotly_data = {}
-                Plotly.react('divPlotly3_norm', plotly_data.data, plotly_data.layout);
-            </script>
+            <div id='section_divPlotly3'>
+              <h2 style="padding-left: 40px;padding-top: 60px;">Non-intersections</h2>
+              <h3 style="padding-left: 40px; padding-right: 800;">Includes all bases from reads with no intersections with the bed-file</h3>
+              <button class="button button1"; onclick="normalize('divPlotly3_norm', 'divPlotly3');">Counts/Normalize Counts</button>
+              <div id='divPlotly3_norm'>
+                <script>
+                    var plotly_data = {};
+                    Plotly.react('divPlotly3_norm', plotly_data.data, plotly_data.layout);
+                </script>
+              </div>
+              <div id='divPlotly3'>
+                <script>
+                    var plotly_data2 = {}
+                    Plotly.react('divPlotly3', plotly_data.data, plotly_data.layout);
+                </script>
+              </div>
             </div>
-
-            <div id='divPlotly3'>
-            <script>
-                var plotly_data = {}
-                Plotly.react('divPlotly3', plotly_data.data, plotly_data.layout);
-            </script>
-            </div>
-
-            <h2 style="padding-left: 40px; padding-top: 90px;">Intersections confidence</h2>
-            <h3 style="padding-left: 40px; padding-right: 800; ">Includes all bases that intersect some fragment provided in the bed-file in confidence reads</h3>
-            <button class="button button1"; onclick="normalize('divPlotly4_norm', 'divPlotly4');">Counts/Normalize Counts</button>
 
             <!-- plot 4 -->
 
-            <div id='divPlotly4_norm'>
-            <script>
-                var plotly_data = {}
-                Plotly.react('divPlotly4_norm', plotly_data.data, plotly_data.layout);
-            </script>
+              <div id='section_divPlotly4'>
+              <h2 style="padding-left: 40px; padding-top: 90px;">Intersections confidence</h2>
+              <h3 style="padding-left: 40px; padding-right: 800; ">Includes all bases that intersect some fragment provided in the bed-file in confidence reads</h3>
+              <button class="button button1"; onclick="normalize('divPlotly4_norm', 'divPlotly4');">Counts/Normalize Counts</button>
+              <div id='divPlotly4_norm'>
+                <script>
+                    var plotly_data = {};
+                    Plotly.react('divPlotly4_norm', plotly_data.data, plotly_data.layout);
+                </script>
+              </div>
+              <div id='divPlotly4'>
+                <script>
+                    var plotly_data2 = {}
+                    Plotly.react('divPlotly4', plotly_data.data, plotly_data.layout);
+                </script>
+              </div>
             </div>
-
-            <div id='divPlotly4'>
-            <script>
-                var plotly_data = {}
-                Plotly.react('divPlotly4', plotly_data.data, plotly_data.layout);
-            </script>
-            </div>
-
-            <h2 style="padding-left: 40px; padding-top: 90px;">Complement confidence</h2>
-            <h3 style="padding-left: 40px; padding-right: 800; ">Includes all complement bases in confidence reads</h3>
-            <button class="button button1"; onclick="normalize('divPlotly5_norm', 'divPlotly5');">Counts/Normalize Counts</button>
 
             <!-- plot 5 -->
 
-            <div id='divPlotly5_norm'>
-            <script>
-                var plotly_data = {}
-                Plotly.react('divPlotly5_norm', plotly_data.data, plotly_data.layout);
-            </script>
-            </div>
-
-            <div id='divPlotly5'>
-            <script>
-                var plotly_data = {}
-                Plotly.react('divPlotly5', plotly_data.data, plotly_data.layout);
-            </script>
+            <div id='section_divPlotly5'>
+              <h2 style="padding-left: 40px; padding-top: 90px;">Complement confidence</h2>
+              <h3 style="padding-left: 40px; padding-right: 800; ">Includes all complement bases in confidence reads</h3>
+              <button class="button button1"; onclick="normalize('divPlotly5_norm', 'divPlotly5');">Counts/Normalize Counts</button>
+              <div id='divPlotly5_norm'>
+                <script>
+                    var plotly_data = {};
+                    Plotly.react('divPlotly5_norm', plotly_data.data, plotly_data.layout);
+                </script>
+              </div>
+              <div id='divPlotly5'>
+                <script>
+                    var plotly_data2 = {}
+                    Plotly.react('divPlotly5', plotly_data.data, plotly_data.layout);
+                </script>
+              </div>
             </div>
 
             <script> 
