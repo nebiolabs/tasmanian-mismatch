@@ -183,45 +183,17 @@ def plot_html(table):
     </head>
     <body>
         <script type="text/javascript">
-           function toggle_visibility(id1, id2, id3, id4, id5, id6, id7, id8, id9, id10) {{
+           function normalize(id1, id2) {{
                var e = document.getElementById(id1);
                var f = document.getElementById(id2);
-               var g = document.getElementById(id3);
-               var h = document.getElementById(id4);
-               var i = document.getElementById(id5);
-               var j = document.getElementById(id6);
-               var k = document.getElementById(id7);
-               var l = document.getElementById(id8);
-               var m = document.getElementById(id9);
-               var n = document.getElementById(id10);
-
 
                if(e.style.display == 'block') {{
                   e.style.display = 'none';
                   f.style.display = 'block';
-                  g.style.display = 'none';
-                  h.style.display = 'block';
-                  i.style.display = 'none';
-                  j.style.display = 'block';
-                  k.style.display = 'none';
-                  l.style.display = 'block';
-                  m.style.display = 'none';
-                  n.style.display = 'block';
-
-
-
                 }}
                else {{
                   e.style.display = 'block';
                   f.style.display = 'none';
-                  g.style.display = 'block';
-                  h.style.display = 'none';
-                  i.style.display = 'block';
-                  j.style.display = 'none';
-                  k.style.display = 'block';
-                  l.style.display = 'none';
-                  m.style.display = 'block';
-                  n.style.display = 'none';
                 }}
            }}
         </script>
@@ -245,16 +217,10 @@ def plot_html(table):
 
     
             <h1 align="center">Tasmanian artifacts metrics results </h1>
-
-            <button class="button button1"; onclick="toggle_visibility('divPlotly1_norm', 'divPlotly1',
-                                                                       'divPlotly2_norm', 'divPlotly2',
-                                                                       'divPlotly3_norm', 'divPlotly3',
-                                                                       'divPlotly4_norm', 'divPlotly4',
-                                                                       'divPlotly5_norm', 'divPlotly5'
-                                                      );">Counts/Normalize Counts</button>
         
             <h2 style="padding-left: 40px; padding-top: 90px;">Intersections</h2>
             <h3 style="padding-left: 40px; padding-right: 800; ">Includes all bases that intersect some fragment provided in the bed-file</h3>
+            <button class="button button1"; onclick="normalize('divPlotly1_norm', 'divPlotly1');">Counts/Normalize Counts</button>
 
             <!-- plot 1 -->
 
@@ -274,6 +240,7 @@ def plot_html(table):
 
             <h2 style="padding-left: 40px;padding-top: 60px;">Complements</h2>
             <h3 style="padding-left: 40px; padding-right: 800;">Includes all bases from that do not intersect a fragment, from reads that intersect a fragment provided in the bed-file</h3>
+            <button class="button button1"; onclick="normalize('divPlotly2_norm', 'divPlotly2');">Counts/Normalize Counts</button>
 
             <!-- plot 2 -->
 
@@ -293,6 +260,7 @@ def plot_html(table):
 
             <h2 style="padding-left: 40px;padding-top: 60px;">Non-intersections</h2>
             <h3 style="padding-left: 40px; padding-right: 800;">Includes all bases from reads with no intersections with the bed-file</h3>
+            <button class="button button1"; onclick="normalize('divPlotly3_norm', 'divPlotly3');">Counts/Normalize Counts</button>
 
             <!-- plot 3 -->
 
@@ -312,6 +280,7 @@ def plot_html(table):
 
             <h2 style="padding-left: 40px; padding-top: 90px;">Intersections confidence</h2>
             <h3 style="padding-left: 40px; padding-right: 800; ">Includes all bases that intersect some fragment provided in the bed-file in confidence reads</h3>
+            <button class="button button1"; onclick="normalize('divPlotly4_norm', 'divPlotly4');">Counts/Normalize Counts</button>
 
             <!-- plot 4 -->
 
@@ -331,6 +300,7 @@ def plot_html(table):
 
             <h2 style="padding-left: 40px; padding-top: 90px;">Complement confidence</h2>
             <h3 style="padding-left: 40px; padding-right: 800; ">Includes all complement bases in confidence reads</h3>
+            <button class="button button1"; onclick="normalize('divPlotly5_norm', 'divPlotly5');">Counts/Normalize Counts</button>
 
             <!-- plot 5 -->
 
