@@ -200,17 +200,17 @@ def plot_html(table):
         
          <div class="sidebar">
           <a href="#" style="font-size:30px; background-color:#8bd9ff;">Raw Couts</a>
-          <a href="#divPlotly1">Intersections</a>
-          <a href="#divPlotly2">Complementss</a>
-          <a href="#divPlotly3">non-intersecting reads</a>
-          <a href="#divPlotly4">Intersections - confidence</a>
-          <a href="#divPlotly5">Complements - confidence</a>
+          <a href="#divPlotly1">Contained</a>
+          <a href="#divPlotly2">Boundary</a>
+          <a href="#divPlotly3">non-overlapping</a>
+          <a href="#divPlotly4">Contained - confidence</a>
+          <a href="#divPlotly5">Boundary - confidence</a>
             
-          <a href="#" style="font-size:30px; background-color:#8bd9ff;">Normalized Couts</a>
+          <!--<a href="#" style="font-size:30px; background-color:#8bd9ff;">Normalized Couts</a>
           <a href="#divPlotly1_norm">Intersections</a>
           <a href="#divPlotly2_norm">Complementss</a>
           <a href="#divPlotly4_norm">Intersections - confidence</a>
-          <a href="#divPlotly5_norm">Complements - confidence</a>
+          <a href="#divPlotly5_norm">Complements - confidence</a>-->
         </div>
 
         <div class="main">
