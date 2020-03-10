@@ -233,7 +233,7 @@ def plot_html(table):
               <div id='divPlotly1'>
                 <script>
                     var plotly_data2 = {}
-                    Plotly.react('divPlotly1', plotly_data.data, plotly_data.layout);
+                    Plotly.react('divPlotly1', plotly_data2.data, plotly_data2.layout);
                 </script>
               </div>
             </div>
@@ -253,7 +253,7 @@ def plot_html(table):
               <div id='divPlotly2'>
                 <script>
                     var plotly_data2 = {}
-                    Plotly.react('divPlotly2', plotly_data.data, plotly_data.layout);
+                    Plotly.react('divPlotly2', plotly_data2.data, plotly_data2.layout);
                 </script>
               </div>
             </div>
@@ -273,7 +273,7 @@ def plot_html(table):
               <div id='divPlotly3'>
                 <script>
                     var plotly_data2 = {}
-                    Plotly.react('divPlotly3', plotly_data.data, plotly_data.layout);
+                    Plotly.react('divPlotly3', plotly_data2.data, plotly_data2.layout);
                 </script>
               </div>
             </div>
@@ -293,7 +293,7 @@ def plot_html(table):
               <div id='divPlotly4'>
                 <script>
                     var plotly_data2 = {}
-                    Plotly.react('divPlotly4', plotly_data.data, plotly_data.layout);
+                    Plotly.react('divPlotly4', plotly_data2.data, plotly_data2.layout);
                 </script>
               </div>
             </div>
@@ -313,7 +313,7 @@ def plot_html(table):
               <div id='divPlotly5'>
                 <script>
                     var plotly_data2 = {}
-                    Plotly.react('divPlotly5', plotly_data.data, plotly_data.layout);
+                    Plotly.react('divPlotly5', plotly_data2.data, plotly_data2.layout);
                 </script>
               </div>
             </div>

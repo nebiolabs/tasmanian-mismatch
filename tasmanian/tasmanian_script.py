@@ -175,6 +175,7 @@ def analyze_artifacts(Input, Args):
                 bed_tag = True
             except AttributeError:
                 tm_tag = [-1]
+
             bed_tag_counter+=1
 
         elif bed_tag==True:
@@ -183,16 +184,20 @@ def analyze_artifacts(Input, Args):
         else:
             tm_tag = [-1]
 
-        # Here tag reads based on their level of confidence. If there was an intersection, use this level of confidence
-        # include the bases in the 4th table.
-        confidence_value = int(re.search('tc:i:([0-9]*)', line).group(1))
-
         seq_len = len(seq)
         mapq = int(mapq)
         flag = int(flag)
         start = int(start)-1
         end = start + seq_len
         tlen = abs(int(tlen))
+
+        # If there is no tasmanian tag, confidence intersections table will include ALL intersections and complement nothing.
+        # Here tag reads based on their level of confidence. If there was an intersection, use this level of confidence
+        # include the bases in the 4th table.
+        if bed_tag:
+            confidence_value = int(re.search('tc:i:([0-9]*)', line).group(1))
+        else:
+            confidence_value = 0
 
         # reasons to skip reads
         # =====================
