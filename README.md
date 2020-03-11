@@ -27,6 +27,11 @@ The main goal is to identify systematic missmatches that might confound SNPs or 
 * Easy to use command-line and [nextflow](https://www.nextflow.io/) implementation.
 * Includes a [Galaxy](https://usegalaxy.org/) wrapper 
 
+<img src="./figures/snapshot.jpg" alt="drawing" width="800"/>
+<!--![snapshot of results html file](./figures/snapshot.jpg =100x20)-->
+
+
+
 ## Contributing
 
 Contributions are welcome and encouraged.

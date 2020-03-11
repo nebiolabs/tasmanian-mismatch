@@ -67,7 +67,7 @@ def analyze_artifacts(Input, Args):
 
     # set default parameters
     _UNMASK_GENOME=False  #don't unmask the genome, aka don't use lower letter from genome but rather keep them out in the error.log file'
-    READ_LENGTH=200
+    READ_LENGTH=1000
     MinMapQuality = 20
     PHRED = 20 + 33
     SOFTCLIP_BYPASS=0
