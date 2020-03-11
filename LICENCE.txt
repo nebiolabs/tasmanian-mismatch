@@ -1,4 +1,4 @@
-Tasmanian: A new tool for the analysis of artifacts in high throughput sequencing data from genomic DNA.   
+Tasmanian: A tool for the analysis of artifacts in high throughput sequencing data from genomic DNA.   
 Copyright (C) 2020  Brad Langhorst & Ariel Erijman
 
 This program is free software: you can redistribute it and/or modify

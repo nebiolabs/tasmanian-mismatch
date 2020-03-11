@@ -43,5 +43,5 @@ Contributions are welcome and encouraged.
 
 ## License
 
-`fgbio` is open source software released under the [MIT License](https://github.com/fulcrumgenomics/fgbio/blob/master/LICENSE).
+`tasmanian` is open source software released under the [LGPL License](https://github.com/nebiolabs/tasmanian/blob/master/LICENCE.txt).
 
