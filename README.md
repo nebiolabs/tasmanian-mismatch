@@ -37,7 +37,7 @@ samtools view bam | run_intersections [OPTIONS] | run_tasmanian [OPTIONS]
 
 ### The output includes tables to manupulate and plot the data and a built in report for fast access the data (see figure below).
 
-<img src="./figures/snapshot.jpg" alt="drawing" width="800"/>
+<img src="./figures/snapshot_good.jpg" alt="drawing" width="800"/>
 <!--![snapshot of results html file](./figures/snapshot.jpg =100x20)-->
 
 
