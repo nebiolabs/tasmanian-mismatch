@@ -18,12 +18,14 @@ params.genome = '' //"$baseDir/data/grch38.fa"   // copy from bwakit the feature
 params.outdir = "$baseDir/tasmanian_results"
 params.date = "Not deided yet"
 params.saveReference = false
-params.bed = "$baseDir/bedfile"
+params.bed = ""
 
 // understand if the input is fastq or bam. if Bam, flag to skip alignment
 params.mode = ( params.input =~/fastq/ ? 'fastq' : 'bam' )
 
 println """
+    INPUTS PROVIDED:
+    ================
     reads: $params.input
     genome: $params.genome
     data saved in $params.outdir
@@ -34,11 +36,13 @@ println """
             section 1: if necessary, download reference genome
         ========================================================
 */
+
 genome_file = file(params.genome)
 
 if (params.genome == '') {
 
     process build_genome {
+        // bwakit downloads the genome and creates the index files 
 
         output:
         file("hs38DH.fa") into genome_file
@@ -53,7 +57,8 @@ if (params.genome == '') {
 }
 else {
     process find_genome {
-    
+        // get genome from location and (if needed) creates index files
+
         input:
         val(genome) from genome_file
 
@@ -64,7 +69,10 @@ else {
         '''
         prefix=$(echo !{genome} | sed 's/fasta$//' | sed 's/fa$//')
         files=$(ls ${prefix}* | grep -v "fasta$\\|fa$")
-        ln -s ${files} .
+
+        ln -s ${files} . 
+        [ ! -e ${prefix}amb ] &&\
+            bwa index !{genome} -p ${prefix}
         '''
     }
 }
@@ -85,8 +93,8 @@ if ( params.mode == 'fastq' ) {
         .ifEmpty('Could not find the pair of fastq files')
         .set { read_pairs_ch }
 
-    // two bash codes in the same process stinks. BUT ADD CHECKS!!!
     process AlignTOgenome {
+        // alligns, mark dups and sorts
         
         input:  
         file genome from genome_file
@@ -117,7 +125,8 @@ else { // implicity, params.mode == 'bam'
         .set { input_bams }
 
     process bam_sorted {
-        
+        // check if bam is sorted. If not, it sorts it.        
+
         input:
         file(bam) from input_bams
 
@@ -143,6 +152,7 @@ else { // implicity, params.mode == 'bam'
 */
 
 process get_bam_readNum {
+    // get number of reads or each bam to, later find the minimum
 
     input:
     file(bam) from sorted_bams
@@ -168,28 +178,26 @@ Channel
     .set { bam_lengths_list }
 
 process subsample_bams {
-    
+    // subsample bams based on the number of reads of the smallest bam
+
     input:
     val(length) from bam_lengths_list
     set val(bam_len), file(name) from bam_list
 
     output:
-    file("${bam_name}") into sub_bam
+    file("*subsampled.bam") into sub_bam
     
     shell:
     '''
-    bam_name=$(echo !{name} | sed 's/bam//')subsampled.bam
+    bam_name=$(echo !{name} | sed 's/bam$/subsampled\\.bam/')
     if [ !{length} -ne !{bam_len} ]; then
         size=$(echo "!{length} / !{bam_len} + 4" | bc -l)  ## added  +4 for the random integer in samtools
-        samtools view -s ${size} ${name} > ${bam_name}
+        samtools view -s ${size} !{name} > ${bam_name}
     else 
-        ln -s !{name} ${bam_name}
+        ln -s !{name} $bam_name
     fi
     '''
 }
-
-
-sub_bam.println()
 
 /*
         ===========================================
@@ -197,22 +205,27 @@ sub_bam.println()
         ===========================================
 */
 
-/*process Tasmanian {
+process Tasmanian {
+    // run intersections (if bed provided) and tasmanian
     
     input:
     file(bam) from sub_bam
-    file(bed) from file(params.bed)
+    //file(bed) from file(params.bed)
     file(genome) from genome_file
-    //set val(name), file(reads) from read_pairs_ch // This is only to retrieve name
     val(num_reads) from bam_lengths_list
 
     //output:
-
     shell:
-    '''  
-    # INTERESETING: samtools idx into text tells how many reads.
-    # instead of samtools head, calculate the percentage and run subsample.
-    name=$(echo !{bam} | sed 's/bam//')
-    samtools view !{bam} | head -n !{num_reads} | run_intersections -b !{bed} | run_tasmanian -r !{genome} >!{baseDir}/${name}.table.csv
+    
+    if ( params.bed == "" )
     ''' 
-}*/
+    name=$(echo !{bam} | sed 's/bam//')
+    samtools view !{bam} | head -n !{num_reads} | run_tasmanian -r !{genome} >!{baseDir}/${name}.table.csv
+    '''
+    
+    else
+    '''  
+    name=$(echo !{bam} | sed 's/bam//')
+    samtools view !{bam} | head -n !{num_reads} | run_intersections -b !{params.bed} | run_tasmanian -r !{genome} >!{baseDir}/${name}.table.csv
+    ''' 
+}
