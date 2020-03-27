@@ -1,5 +1,5 @@
 #!/usr/bin/env nextflow
-nextflow.preview.dsl=2
+//nextflow.preview.dsl=2
 
 /*
 ============================================================================
@@ -35,19 +35,37 @@ println """
         ========================================================
 */
 genome_file = file(params.genome)
+
 if (params.genome == '') {
 
     process build_genome {
 
         output:
-        file(ref) into genome_file
-        file "*.{amb,ann,bwt,pac,sa}" into bwa_index
+        file("hs38DH.fa") into genome_file
+        file("*.{amb,ann,bwt,pac,sa}") into bwa_index
     
         script:
         """
         bwa.kit/run-gen-ref hs38DH
         bwa.kit/bwa index hs38DH.fa
         """
+    }
+}
+else {
+    process find_genome {
+    
+        input:
+        val(genome) from genome_file
+
+        output:
+        file("*.{amb,ann,bwt,pac,sa}") into bwa_index
+        
+        shell:
+        '''
+        prefix=$(echo !{genome} | sed 's/fasta$//' | sed 's/fa$//')
+        files=$(ls ${prefix}* | grep -v "fasta$\\|fa$")
+        ln -s ${files} .
+        '''
     }
 }
 
@@ -58,6 +76,9 @@ if (params.genome == '') {
 */
 
 if ( params.mode == 'fastq' ) {
+
+    println(" working in fastq mode ")
+
     // read_pairs_ch join all R1,R2 that match the prefix
     Channel
         .fromFilePairs( params.input )
@@ -70,20 +91,14 @@ if ( params.mode == 'fastq' ) {
         input:  
         file genome from genome_file
         set val(name), file(reads) from read_pairs_ch    
-        file(bwa_index) from bwa_index
+        file(index) from bwa_index
 
         output:
-        file("${name}.sorted.bam") into aligned_bams
+        file("${name}.sorted.bam") into sorted_bams
 
         script:
         """
-        //echo ${params.mode_fastq} | grep -q "true"  &&\
         bwa mem -t $task.cpus $genome $reads | samblaster | samtools sort -o ${name}.sorted.bam
-        
-        #echo ${name} | grep -q "sort" && samtools sort ${name} -o ${name}.sorted.bam
-        
-        #samtools view ${name}.sorted.bam | wc -l | tr -d " \n" 
-        #printf "${name}," && samtools view ${name}.sorted.bam | wc -l 
         """
     }
 }
@@ -96,10 +111,15 @@ if ( params.mode == 'fastq' ) {
 
 else { // implicity, params.mode == 'bam'
 
+    Channel
+        .fromPath(params.input)
+        .ifEmpty('Could not find the alignment bam files')
+        .set { input_bams }
+
     process bam_sorted {
         
         input:
-        file(bam) from params.input
+        file(bam) from input_bams
 
         output:
         file("${sorted_bam}") into sorted_bams
@@ -114,45 +134,62 @@ else { // implicity, params.mode == 'bam'
         samtools sort !{bam} -o ${sorted_bam}
         '''
     }
-
-    process get_bam_readNum {
-        input:
-        file(bam) from sorted_bams
-
-        output:
-        stdout into bam_lengths
-        set val(stdout), file(bam) into bam_list
-    
-        script:
-        """
-        samtools view $bam | wc -l | tr -d " \n"
-        """
-    }
-
-    /* Channel holds until all bam_lengths are collected, then stores the min
-       number of reads. This is to subssample all files to that number. */
-    Channel
-        .from bam_lengths
-        .min { it }
-        .subscribe { println "the value is  $it **" }
-        .set { bam_lengths_list }
-
-    process subsample_bams {
-        
-        input:
-        val(lenght) from bam_lengths
-        set val(bam_len), file(name) from sorted_bam
-
-        output:
-        file("${bam}") into sub_bam
-        
-        shell:
-        '''
-        size=$(echo !{length} / !{bam_len} + 4 | bc)  ## added  +4 for the random integer in samtools -s
-        samtools view -s ${size} ${name} > ${bam}
-        '''
-    }
 }
+
+/*
+        ==================================================
+            section 3: subsample bams to eq num of reads
+        ==================================================
+*/
+
+process get_bam_readNum {
+
+    input:
+    file(bam) from sorted_bams
+
+    output:
+    stdout into bam_lengths
+    stdout into bam_lengthsB // ToDo: Find a more elegant forking
+    tuple stdout, file("${bam}") into bam_list
+
+    script:
+    """
+    samtools view $bam | wc -l | tr -d " \n"
+    """
+}
+
+
+/* Channel holds until all bam_lengths are collected, then stores the min
+   number of reads. This is to subssample all files to that number. */
+Channel
+    .from bam_lengths
+    .min { it }
+    .subscribe { println "the value is  $it **" }
+    .set { bam_lengths_list }
+
+process subsample_bams {
+    
+    input:
+    val(length) from bam_lengths_list
+    set val(bam_len), file(name) from bam_list
+
+    output:
+    file("${bam_name}") into sub_bam
+    
+    shell:
+    '''
+    bam_name=$(echo !{name} | sed 's/bam//')subsampled.bam
+    if [ !{length} -ne !{bam_len} ]; then
+        size=$(echo "!{length} / !{bam_len} + 4" | bc -l)  ## added  +4 for the random integer in samtools
+        samtools view -s ${size} ${name} > ${bam_name}
+    else 
+        ln -s !{name} ${bam_name}
+    fi
+    '''
+}
+
+
+sub_bam.println()
 
 /*
         ===========================================
@@ -160,7 +197,7 @@ else { // implicity, params.mode == 'bam'
         ===========================================
 */
 
-process Tasmanian {
+/*process Tasmanian {
     
     input:
     file(bam) from sub_bam
@@ -178,4 +215,4 @@ process Tasmanian {
     name=$(echo !{bam} | sed 's/bam//')
     samtools view !{bam} | head -n !{num_reads} | run_intersections -b !{bed} | run_tasmanian -r !{genome} >!{baseDir}/${name}.table.csv
     ''' 
-}
+}*/

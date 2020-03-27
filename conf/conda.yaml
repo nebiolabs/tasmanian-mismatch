@@ -8,3 +8,4 @@ dependencies:
  - samtools=1.9
  - htslib=1.9
  - bwakit=0.7.12
+ - samblaster=0.1.25
