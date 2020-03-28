@@ -117,7 +117,10 @@ if ( params.mode == 'fastq' ) {
         =======================================
 */
 
-else { // implicity, params.mode == 'bam'
+else { // implicitly params.mode == 'bam'
+
+
+    println(" working in bam mode ")
 
     Channel
         .fromPath(params.input)
@@ -131,15 +134,15 @@ else { // implicity, params.mode == 'bam'
         file(bam) from input_bams
 
         output:
-        file("${sorted_bam}") into sorted_bams
-
+        file("*sorted.bam") into sorted_bams
+        
         shell:
         '''
-        sorted_bam=$(echo !{bam} | sed 's/bam$$/sorted\\.bam/')
+        sorted_bam=$(echo !{bam} | sed 's/bam$/sorted\\.bam/')
         
         samtools view -H !{bam} | grep "SO" | sed 's/.*\tSO:\\(.*\\)$/\\1/' |\
         grep -q "coordinate\\|queryname" &&\
-        ln -s !{bam} ${sorted_bam} ||\
+        ln -sf !{bam} ${sorted_bam} ||\
         samtools sort !{bam} -o ${sorted_bam}
         '''
     }
