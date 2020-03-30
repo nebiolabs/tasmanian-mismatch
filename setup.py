@@ -5,7 +5,7 @@ def readme():
         return f.read()
 
 setup(name='tasmanian missmatch analysis tool',
-      version='0.1.101',
+      version='0.1.1',
       description='Tasmanian tool to analyze mismatches at read and position in high throughput sequencing data',
       long_description=readme(),
       long_description_content_type="text/markdown",
