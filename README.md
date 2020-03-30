@@ -59,5 +59,5 @@ Contributions are welcome and encouraged.
 
 ## License
 
-`fgbio` is open source software released under the [MIT License](https://github.com/fulcrumgenomics/fgbio/blob/master/LICENSE).
+`tasmanian artifact metrics tool` is open source software released under the [GNU License](https://github.com/nebiolabs/tasmanian/blob/master/LICENCE.txt).
 
