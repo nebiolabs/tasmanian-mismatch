@@ -4,13 +4,30 @@
     bedfile as one of the arguments (chromosome, start, end - delimiter=tab)
 
 '''
-import os, sys, gzip
+import os, sys, gzip, re
 import numpy as np
 #from pathlib import Path
 #sys.path.append(str(Path(__file__).parent.parent.parent) + '/utils/')
-sys.path.append(sys.path[0] + '/utils')
-from tasmanian.utils.sam_reads import reads
-from tasmanian.utils.utils import *
+#sys.path.append(sys.path[0] + '/utils')
+try:
+    from tasmanian.utils.sam_reads import reads
+    from tasmanian.utils.utils import *
+
+except Exception as e:
+    # Either tests or base_dir, it's downstream of ../tasmanian/tasmanian/
+    p = os.path.abspath(os.path.dirname(__file__))
+    #p = re.search("(.*tasmanian/tasmanian/).*",p).group(1)
+    p_start = [i for i in re.finditer('/tasmanian',p)][-1].end()
+    p = p[:p_start]
+    utils_path = p + '/utils'
+    sys.path = [utils_path] + sys.path
+
+    #p = re.search("(.*tasmanian/tasmanian/).*",p).group(1)
+    #utils_path = p + 'utils'
+    #sys.path = [utils_path] + sys.path
+    from sam_reads import reads
+    from utils import *
+
 
 
 def main():
@@ -33,34 +50,38 @@ def main():
 
     # load global arguments
     out_prefix = ''
+    debug = False
 
     for n,i in enumerate(sys.argv):
         if i in ['--bed','-b','--bed-file']:
             bedfile = sys.argv[n+1]
-
         if i in ['--output', '-o']:
             out_prefix = sys.argv[n+1] + "."
-
         if i in ['-h','--help']:
             print(HELP)
             sys.exit(1)
+        if i in ['-d','--debug']:
+            debug = True
 
-    # define the name of the logging file for debugging
-    logFileName = out_prefix + 'intersections.log'
+    if debug:
+        # define the name of the logging file for debugging
+        logFileName = out_prefix + 'intersections.log'
 
-    # if debugging create this logfile    
-    logging.basicConfig(filename = logFileName,
-                        format = '%(asctime)s %(message)s',
-                        filemode = 'w')
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
+        # if debugging create this logfile    
+        logging.basicConfig(filename = logFileName,
+                            format = '%(asctime)s %(message)s',
+                            filemode = 'w')
+        logger = logging.getLogger()
+        logger.setLevel(logging.DEBUG)
 
     # load bed_file
     try:
         bed, bed_lens, total_bed_lens, bed_other_info = read_bed(bedfile)
-        logger.info('bedfile {} was succesfully read'.format(bedfile))
+        if debug:
+            logger.info('bedfile {} was succesfully read'.format(bedfile))
     except Exception as e:
-        logger.error('{} happened in excecution of read_bed in main()'.format(str(e)))
+        if debug:
+            logger.error('{} happened in excecution of read_bed in main()'.format(str(e)))
         exit("there was a problem reading {}. Make sure is tab delimited and all columns and rows are correct.")
 
     # to avoid going over the entire chromosome on each read,
@@ -96,7 +117,8 @@ def main():
         n_tester +=1
 
         if len(line) < 50:  # avoid potential empty lines at the end.
-            logger.warning('line {} had less than 50 characters'.format(n_tester))
+            if debug:
+                logger.warning('line {} had less than 50 characters'.format(n_tester))
             continue 
 
         # instantiate object "current_read"
@@ -115,11 +137,14 @@ def main():
 
             current_read = reads(_id, flag, chrom, start, mapq, cigar, _2, _3, tlen, seq, phred, tags)
 
+            #print(current_read.__dict__)        
+
             # assume read is not paired yet
             paired_read = None # assume there is no paired_read yet
 
         except Exception as e:
-            logger.error('read {} could\'t be loaded properly'.format(n_tester))
+            if debug:
+                logger.error('read {} could\'t be loaded properly'.format(n_tester))
             continue            
 
         # only consider uniquely mapped and proper pair
@@ -133,8 +158,9 @@ def main():
 
         # new chromosome -> zero bed_index!
         if current_read.chrom != last_chrom:
-            #logger.critical('This should ONLY happen ONCE!!! {} != {}'.format(current_read.chrom, last_chrom))
-            logger.info('still have {} reads in buffer for chromosome {}. Thrown to trash  --  {}'.format(len(buffer), last_chrom, n_tester))
+            if debug:
+                #logger.critical('This should ONLY happen ONCE!!! {} != {}'.format(current_read.chrom, last_chrom))
+                logger.info('still have {} reads in buffer for chromosome {}. Thrown to trash  --  {}'.format(len(buffer), last_chrom, n_tester))
             skip_chrom=False                    # in case this was on for the previous chromosome
             bed_index=0                         # new chromosome, new bed_index
             buffer = {}                         # restart buffer for the new chromosome
@@ -157,7 +183,8 @@ def main():
         # sanity check
         if paired_read != None: # TESTED
             if current_read.chrom != paired_read.chrom:
-                logger.warning('current_read and paired_read have different chromosomes = chimeras')
+                if debug:
+                    logger.warning('current_read and paired_read have different chromosomes = chimeras')
                 continue
 
         # Bam Block ====================================================================================== 
@@ -225,7 +252,7 @@ def main():
             current_read.intersect_seq = current_read.seq[:a].lower() + intersect + current_read.seq[b:].lower()
             b = b if b>=0 else current_read.seq_len+b
             current_read.junction = '{}.{};{}.{}'.format(a,b,bed[chrom][bed_index][0], bed[chrom][bed_index][1])
-            current_read.complement = b - a 
+            current_read.complement = current_read.seq_len - b + a   # len - (b-a) 
 
             #print(current_read.masked_seq)
 
@@ -247,7 +274,9 @@ def main():
 
             # Here include how many bases in the complementary region for both reads (this will also give us 
             # how many in the intersection regions indirectly)
+
             current_read.complement = current_read.complement + paired_read.complement
+            paired_read.complement = current_read.complement
         
             sam_output.append(paired_read.print('masked'))   # if masked_seq==None goes for 'original' by default.
             sam_output.append(current_read.print('masked'))  # same here!

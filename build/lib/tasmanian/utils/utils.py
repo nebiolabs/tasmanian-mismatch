@@ -1,8 +1,24 @@
 import numpy as np
-from tasmanian.utils.sam_reads import reads
 import logging 
-import sys,os
-sys.path.append(os.path.abspath('../'))
+import sys, os, re
+
+try:
+    from tasmanian.utils.sam_reads import reads
+except Exception:
+    # Either tests or base_dir, it's downstream of ../tasmanian/tasmanian/
+    p = os.path.abspath(os.path.dirname(__file__))
+    #p = re.search("(.*tasmanian/tasmanian/).*",p).group(1)
+    p_start = [i for i in re.finditer('/tasmanian',p)][-1].end()
+    p = p[:p_start]
+    utils_path = p + '/utils'
+    sys.path = [utils_path] + sys.path
+
+    #p = re.search("(.*tasmanian/tasmanian/).*",p).group(1)
+    #utils_path = p + 'utils'
+    #sys.path = [utils_path] + sys.path
+    from sam_reads import reads 
+
+#sys.path.append(os.path.abspath('../'))
 
 
 def read_bed(bedfile):

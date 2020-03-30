@@ -5,11 +5,13 @@ def readme():
         return f.read()
 
 setup(name='tasmanian missmatch analysis tool',
-      version='0.1.0',
+      version='0.1.101',
       description='Tasmanian tool to analyze mismatches at read and position in high throughput sequencing data',
+      long_description=readme(),
+      long_description_content_type="text/markdown",
       url='https://github.com/nebiolabs/tasmanian',
       author='Ariel Erijman and Brad Langhorst',
-      author_email='aerijman@neb.com'
+      author_email='aerijman@neb.com',
       license='GNU',
       packages=find_packages(), #['tasmanian'],
       install_requires=[

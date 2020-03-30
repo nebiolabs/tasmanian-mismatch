@@ -20,6 +20,11 @@ class reads:
 
         self.seq_len = len(seq)
         self.end = self.start + self.seq_len
+
+        # How many bases in the complement side of an intersection?
+        # if there is no intersection, complement will be length of the read.
+        self.complement = self.seq_len 
+
         self.extended_cigar = None
 
         # according to the category of the read, get 2 informative positions: a & b
@@ -59,10 +64,6 @@ class reads:
         # extra information to incorporate in the sam output file to correlate later 
         self.bed_extra_info = None
 
-        # How many bases in the complement side of an intersection?
-        # if there is no intersection, complement will be length of the read.
-        self.complement = self.seq_len
-
 
     def expand_cigar(self):
         ''' converts cigar into string to slice as needed'''
@@ -99,7 +100,7 @@ class reads:
 
         if self.category_positions == [None, None]: self.category_positions = ['nan','nan']
         categories = "categories " + ':'.join([str(i) for i in self.category_positions] + [str(self.category)])
-        self.tags = self.tags + '\ttm:Z:' + self.junction  + '\ttc:i:' + self.complement#tag + str(self.category) +' '+ self.junction
+        self.tags = self.tags + '\ttm:Z:' + self.junction  + '\ttc:i:' + str(self.complement)#tag + str(self.category) +' '+ self.junction
 
         try: 
             return '\t'.join([self._id, str(self.flag), self.chrom, str(self.start), 
