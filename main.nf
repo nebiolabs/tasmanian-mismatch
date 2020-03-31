@@ -65,13 +65,16 @@ else {
         output:
         file("*.{amb,ann,bwt,pac,sa}") into bwa_index
         
+        when:
+        params.mode == 'fastq'
+       
         shell:
         '''
         prefix=$(echo !{genome} | sed 's/fasta$//' | sed 's/fa$//')
-        files=$(ls ${prefix}* | grep -v "fasta$\\|fa$")
+        files=$(ls ${prefix}*)  # | grep -v "fasta$\\|fa$")
 
         ln -s ${files} . 
-        [ ! -e ${prefix}amb ] &&\
+        [[ ! -e ${prefix}amb && ! -e ${prefix}fa.amb && ! -e ${prefix}fasta.amb ]] &&\
             bwa index !{genome} -p ${prefix}
         '''
     }
