@@ -216,7 +216,7 @@ process Tasmanian {
     
     input:
     file(bam) from sub_bam
-    //file(bed) from file(params.bed)
+    file(bedfile) from file(params.bed)
     file(genome) from genome_file
     val(num_reads) from bam_lengths_list
 
@@ -232,6 +232,6 @@ process Tasmanian {
     else
     '''  
     name=$(echo !{bam} | sed 's/bam//')
-    samtools view !{bam} | head -n !{num_reads} | run_intersections -b !{params.bed} | run_tasmanian -r !{genome} >!{baseDir}/${name}.table.csv
+    samtools view !{bam} | head -n !{num_reads} | run_intersections -b !{bedfile} | run_tasmanian -r !{genome} >!{baseDir}/${name}.table.csv
     ''' 
 }
