@@ -4,8 +4,8 @@ def readme():
     with open('README.md') as f:
         return f.read()
 
-setup(name='tasmanian mismatch analysis tool',
-      version='0.1.1',
+setup(name='tasmanian-mismatch',
+      version='0.1.2',
       description='Tasmanian tool to analyze mismatches at read and position in high throughput sequencing data',
       long_description=readme(),
       long_description_content_type="text/markdown",
