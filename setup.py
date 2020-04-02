@@ -4,12 +4,12 @@ def readme():
     with open('README.md') as f:
         return f.read()
 
-setup(name='tasmanian missmatch analysis tool',
+setup(name='tasmanian mismatch analysis tool',
       version='0.1.1',
       description='Tasmanian tool to analyze mismatches at read and position in high throughput sequencing data',
       long_description=readme(),
       long_description_content_type="text/markdown",
-      url='https://github.com/nebiolabs/tasmanian',
+      url='https://github.com/nebiolabs/tasmanian-mismatch',
       author='Ariel Erijman and Brad Langhorst',
       author_email='aerijman@neb.com',
       license='GNU',
