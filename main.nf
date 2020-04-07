@@ -208,7 +208,7 @@ process subsample_bams {
     bam_name=$(echo !{name} | sed 's/bam$/subsampled\\.bam/')
     if [ !{length} -ne !{bam_len} ]; then
         size=$(echo "!{length} / !{bam_len} + 4" | bc -l)  ## added  +4 for the random integer in samtools
-        samtools view -s ${size} !{name} > ${bam_name}
+        samtools view -s ${size} -b !{name} > ${bam_name}
     else 
         ln -s !{name} $bam_name
     fi
