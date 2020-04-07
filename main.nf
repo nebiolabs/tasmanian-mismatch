@@ -19,7 +19,8 @@ params.outdir = "$baseDir/tasmanian_results"
 params.date = "Not deided yet"
 params.saveReference = false
 params.bed = ""
-
+params.boundary = "3"
+params.softclips = 0
 
 // understand if the input is fastq or bam. if Bam, flag to skip alignment
 params.mode = ( params.input =~/fastq/ ? 'fastq' : 'bam' )
@@ -27,14 +28,17 @@ params.mode = ( params.input =~/fastq/ ? 'fastq' : 'bam' )
 println """
     INPUTS PROVIDED:
     ================
-    reads: $params.input                | Bam or fastq are accepted. ACHTUNG: If not provided, ./data/fastq files are used 
-    genome: $params.genome              | If not provided, grch38 is downloaded
-    data saved in $params.outdir        | You will find results there
-    Bed file: $params.bed               | If not provided, Tasmanian-mismatch tables not splitted
+    reads: $params.input (Bam or fastq are accepted. ACHTUNG: If not provided, ./data/fastq files are used)
+    genome: $params.genome (If not provided, grch38 is downloaded)
+    data saved in $params.outdir (You will find results there)
+    Bed file: $params.bed (If not provided, Tasmanian-mismatch tables not splitted)
+    boundary: $params.boundary (default 3)
+    softclips: $params.softclips (default 0)
 """.stripIndent()
 
 // validate input files
-if ( ! file(params.input).exists() ) exit 1, "Missing input files"
+input_files = file(params.input)
+if ( input_files == [] ) exit 1, "Missing input files (--input | --genome | --bed | --outdir | --boundary | --softclips)"
 
 
 /*
@@ -225,6 +229,8 @@ process Tasmanian {
     file(bedfile) from file(params.bed)
     file(genome) from genome_file
     val(num_reads) from bam_lengths_list
+    val(boundary) from params.boundary
+    val(softclips) from params.softclips
 
     //output:
     shell:
@@ -232,12 +238,12 @@ process Tasmanian {
     if ( params.bed == "" )
     ''' 
     name=$(echo !{bam} | sed 's/bam//')
-    samtools view !{bam} | head -n !{num_reads} | run_tasmanian -r !{genome} >!{baseDir}/${name}.table.csv
+    samtools view !{bam} run_tasmanian -r !{genome} -c !{boundary} -s !{softclips} >!{baseDir}/${name}table.csv
     '''
     
     else
     '''  
     name=$(echo !{bam} | sed 's/bam//')
-    samtools view !{bam} | head -n !{num_reads} | run_intersections -b !{bedfile} | run_tasmanian -r !{genome} >!{baseDir}/${name}.table.csv
+    samtools view !{bam} | run_intersections -b !{bedfile} | run_tasmanian -r !{genome} -c !{boundary} -s !{softclips} >!{baseDir}/${name}table.csv
     ''' 
 }
