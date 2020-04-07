@@ -20,16 +20,22 @@ params.date = "Not deided yet"
 params.saveReference = false
 params.bed = ""
 
+
 // understand if the input is fastq or bam. if Bam, flag to skip alignment
 params.mode = ( params.input =~/fastq/ ? 'fastq' : 'bam' )
 
 println """
     INPUTS PROVIDED:
     ================
-    reads: $params.input
-    genome: $params.genome
-    data saved in $params.outdir
+    reads: $params.input                | Bam or fastq are accepted. ACHTUNG: If not provided, ./data/fastq files are used 
+    genome: $params.genome              | If not provided, grch38 is downloaded
+    data saved in $params.outdir        | You will find results there
+    Bed file: $params.bed               | If not provided, Tasmanian-mismatch tables not splitted
 """.stripIndent()
+
+// validate input files
+if ( ! file(params.input).exists() ) exit 1, "Missing input files"
+
 
 /*
         ========================================================
