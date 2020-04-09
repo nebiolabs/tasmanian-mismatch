@@ -183,7 +183,7 @@ def plot_html(table):
     </head>
     <body>
         <script type="text/javascript">
-           function normalize(id1, id2) {{
+           function toggle_normalize(id1, id2) {{
                var e = document.getElementById(id1);
                var f = document.getElementById(id2);
 
@@ -223,7 +223,7 @@ def plot_html(table):
             <div id='section_divPlotly1'>
               <h2 style="padding-left: 40px; padding-top: 90px;">Intersections</h2>
               <h3 style="padding-left: 40px; padding-right: 800; ">Includes all bases that intersect some fragment provided in the bed-file</h3>
-              <button class="button button1"; onclick="normalize('divPlotly1_norm', 'divPlotly1');">Counts/Normalize Counts</button>
+              <button class="button button1"; onclick="toggle_normalize('divPlotly1_norm', 'divPlotly1');">Counts/Normalize Counts</button>
               <div id='divPlotly1_norm'>
                 <script>
                     var plotly_data = {};
@@ -243,7 +243,7 @@ def plot_html(table):
             <div id='section_divPlotly2'>
               <h2 style="padding-left: 40px;padding-top: 60px;">Complements</h2>
               <h3 style="padding-left: 40px; padding-right: 800;">Includes all bases from that do not intersect a fragment, from reads that intersect a fragment provided in the bed-file</h3>
-              <button class="button button1"; onclick="normalize('divPlotly2_norm', 'divPlotly2');">Counts/Normalize Counts</button>
+              <button class="button button1"; onclick="toggle_normalize('divPlotly2_norm', 'divPlotly2');">Counts/Normalize Counts</button>
               <div id='divPlotly2_norm'>
                 <script>
                     var plotly_data = {};
@@ -263,7 +263,7 @@ def plot_html(table):
             <div id='section_divPlotly3'>
               <h2 style="padding-left: 40px;padding-top: 60px;">Non-intersections</h2>
               <h3 style="padding-left: 40px; padding-right: 800;">Includes all bases from reads with no intersections with the bed-file</h3>
-              <button class="button button1"; onclick="normalize('divPlotly3_norm', 'divPlotly3');">Counts/Normalize Counts</button>
+              <button class="button button1"; onclick="toggle_normalize('divPlotly3_norm', 'divPlotly3');">Counts/Normalize Counts</button>
               <div id='divPlotly3_norm'>
                 <script>
                     var plotly_data = {};
@@ -283,7 +283,7 @@ def plot_html(table):
               <div id='section_divPlotly4'>
               <h2 style="padding-left: 40px; padding-top: 90px;">Intersections confidence</h2>
               <h3 style="padding-left: 40px; padding-right: 800; ">Includes all bases that intersect some fragment provided in the bed-file in confidence reads</h3>
-              <button class="button button1"; onclick="normalize('divPlotly4_norm', 'divPlotly4');">Counts/Normalize Counts</button>
+              <button class="button button1"; onclick="toggle_normalize('divPlotly4_norm', 'divPlotly4');">Counts/Normalize Counts</button>
               <div id='divPlotly4_norm'>
                 <script>
                     var plotly_data = {};
@@ -303,7 +303,7 @@ def plot_html(table):
             <div id='section_divPlotly5'>
               <h2 style="padding-left: 40px; padding-top: 90px;">Complement confidence</h2>
               <h3 style="padding-left: 40px; padding-right: 800; ">Includes all complement bases in confidence reads</h3>
-              <button class="button button1"; onclick="normalize('divPlotly5_norm', 'divPlotly5');">Counts/Normalize Counts</button>
+              <button class="button button1"; onclick="toggle_normalize('divPlotly5_norm', 'divPlotly5');">Counts/Normalize Counts</button>
               <div id='divPlotly5_norm'>
                 <script>
                     var plotly_data = {};
