@@ -1,5 +1,5 @@
 <!--[![Build Status](https://travis-ci.org/fulcrumgenomics/fgbio.svg?branch=master)](https://travis-ci.org/fulcrumgenomics/fgbio)-->
-[![CircleCI](https://circleci.com/gh/nebiolabs/tasmanian/tree/master.svg?style=svg)](https://circleci.com/gh/nebiolabs/tasmanian/tree/master)
+![CircleCI](https://img.shields.io/circleci/build/github/nebiolabs/tasmanian-mismatch/master?token=bcde94f)
 [![Bioconda](https://img.shields.io/conda/dn/bioconda/fgbio.svg?label=Bioconda)](http://bioconda.github.io/recipes/fgbio/README.html)
 [![License](http://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/nebiolabs/tasmanian/blob/master/LICENSE)
 [![Language](https://img.shields.io/badge/Made%20with-Python-1f425f.svg)](https://www.python.org)
