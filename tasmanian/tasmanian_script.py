@@ -49,7 +49,9 @@ def analyze_artifacts(Input, Args):
         -g|--fragment-length (use fragments withi these lengths ONLY)
         -o|--output-prefix (use this prefix for the output and logging files)
         -c|--confidence (number of bases in the complement region of the read) 
-        -d|--debug (create a log file) 
+        -d|--debug (create a log file)
+        -t|--tag-sam (print sam file, containing precise tasmanian info in tag
+        -o|--output-prefix (prefix for the html output filename)
     """
 
     SKIP_READS = {
@@ -80,6 +82,17 @@ def analyze_artifacts(Input, Args):
     check_lengths_counter = 0
     confidence = 20
     debug = False
+    sam_tag = False
+
+    # define function to append info to read in tag if -t or --tag-sam option is valid
+    def append_tag(relation, read, read_pos, ref_pos, Base):
+        '''
+        tag_tmp is the variable to be completed
+        tag is the current base modification (if any)
+        '''
+        if ref_pos != Base:
+            return  "{}:{}:{}:{}:{}|".format(relation,read,read_pos,ref_pos,Base) 
+        return ''
 
     # if there are arguments get them
     for n,i in enumerate(Args):
@@ -115,6 +128,10 @@ def analyze_artifacts(Input, Args):
             confidence = int(sys.argv[n+1])
         if i in ['-d','--debug']:
             debug = True
+        if i in ['-t','--tag-sam']:
+            sam_tag = True
+            samOutFileName = sys.argv[n+1]
+            samOut = open(samOutFileName, 'w')
 
     if debug:
         # if debugging create this logfile    
@@ -308,6 +325,9 @@ def analyze_artifacts(Input, Args):
         # include complement and interections in differents tables
         
 
+        # initialize a tag-tmp variable to fill with info about the mismatches found in this read.
+        tag_tmp = line[:-1] + '\ttasmanian:'
+
 
         for pos,base in enumerate(seq):
 
@@ -329,32 +349,57 @@ def analyze_artifacts(Input, Args):
                     elif strand=='rev': 
                         ref_pos = revcomp(ref[pos])
                         Base = revcomp(base)
-                
+    
+                    Base = Base.upper()
+
                     #if pos == 0:
                     #    sys.stderr.write(seq[0], strand, ref_pos, Base)
 
                     if tm_tag[0] == -1:
                         assert base in ['A','C','G','T'], "{} should be upper case".format(base)
                         errors_unrelated[read][read_pos][ref_pos][Base] += 1
- 
+
+                        if sam_tag:
+                            tag_tmp += append_tag("unrelated", read, read_pos, ref_pos, Base)
+
                     elif pos >= tm_tag[0] and pos < tm_tag[1]:
                         assert base in ['a','c','t','g'], "{} should be lower case".format(base) 
                         if confidence_value >= confidence:
-                             errors_intersectionB[read][read_pos][ref_pos][Base.upper()] += 1
+
+                            if sam_tag:
+                                tag_tmp += append_tag("overlaps-confidence", read, read_pos, ref_pos, Base)
+
+                            errors_intersectionB[read][read_pos][ref_pos][Base] += 1
                         else:
-                            errors_intersection[read][read_pos][ref_pos][Base.upper()] += 1
+
+                            if sam_tag:
+                                tag_tmp += append_tag("overlaps", read, read_pos, ref_pos, Base)
+
+                            errors_intersection[read][read_pos][ref_pos][Base] += 1
 
                     else:
                         assert base in ['A','C','G','T'], "{} should be upper case".format(base)
                         if confidence_value >= confidence:
-                             errors_complementB[read][read_pos][ref_pos][Base.upper()] += 1
+
+                            if sam_tag:
+                                tag_tmp += append_tag("boundary-confidence", read, read_pos, ref_pos, Base)
+
+                            errors_complementB[read][read_pos][ref_pos][Base] += 1
                         else:
-                             errors_complement[read][read_pos][ref_pos][Base] += 1
+
+                            if sam_tag:
+                                tag_tmp += append_tag("boundary", read, read_pos, ref_pos, Base)
+                            
+                            errors_complement[read][read_pos][ref_pos][Base] += 1
 
                 except Exception as e:
                     if debug:
                         logger.warning('error:{} in chr:{}, position:{}, read:{}, base:{}, seq:{}, start:{} and ref_pos:{}'.format(\
                                                                     str(e), chrom, pos, read, base, ''.join(seq), start, ref[pos]))
+
+        # make sure there is at least one mismatch.
+        if sam_tag and tag_tmp[-10:] != 'tasmanian:':
+            samOut.write(tag_tmp+'\n')
 
     # fix tables on length
     READ_LENGTH = mode(check_lengths)[0][0]
@@ -433,7 +478,11 @@ def analyze_artifacts(Input, Args):
     #f = open('errors_'+randLogName+'.log','w',)
     #f.write('\n'.join(logging))
     #f.close()
-    
+
+    # ToDo: 1- Include reads that are the pair of the read included here.
+    #       2- Compain if no header is found (that might be done in a separate bash script?) 
+    #       3- convert sam into bam.
+    samOut.close()
     return table
 
 
@@ -447,6 +496,10 @@ if __name__=='__main__':
         Args = sys.argv
 
     # run tasmanian
+    if '-r' not in sys.argv and '--reference-fasta' not in sys.argv:
+        print('you MUST provide a reference genome with -r argument')
+        exit(1)
+    
     table = analyze_artifacts(sys.stdin, Args) 
 
     # avoid overrighting report file before saving.
@@ -456,7 +509,7 @@ if __name__=='__main__':
             report_filename = Args[n+1] + '.html'
 
     file_num = 0
-    while os.path.isfile(report_filename) and report_filename == 'Tasmanian_artifact_report.html':
+    while os.path.isfile(report_filename):
         file_num += 1
         report_filename = 'Tasmanian_artifact_report-' + str(file_num) + '.html'
 

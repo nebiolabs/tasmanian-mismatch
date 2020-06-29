@@ -6,3 +6,10 @@
 tasmanian/tests/*html
 ./tasmanian_venv/
 tasmanian_venv/*
+tasmanian/*sh 
+tasmanian/*nf 
+tasmanian/*indices 
+tasmanian/*jobs 
+new_results 
+tasmanian/*.sam 
+tasmanian/*fq
