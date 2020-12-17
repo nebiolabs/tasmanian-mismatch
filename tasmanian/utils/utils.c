@@ -20,7 +20,7 @@ char **split_line(char *line, char *delim, size_t *n_items){
 
     char *ptr = strtok(line, delim);
     while (ptr != NULL) {
-        results[*n_items] = malloc(150 * sizeof *results[0]);
+        results[*n_items] = malloc(150 * sizeof *results[0]);  // double check why did I use results[0]...?
         strcpy(results[*n_items], ptr);
         ptr = strtok(NULL, delim);
         *n_items = *n_items + 1;
@@ -48,3 +48,8 @@ bed_fragment_t new_fragment(char *line, char *delim) {
     }
     return bf; 
 }
+
+// chromosomes has keys=chromosome name
+// and values = 2d array [start, end]
+chromosome_coords_bed_t chromosomes;
+
