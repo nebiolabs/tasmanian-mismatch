@@ -35,7 +35,8 @@ bed_fragment_t new_fragment(char *line, char *delim);
 // with the data for rep-family -class -name and strand
 typedef struct chromosome_coords_bed{
     char *chrom; 
-    long int start, end;
+    long int (*start_end)[2];
+    size_t n_fragment;
 }chromosome_coords_bed_t;
 
 typedef struct bed_features{
@@ -43,5 +44,14 @@ typedef struct bed_features{
     char *rep_family, *rep_class, *rep_name, strand;
     UT_hash_handle hh; /* makes this structure hashable */
 }bed_features_t;
+
+// function generates a structure type chromosome_coords_bed_t
+// The structure has key=chromosome and values=array of start;end (2D)
+// the array (2D) is created in the heap to be extensible.
+// INPUT = int ROWS. These are initial values (realloc if needed)
+// OUTPUT= chromosome_coords_bed_t struct
+chromosome_coords_bed_t* create_chromosome(int ROWS);
+
+
 
 #endif

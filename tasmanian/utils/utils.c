@@ -51,5 +51,21 @@ bed_fragment_t new_fragment(char *line, char *delim) {
 
 // chromosomes has keys=chromosome name
 // and values = 2d array [start, end]
+chromosome_coords_bed_t* create_chromosome(int ROWS){
+    chromosome_coords_bed_t *chromosome = malloc(sizeof(chromosome_coords_bed_t) + sizeof(int *));
+    chromosomes->n_fragment = 0;
+    chromosome->start_end = malloc(sizeof(int[ROWS][2]);
+    // No need for initialization, as we keep the n_fragment
+    // index or counter.
+    // REMEMBER TO FREE THE HEAP!!!
+    return chromosomes;
+}
+
+void increase_chromosome(chromosome_coords_bed_t **chromosome){
+    *(chromosome)->start_end = (int *) realloc(*(chromosome)->start_end, sizeof(*(chromosome)->start_end) * 2);
+}
+
+
 chromosome_coords_bed_t chromosomes;
+chromosomes = 
 
