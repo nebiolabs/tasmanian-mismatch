@@ -58,10 +58,7 @@ int main(int argc, char** argv){
 	size_t n_characters=0, line_size=0;
 	char *non_numeric_part; // to be used in strtoul
 	bed_coords_t *s, *bed_coords = NULL;
-	//bed_coords = (bed_coords_t *) malloc(sizeof *bed_coords);
-	
-	bed_data_t *bed_data_tmp, *bed_data = NULL;
-
+	bed_data_t *s2, *bed_data = NULL;
 
 	while ((n_characters = getline(&line, &line_size, stdin)) != -1) {
 		if (line[n_characters - 1] == '\n') {
@@ -85,8 +82,9 @@ int main(int argc, char** argv){
 		char *rep_name = tokens[4];
 		char *strand   = tokens[5];	 		
 		char *rep_class= tokens[6];
+		char chrom_start_end[25]; 
 
-		printf("%s\t%ld\t%ld\t%s\t%s\t%s\n",chrom, start, end, rep_name, strand, rep_class);
+		//printf("%s\t%ld\t%ld\t%s\t%s\t%s\n",chrom, start, end, rep_name, strand, rep_class);
 
 		// if key exists in bed_coords, allocate memory for the arrays, start, stop in bed_data_.
 		s = (bed_coords_t *) malloc(sizeof *s);
@@ -94,9 +92,10 @@ int main(int argc, char** argv){
 
 		// if key is not yet in the hash table
 		if (s == NULL){
+			//free(s);
 			s = (bed_coords_t *) malloc(sizeof *s);
 			strcpy(s->chrom, chrom);
-			s->size = 10;
+			s->size = 10000;
         	s->start = (unsigned long int *) malloc(s->size * sizeof s->start[0]);
         	s->end   = (unsigned long int *) malloc(s->size * sizeof s->end[0]);
 			s->counter = 0;
@@ -106,9 +105,7 @@ int main(int argc, char** argv){
 		// if we need to allocate more memory for start and end arrays
 		else {
 			if (s->size == s->counter){
-				printf("size=%ld - counter=%ld",s->size, s->counter);
-				s->size = s->size + 10;
-				printf("size=%ld - counter=%ld",s->size, s->counter);
+				s->size = s->size + 1000;
 				s->start = realloc(s->start, s->size * sizeof (s->start[0]));
 				s->end = realloc(s->end, s->size * sizeof (s->end[0]));
 			}
@@ -116,43 +113,43 @@ int main(int argc, char** argv){
 			s->counter++;
 			s->start[ s->counter ] = start;
 			s->end[ s->counter ] = end;
-
-			printf("yeag!!!\n");
 		}
-/*
+/* */
+		//free(s);
 		s = (bed_coords_t *) malloc(sizeof *s);
 		HASH_FIND_STR(bed_coords, chrom, s);
 		printf("%ld - %zd -- ",s->start[s->counter-1], s->counter-1);
 
-		a = (bed_coords_t *) malloc(sizeof *s);
+		//free(s);
+		s = (bed_coords_t *) malloc(sizeof *s);
 		HASH_FIND_STR(bed_coords, chrom, s);
 		printf("%ld",s->start[5]);
-*/
+/* */
+		// FILL BED_DATA SECTION
+		s2 = (bed_data_t *) malloc(sizeof *s2);
+		sprintf(chrom_start_end, "%s%s%ld%s%ld", chrom, "_", start,"_", end);
+		strcpy(s2->chrom_start_end, chrom_start_end);
+		strcpy(s2->rep_class_family, rep_class);
+		strcpy(s2->rep_name, rep_name);
+		strcpy(s2->strand, strand);
+		HASH_ADD_STR(bed_data, chrom_start_end, s2);
 
-/*
-		bed_coords_tmp = (bed_coords_t *)malloc(sizeof *bed_coords_tmp);
-		bed_data_tmp   = (bed_data_t *)  malloc(sizeof *bed_data_tmp);		
+		//free(s2);
+		s2 = (bed_data_t *) malloc(sizeof *s2);
+		HASH_FIND_STR(bed_data, chrom_start_end, s2);
+		printf("\n\n%s ********************************************\n",s2->rep_class_family);
 
-
-		sprintf(bed_data_tmp->chrom_start_end, "%s%s%s%s%s", bed_coords_tmp->chrom, "_", start,"_", end);
-		bed_coords_tmp->start = (unsigned long int *) strtoul(start, &non_numeric_part, 10);
-		//bed_coords_tmp->end = (unsigned long int *) strtoul(end, &non_numeric_part, 10);
-
-		printf("RRRRRRRRRRRRRRRRRRR %s RRRRRRRRRRRRRRRR\n", start); //bed_coords_tmp->start);
-
-		//printf("%s \n", bed_data_tmp->chrom_start_end);
-
-		//HASH_ADD_STR(bed_coords, bed_coords_tmp->chrom, bed_coords_tmp);
-		//HASH_ADD_STR(bed_data, bed_data_tmp->chrom_start_end, bed_data_tmp);
-
-			for  (int i=0;i<n;i++){
-				printf("\n%s, %d\n", tokens[i],i);
-				free(tokens[i]);
-			}
-			free(tokens);
-			//printf("%s is %zu characters long", line, n_characters);
-*/
+		// FREE MEMORY SECTION
+		for  (int i=0;i<n;i++){
+			printf("\n%s, %d\n", tokens[i],i);
+			free(tokens[i]);
 		}
+		free(tokens);
+		//free(s);
+		//free(s2);
+		//printf("%s is %zu characters long", line, n_characters);
+
+	}
 
 	return(0);
 }
