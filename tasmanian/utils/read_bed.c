@@ -60,7 +60,8 @@ int counter=0;
 	char *non_numeric_part; // to be used in strtoul
 	bed_coords_t *s, *bed_coords = NULL;
 	bed_data_t *s2, *bed_data = NULL;
-
+	char **tokens;
+	size_t n=0; // legacy. THere is no need for this variable any more.
 
 	s = (bed_coords_t *) malloc(sizeof *s);
 	s2 = (bed_data_t *) malloc(sizeof *s2);
@@ -73,13 +74,25 @@ int counter=0;
 		if (strlen(line) < 10) continue;
 
 		// split the line into tokens separated by "\t"
-		char **tokens;
-		size_t n=0;
 		tokens = split(line, &n, "\t");
-	
+
+
+		printf("%s and %s", tokens[1], tokens[2]);
+		printf("===> %ld\n", strlen(line));
+		for (int i=0; i<n; i++){
+			printf("--> %s\n",tokens[i]);
+		}
+		printf("%d--- %d\n", !isNumeric(tokens[1]), !isNumeric(tokens[2]));
+
 		// title should be skiped
 		if (!isNumeric(tokens[1]) || !isNumeric(tokens[2])) continue;
-	
+
+
+
+		printf("TEST HERE\n");
+
+
+
 		char chrom[10]; strcpy(chrom,tokens[0]);
 		unsigned long int start = strtoul(tokens[1], &non_numeric_part, 10);
 		unsigned long int end   = strtoul(tokens[2], &non_numeric_part, 10);
@@ -118,7 +131,9 @@ int counter=0;
 			s->start[ s->counter ] = start;
 			s->end[ s->counter ] = end;
 		}
-
+		memset(tokens,0,sizeof(tokens));
+		memset(&s, 0, sizeof s);
+		memset(&s2, 0, sizeof s2);
 /*		//free(s);
 		s = (bed_coords_t *) malloc(sizeof *s);
 		HASH_FIND_STR(bed_coords, chrom, s);
@@ -148,7 +163,7 @@ counter++;
 
 	// FREE MEMORY SECTION
 	for  (int i=0;i<n;i++){
-		printf("\n%d:\t%s, %d\n", counter, tokens[i],i);
+		//printf("\n%d:\t%s, %d\n", counter, tokens[i],i);
 		free(tokens[i]);
 	}
 	free(tokens);
