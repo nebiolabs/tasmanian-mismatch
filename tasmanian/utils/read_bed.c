@@ -52,7 +52,7 @@ bool isNumeric(const char *str){
 }
 
 
-int main(int argc, char** argv){
+int main(int argc, char** argv){	
 
 	char *line=NULL;
 	size_t n_characters=0, line_size=0;
@@ -114,8 +114,8 @@ int main(int argc, char** argv){
 			s->start[ s->counter ] = start;
 			s->end[ s->counter ] = end;
 		}
-/* */
-		//free(s);
+
+/*		//free(s);
 		s = (bed_coords_t *) malloc(sizeof *s);
 		HASH_FIND_STR(bed_coords, chrom, s);
 		printf("%ld - %zd -- ",s->start[s->counter-1], s->counter-1);
@@ -124,7 +124,7 @@ int main(int argc, char** argv){
 		s = (bed_coords_t *) malloc(sizeof *s);
 		HASH_FIND_STR(bed_coords, chrom, s);
 		printf("%ld",s->start[5]);
-/* */
+*/
 		// FILL BED_DATA SECTION
 		s2 = (bed_data_t *) malloc(sizeof *s2);
 		sprintf(chrom_start_end, "%s%s%ld%s%ld", chrom, "_", start,"_", end);
@@ -134,11 +134,11 @@ int main(int argc, char** argv){
 		strcpy(s2->strand, strand);
 		HASH_ADD_STR(bed_data, chrom_start_end, s2);
 
-		//free(s2);
+/*		//free(s2);
 		s2 = (bed_data_t *) malloc(sizeof *s2);
 		HASH_FIND_STR(bed_data, chrom_start_end, s2);
 		printf("\n\n%s ********************************************\n",s2->rep_class_family);
-
+*/
 		// FREE MEMORY SECTION
 		for  (int i=0;i<n;i++){
 			printf("\n%s, %d\n", tokens[i],i);
@@ -150,6 +150,5 @@ int main(int argc, char** argv){
 		//printf("%s is %zu characters long", line, n_characters);
 
 	}
-
 	return(0);
 }
