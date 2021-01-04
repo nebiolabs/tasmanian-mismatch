@@ -3,21 +3,24 @@
 #include <string.h>
 
 
-void split(char *in, size_t *n, char *delimiter, char ***ptokens){
+char **split (char *in, size_t *num_tokens, char *delimiter){
 	if (delimiter == NULL) delimiter="\t"; // default
-	
-	char tokens[20][20]; // = malloc(20 * sizeof(char*));
 
-	char *token = strtok(in, delimiter);
-	while (token != NULL) {
-		//tokens[*n] = malloc(30 * sizeof(char*)); // <- why not *tokens[0]
-		strcpy(tokens[*n], token);
-    	(*n)++;
-		token = strtok(NULL, "\t");
+	size_t token_size=1;	
+	*num_tokens=0;
+	for (char *token=strtok(in,delimiter); token; token=strtok(NULL,delimiter)){
+		(*num_tokens)++;
 	}
-	
-	*ptokens = tokens;
+
+	char **tokens = malloc(*num_tokens * sizeof(*tokens));
+	char *token = in;
+	for (size_t i=0; i < *num_tokens;i++){
+		tokens[i] = token;
+		token += strlen(token) + 1;
+	}
+	return tokens;
 }
+
 
 int main(int argc, char** argv){
 	FILE *fp;
@@ -27,7 +30,6 @@ int main(int argc, char** argv){
 	printf("abriendo %s",argv[0]);	
 
 	char **tokens;
-	*tokens = malloc(20 * sizeof *tokens);
 	char *line=NULL;
 	size_t n_characters, line_size=0;
 	size_t n=0;
@@ -36,12 +38,17 @@ int main(int argc, char** argv){
 			line[n_characters - 1] = 0;
 		}
 
-		split(line, &n, "\t", &tokens);
+		tokens = split(line, &n, "\t");
 
-		n++;
 		printf("%ld -> %s\n", n, line);
+		for (int i=0; i<n;i++){
+			printf("\t%s",tokens[i]);
+		}
+		printf("\n");
+		//free(tokens);
+		memset(&tokens,0,sizeof tokens);
 	}
 	fclose(fp);
-	
+	free(tokens);
 	return 0;
 }

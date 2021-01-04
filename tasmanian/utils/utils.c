@@ -13,59 +13,33 @@ void free_buffer(char **buffer){
     free(buffer);
 }
 
-char **split_line(char *line, char *delim, size_t *n_items){
-    if (delim == NULL) delim = "\t"; // default is tab delimited
-    char **results = malloc(15 * sizeof *results);
-    *n_items=0;
+// look https://stackoverflow.com/questions/65526234/
+// function-in-c-referencing-memory-externally-allocated
+char **split (char *in, size_t *num_tokens, char *delimiter){
+    if (delimiter == NULL) delimiter="\t"; // default
 
-    char *ptr = strtok(line, delim);
-    while (ptr != NULL) {
-        results[*n_items] = malloc(150 * sizeof *results[0]);  // double check why did I use results[0]...?
-        strcpy(results[*n_items], ptr);
-        ptr = strtok(NULL, delim);
-        *n_items = *n_items + 1;
+    size_t token_size=1;
+    *num_tokens=0;
+    for (char *token=strtok(in,delimiter); token; token=strtok(NULL,delimiter)){
+        (*num_tokens)++;
     }
-    return results;
-}
-
-bed_fragment_t new_fragment(char *line, char *delim) {
-    bed_fragment_t bf;
-    if (delim == NULL) delim = "\t"; // default is tab separated values
-    int n=0;
-
-    // The order should be: chrom, start, end, strand, rep_name, rep_class, rep_family
-    char *ptr = strtok(line, delim);
-    while (ptr != NULL) {
-        if (n==0) strcpy(bf.chrom, ptr);
-        else if (n==1) bf.start = strtol(ptr, (char** )NULL, 10);
-        else if (n==2) bf.end = strtol(ptr, (char** )NULL, 10);
-        else if (n==3) strcpy(bf.strand, ptr);
-        else if (n==4) strcpy(bf.rep_name, ptr);
-        else if (n==5) strcpy(bf.rep_class, ptr);
-        else if (n==6) strcpy(bf.rep_family, ptr);
-        n++;
-        ptr = strtok(NULL, delim);
+	// double loop to allocate the EXACT needed memory 
+    char **tokens = malloc(*num_tokens * sizeof(*tokens));
+    char *token = in;
+    for (size_t i=0; i < *num_tokens;i++){
+        tokens[i] = token;
+        token += strlen(token) + 1;
     }
-    return bf; 
+    return tokens;
 }
 
-// chromosomes has keys=chromosome name
-// and values = 2d array [start, end]
-chromosome_coords_bed_t* create_chromosome(int ROWS){
-    chromosome_coords_bed_t *chromosome = malloc(sizeof(chromosome_coords_bed_t) + sizeof(int *));
-    chromosomes->n_fragment = 0;
-    chromosome->start_end = malloc(sizeof(int[ROWS][2]);
-    // No need for initialization, as we keep the n_fragment
-    // index or counter.
-    // REMEMBER TO FREE THE HEAP!!!
-    return chromosomes;
+bool isNumeric(const char *str){
+	while (*str != '\0') {
+		if (*str<'0' || *str>'9'){
+			return false;
+		}
+		str++;
+	}
+	return true;
 }
-
-void increase_chromosome(chromosome_coords_bed_t **chromosome){
-    *(chromosome)->start_end = (int *) realloc(*(chromosome)->start_end, sizeof(*(chromosome)->start_end) * 2);
-}
-
-
-chromosome_coords_bed_t chromosomes;
-chromosomes = 
 
