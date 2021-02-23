@@ -10,7 +10,7 @@ import logging, uuid
 from scipy.stats import mode
 
 try:
-    from tasmanian.utils.utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table
+    from tasmanian.utils.utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table, summarize_table
     from tasmanian.utils.plot import plot_html
 except Exception as e: #ImportError: #ModuleNotFoundError:
     # Either tests or base_dir, it's downstream of ../tasmanian/tasmanian/
@@ -21,7 +21,7 @@ except Exception as e: #ImportError: #ModuleNotFoundError:
     utils_path = p + '/utils'
     sys.path = [utils_path] + sys.path
 
-    from utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table
+    from utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table, summarize_table
     from plot import plot_html
 
 ###############################################################################
@@ -49,7 +49,8 @@ def analyze_artifacts(Input, Args):
         -g|--fragment-length (use fragments withi these lengths ONLY)
         -o|--output-prefix (use this prefix for the output and logging files)
         -c|--confidence (number of bases in the complement region of the read) 
-        -d|--debug (create a log file) 
+        -d|--debug (create a log file)
+        -z|--include-summary (will include a table sumarising values of mismathes with read and positions summed-up)
     """
 
     SKIP_READS = {
@@ -80,6 +81,7 @@ def analyze_artifacts(Input, Args):
     check_lengths_counter = 0
     confidence = 20
     debug = False
+    summarize = False
 
     # if there are arguments get them
     for n,i in enumerate(Args):
@@ -115,6 +117,12 @@ def analyze_artifacts(Input, Args):
             confidence = int(sys.argv[n+1])
         if i in ['-d','--debug']:
             debug = True
+        if i in ['-z','--include-summary']:
+            summarize = True
+            try:
+                summary_filename = sys.argv[n+1]
+            except Exception as e:
+                sys.exit("option -z|--include-summary should proceed the summary filename of your choice!")
 
     if debug:
         # if debugging create this logfile    
@@ -433,6 +441,8 @@ def analyze_artifacts(Input, Args):
     #f = open('errors_'+randLogName+'.log','w',)
     #f.write('\n'.join(logging))
     #f.close()
+    if summarize:
+        summarize_table(table,"summary_filename")
     
     return table
 
@@ -456,7 +466,7 @@ if __name__=='__main__':
             report_filename = Args[n+1] + '.html'
 
     file_num = 0
-    while os.path.isfile(report_filename) and report_filename == 'Tasmanian_artifact_report.html':
+    while os.path.isfile(report_filename): # and report_filename == 'Tasmanian_artifact_report.html':
         file_num += 1
         report_filename = 'Tasmanian_artifact_report-' + str(file_num) + '.html'
 
@@ -465,4 +475,5 @@ if __name__=='__main__':
 
     with open(report_filename, 'w') as f:
         f.write(report_html)
+    
 

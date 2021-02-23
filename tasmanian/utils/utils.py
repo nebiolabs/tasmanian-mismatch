@@ -246,3 +246,30 @@ proper_flags = {
     163:'second rev'
 }
 
+
+def summarize_table(table, filename):
+
+    f = open(filename,"w")
+
+    r={}
+    for k in table.keys():
+        d = table[k]
+
+        cols = d.columns[2:]
+        new_cols = [i.upper() for i in cols]
+
+        R1 = d.loc[d['read']==1, cols].sum(axis=0)
+        R2 = d.loc[d['read']==2, cols].sum(axis=0)
+
+        R = R1+R2
+
+        alts = np.hstack([R[i:i+4].values for i in [0,4,8,12]])
+        refs = np.hstack([4*[R[i:i+4].sum()] for i in [0,4,8,12]])
+
+        results = np.array([i/j if j!=0 else np.nan for i,j in zip(alts,refs)])
+
+        f.write("\n"+k+"\n"+''.join(["="]*60)+'\n')
+        f.write("{}\t{}\t{}\t{}\n".format('mismatch', 'ref_count', 'alt_count','rate'))
+
+        for i,j,K,l in zip(new_cols, refs, alts, results):
+            f.write("{}\t{}\t{}\t{:.6f}\n".format(i,j,K,l))
