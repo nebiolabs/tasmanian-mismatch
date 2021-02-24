@@ -93,6 +93,7 @@ void bed_to_struct(FILE *bedfile, bed_coords_t **coords, bed_data_t **data){
 	//printf("\nadd***%p***ADD\n", *coords);
 }
 
+/*
 int main(int argc, char **argv) {
 	FILE *bedfile;
 	bed_coords_t *coords;
@@ -105,15 +106,16 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "file %s not found. Aborting!\n", argv[1]);
 		return 0;
 	}
-	/*
+	//////
 	printf("\nadd***%p***ADD..%zu\n",coords, coords->counter);
 	bed_coords_t *ss;
 	HASH_FIND_STR(coords, "chr1", ss);
 	printf("%ld - %zd -- ",ss->start[10], ss->size);
-	*/
+	//////
 	free(coords->start);
 	free(coords->end);
 	
 	fclose(bedfile);
 	return 0;
 }
+*/
