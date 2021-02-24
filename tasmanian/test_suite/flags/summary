@@ -1,0 +1,41 @@
+#!/usr/bin/env python
+
+import pandas
+import numpy as np
+import sys
+
+filename = sys.argv[1]
+d = pandas.read_csv(filename, sep=',')
+cols = [i for i in d.columns if i[0]=="N"]
+new_cols = [i.replace("N","").replace("_","->").upper() for i in cols]
+
+R1 = d.loc[d['read']==1, cols].sum(axis=0)
+R2 = d.loc[d['read']==2, cols].sum(axis=0)
+
+R = R1+R2
+
+Rpicard = {
+    'AA': R[['Na_a','Nt_t']].sum(),
+    'CC': R[['Nc_c','Ng_g']].sum(),
+    'AT': R[['Na_t','Nt_a']].sum(),
+    'AC': R[['Na_c','Nt_g']].sum(),
+    'AG': R[['Na_g','Nt_c']].sum(),
+    'CT': R[['Nc_t','Ng_a']].sum(),
+    'CA': R[['Nc_a','Ng_t']].sum(),
+    'CG': R[['Nc_g','Ng_c']].sum()
+    }
+
+for q,w in zip(['A']*3 + ['C']*3, ['C','G','T','A','G','T']):
+    ref = Rpicard[q+q]
+    alt = Rpicard[q+w]
+    sys.stderr.write('{}\t{}\t{}\t{}\t{}\t{:.6f}\n'.format(q ,w, q+">"+w, ref, alt, alt/(alt+ref)))
+
+alts = np.hstack([R[i:i+4].values for i in [0,4,8,12]])
+refs = np.hstack([4*[R[i:i+4].sum()] for i in [0,4,8,12]])
+
+results = alts/refs
+
+print("{}\t{}\t{}\t{}".format('mismatch', 'ref_count', 'alt_count','rate'))
+
+for i,j,k,l in zip(new_cols, refs, alts, results):
+    print("{}\t{}\t{}\t{:.6f}".format(i,j,k,l))

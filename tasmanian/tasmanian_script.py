@@ -51,6 +51,7 @@ def analyze_artifacts(Input, Args):
         -c|--confidence (number of bases in the complement region of the read) 
         -d|--debug (create a log file)
         -z|--include-summary (will include a table sumarising values of mismathes with read and positions summed-up)
+        -U|--include_mate_unmapped (Consider reads whose pair is unmapped. Default=False)
     """
 
     SKIP_READS = {
@@ -82,6 +83,7 @@ def analyze_artifacts(Input, Args):
     confidence = 20
     debug = False
     summarize = False
+    include_mate_unmapped = False
 
     # if there are arguments get them
     for n,i in enumerate(Args):
@@ -123,6 +125,8 @@ def analyze_artifacts(Input, Args):
                 summary_filename = sys.argv[n+1]
             except Exception as e:
                 sys.exit("option -z|--include-summary should proceed the summary filename of your choice!")
+        if i in ['-U','--include_mate_unmapped']:
+            include_mate_unmapped = True
 
     if debug:
         # if debugging create this logfile    
@@ -293,6 +297,17 @@ def analyze_artifacts(Input, Args):
             strand='rev'; read=1
         elif flag==147: 
             strand='rev'; read=2
+
+        elif include_mate_unmapped: 
+            if flag==73:
+                strand='fwd'; read=1
+            elif flag==89:
+                strand='rev'; read=1
+            elif flag==153:
+                strand='rev'; read=2
+            elif flag==137:
+                strand='fwd'; read=2
+
         else: continue
 
         # At this point only accepted reads are analyzed. incorporate the fist X read length and later get mode
