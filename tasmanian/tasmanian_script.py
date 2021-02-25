@@ -457,7 +457,7 @@ def analyze_artifacts(Input, Args):
     #f.write('\n'.join(logging))
     #f.close()
     if summarize:
-        summarize_table(table,"summary_filename")
+        summarize_table(table,summary_filename)
     
     return table
 
