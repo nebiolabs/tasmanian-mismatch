@@ -39,8 +39,8 @@ Rpicard = {
 for q,w in zip(['A']*3 + ['C']*3, ['C','G','T','A','G','T']):
     alt = Rpicard[q+w]
     ref = Rpicard[q+q] 
-    ref = 1 if alt==0 and ref==0 else ref # avoid dividing by zero.
-    sys.stderr.write('{}\t{}\t{}\t{}\t{}\t{:.6f}\n'.format(q ,w, q+">"+w, ref, alt, alt/(alt+ref)))
+    tot = 1 if alt==0 and ref==0 else ref+alt # avoid dividing by zero.
+    sys.stderr.write('{}\t{}\t{}\t{}\t{}\t{:.6f}\n'.format(q ,w, q+">"+w, ref, alt, alt/tot))
 '''
 alts = np.hstack([R[i:i+4].values for i in [0,4,8,12]])
 refs = np.hstack([4*[R[i:i+4].sum()] for i in [0,4,8,12]])
