@@ -34,7 +34,11 @@ bash bwa_and_RG.sh <(cat original_read2.fastq | sed 's/2:N:0:/1:N:0:/')\
 
 # SOFTCLIPS
 # =========
-# Included in the mutation files
+bash bwa_and_RG.sh <(cat original_read1.fastq | sed 's/AAGTGAGCTAG/GATTGTGCTAG/') original_read2.fastq soft_clip.read1.3-6.fwd.bam # 3/6 muts
+bash bwa_and_RG.sh <(cat original_read1.fastq | sed 's/AAGTGAGCTAG/GAGTGATTTAG/') original_read2.fastq soft_clip.read1.3-9.fwd.bam # 3/9 muts
+bash bwa_and_RG.sh <(cat original_read1.fastq | sed 's/AAGTGAGCTAG/GATTGAGCTAC/') original_read2.fastq soft_clip.read1.3-12.fwd.bam # 3/12 muts
+#bash bwa_and_RG.sh original_read1.fastq <(cat original_read2.fastq | sed 's/GAGCTTGCTTTG/GCGTTTGCTTTG/') soft_clip.read2.rev.bam # 
+
 
 # FLAGS
 # =====
