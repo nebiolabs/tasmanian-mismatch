@@ -1,4 +1,4 @@
-#!/bin/python
+#!/usr/bin/env python
 
 # TODO: add context nucleotides? 
 
@@ -50,7 +50,7 @@ def analyze_artifacts(Input, Args):
         -o|--output-prefix (use this prefix for the output and logging files)
         -c|--confidence (number of bases in the complement region of the read) 
         -d|--debug (create a log file)
-        -o|--ont (this is ONT data)
+        -O|--ont (this is ONT data)
     """
 
     SKIP_READS = {
@@ -117,7 +117,7 @@ def analyze_artifacts(Input, Args):
             confidence = int(sys.argv[n+1])
         if i in ['-d','--debug']:
             debug = True
-        if i in ['-o','--ont']:
+        if i in ['-O','--ont']:
             ONT = True
             READ_LENGTH=100000
             MAX_LENGTH=100000
@@ -290,11 +290,11 @@ def analyze_artifacts(Input, Args):
             pass
 
         # if bin(int(flag))[2:][-5]=='1' or make it easy for now...
-        if flag==99 or (ont and flag in [0, 2048]): # for ont, not considering "secondary alignments", only "supp"
+        if flag==99 or (ONT and flag in [0, 2048]): # for ont, not considering "secondary alignments", only "supp"
             strand='fwd'; read=1
         elif flag==163: 
             strand='fwd'; read=2
-        elif flag==83 or (ont and flag in [16, 2064]):
+        elif flag==83 or (ONT and flag in [16, 2064]):
             strand='rev'; read=1
         elif flag==147: 
             strand='rev'; read=2
