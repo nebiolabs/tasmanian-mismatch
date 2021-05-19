@@ -49,7 +49,8 @@ def analyze_artifacts(Input, Args):
         -g|--fragment-length (use fragments withi these lengths ONLY)
         -o|--output-prefix (use this prefix for the output and logging files)
         -c|--confidence (number of bases in the complement region of the read) 
-        -d|--debug (create a log file) 
+        -d|--debug (create a log file)
+        -o|--ont (this is ONT data)
     """
 
     SKIP_READS = {
@@ -80,6 +81,7 @@ def analyze_artifacts(Input, Args):
     check_lengths_counter = 0
     confidence = 20
     debug = False
+    ONT = False
 
     # if there are arguments get them
     for n,i in enumerate(Args):
@@ -115,6 +117,13 @@ def analyze_artifacts(Input, Args):
             confidence = int(sys.argv[n+1])
         if i in ['-d','--debug']:
             debug = True
+        if i in ['-o','--ont']:
+            ONT = True
+            READ_LENGTH=100000
+            MAX_LENGTH=100000
+            TLEN=np.array([0,100000])
+            check_lengths = [READ_LENGTH]
+
 
     if debug:
         # if debugging create this logfile    
@@ -262,6 +271,10 @@ def analyze_artifacts(Input, Args):
                 
                 elif i=='D':
                     ref_idx[position:position+number]=0
+                
+                elif i=='H':
+                    ref_idx[position:position+number]=0
+                    seq_idx[position:position+number]=0
 
                 position += number
                 last = current+1
@@ -277,11 +290,11 @@ def analyze_artifacts(Input, Args):
             pass
 
         # if bin(int(flag))[2:][-5]=='1' or make it easy for now...
-        if flag==99: 
+        if flag==99 or (ont and flag in [0, 2048]): # for ont, not considering "secondary alignments", only "supp"
             strand='fwd'; read=1
         elif flag==163: 
             strand='fwd'; read=2
-        elif flag==83:
+        elif flag==83 or (ont and flag in [16, 2064]):
             strand='rev'; read=1
         elif flag==147: 
             strand='rev'; read=2
