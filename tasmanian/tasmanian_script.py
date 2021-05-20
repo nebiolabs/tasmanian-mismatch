@@ -122,7 +122,7 @@ def analyze_artifacts(Input, Args):
             READ_LENGTH=100000
             MAX_LENGTH=100000
             TLEN=np.array([0,100000])
-            check_lengths = [READ_LENGTH]
+            check_lengths = READ_LENGTH
 
 
     if debug:
@@ -301,9 +301,11 @@ def analyze_artifacts(Input, Args):
         else: continue
 
         # At this point only accepted reads are analyzed. incorporate the fist X read length and later get mode
-        if check_lengths_counter < 100:
+        if check_lengths_counter and not ONT< 100:
             check_lengths.append(seq_len)
             check_lengths_counter +=1
+        elif seq_len > check_lengths: # If ONT, check_lengths is a number not a list
+            check_lengths = seq_len # THIS IS SAFE: if read length is > TLEN, it will be discarded
 
         if _UNMASK_GENOME: 
             ref = ''.join(ref).upper() # re-think before doing this.
@@ -370,7 +372,7 @@ def analyze_artifacts(Input, Args):
                                                                     str(e), chrom, pos, read, base, ''.join(seq), start, ref[pos]))
 
     # fix tables on length
-    READ_LENGTH = mode(check_lengths)[0][0]
+    READ_LENGTH = mode(check_lengths)[0][0] if not ONT else check_lengths
     #READ_LENGTH = np.max(check_lengths)
     
     if debug:
