@@ -301,7 +301,7 @@ def analyze_artifacts(Input, Args):
         else: continue
 
         # At this point only accepted reads are analyzed. incorporate the fist X read length and later get mode
-        if check_lengths_counter and not ONT< 100:
+        if check_lengths_counter<100 and not ONT:
             check_lengths.append(seq_len)
             check_lengths_counter +=1
         elif seq_len > check_lengths: # If ONT, check_lengths is a number not a list
