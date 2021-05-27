@@ -374,7 +374,7 @@ def analyze_artifacts(Input, Args):
                     # write somewhere read_id, flag(read-number + strand), 
                     # read_position, chrom, genomic-position, mismatch-type.
                     if debug:
-                        if ref_pos != Base:
+                        if ref_pos != Base and Base in ['A','C','T','G']:
                             sys.stderr.write('{},{},{},{},{},{},{}\n'.format(read_id, flag, read_pos, chrom, pos+start, ref_pos, Base))
 
                 except Exception as e:
