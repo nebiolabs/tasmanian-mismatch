@@ -51,6 +51,7 @@ def analyze_artifacts(Input, Args):
         -c|--confidence (number of bases in the complement region of the read) 
         -d|--debug (create a log file)
         -O|--ont (this is ONT data)
+        -p|--picard-logic (normalize tables based on picard CollectSequencingArtifactMetrics logic)
     """
 
     SKIP_READS = {
@@ -82,6 +83,7 @@ def analyze_artifacts(Input, Args):
     confidence = 20
     debug = False
     ONT = False
+    picard = False
 
     # if there are arguments get them
     for n,i in enumerate(Args):
@@ -123,6 +125,8 @@ def analyze_artifacts(Input, Args):
             MAX_LENGTH=100000
             TLEN=np.array([0,100000])
             check_lengths = READ_LENGTH
+        if i in ['-p','--picard-logic']:
+            picard = True
 
 
     if debug:
@@ -175,7 +179,7 @@ def analyze_artifacts(Input, Args):
         if line[0]=="@":
             continue
 
-        _, flag, chrom, start, mapq, cigar, _, _, tlen, seq, phred = line.split('\t')[:11]
+        read_id, flag, chrom, start, mapq, cigar, _, _, tlen, seq, phred = line.split('\t')[:11]
 
         # If sam data does not have the tasmanian tag, there is no intersection with bed and proceed to a single output table
         if bed_tag_counter<10 and bed_tag==False:
@@ -365,6 +369,12 @@ def analyze_artifacts(Input, Args):
                              errors_complementB[read][read_pos][ref_pos][Base.upper()] += 1
                         else:
                              errors_complement[read][read_pos][ref_pos][Base] += 1
+                    
+                    # write somewhere read_id, flag(read-number + strand), 
+                    # read_position, chrom, genomic-position, mismatch-type.
+                    if debug:
+                        if ref_pos != Base:
+                            sys.stderr.write('{},{},{},{},{}\n'.format(read_id, flag, read_pos, chrom, pos+start, ref_pos, Base))
 
                 except Exception as e:
                     if debug:
@@ -463,6 +473,17 @@ if __name__=='__main__':
 
     # run tasmanian
     table = analyze_artifacts(sys.stdin, Args) 
+
+    # print results
+    table_print = pd.concat(
+        [i if n==0 else i.iloc[:,2:] for n,i in enumerate(table.values())]
+        , axis=1)
+        
+    table_print.columns = ['read','position'] + ','.join([
+        ','.join([t+i for i in table['intersection'].columns[2:]]) for t in ['I','C','N','cI','cC']
+        ]).split(',')
+
+    table_print.to_csv(sys.stdout, index=False)
 
     # avoid overrighting report file before saving.
     report_filename = 'Tasmanian_artifact_report.html'
