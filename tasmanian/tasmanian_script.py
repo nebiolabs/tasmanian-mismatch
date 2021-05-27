@@ -308,8 +308,9 @@ def analyze_artifacts(Input, Args):
         if check_lengths_counter<100 and not ONT:
             check_lengths.append(seq_len)
             check_lengths_counter +=1
-        elif seq_len > check_lengths: # If ONT, check_lengths is a number not a list
-            check_lengths = seq_len # THIS IS SAFE: if read length is > TLEN, it will be discarded
+        elif ONT:
+            if seq_len > check_lengths: # If ONT, check_lengths is a number not a list
+                check_lengths = seq_len # THIS IS SAFE: if read length is > TLEN, it will be discarded
 
         if _UNMASK_GENOME: 
             ref = ''.join(ref).upper() # re-think before doing this.
