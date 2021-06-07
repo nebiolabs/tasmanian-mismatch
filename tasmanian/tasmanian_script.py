@@ -391,13 +391,20 @@ def analyze_artifacts(Input, Args):
                             sys.stderr.write('{},{},{},{},{},{},{}\n'.format(read_id, flag, read_pos, chrom, pos+start, ref_pos, Base))
                     
                     if PWM:
-                        this_seq = ref[pos-flanking_n:pos+flanking_n+1] # Assuming 0-based index
+                        # We have to fix this. For now, avoid positions too close to the ends of the reads
+                        if pos <=flanking_n:
+                            this_seq = ref[0:pos*2+1] # keep it symetrical (I am not sure though)
+                        elif pos+flanking_n > len(ref):
+                            continue
+                        else:
+                            this_seq = ref[pos-flanking_n:pos+flanking_n+1] # Assuming 0-based index
+
                         if strand == 'rev':
                             this_seq = [revcomp(b) for b in this_seq][::-1]
                         
                         this_seq = ''.join(this_seq)
                         print(this_seq, Base, base, seq[pos], ref[pos], "---",strand)
-
+                        #fill_PFM(this_seq, PFM[])
                 except Exception as e:
                     if debug:
                         logger.warning('error:{} in chr:{}, position:{}, read:{}, base:{}, seq:{}, start:{} and ref_pos:{}'.format(\
