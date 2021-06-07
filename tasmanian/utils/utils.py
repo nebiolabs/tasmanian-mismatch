@@ -269,11 +269,12 @@ def fill_PFM(ref_seq, matrix):
 
     E.g. ref_seq = ATTGCTTAG -> flanking_n=4 and base=C
     '''
-    matrix = matrix.copy()
+    #matrix2 = matrix.copy()
     #assert len(ref_seq) <= matrix.shape[0]
 
     loc_m = {'A':0, 'C':1, 'T':2, 'G':3, 'N':4} # position (location) in the matrix
     for n,i in enumerate(ref_seq):
         matrix[n,loc_m[i]] +=1
     
-    return matrix
+    #return matrix2
+    return
