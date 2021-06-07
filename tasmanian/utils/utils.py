@@ -259,8 +259,7 @@ def initialize_PFM(flanking_n=5):
     '''
     return np.zeros(shape=(flanking_n*2+1, 5))
 
-def fill_PFM(ref_seq, matrix, flanking_n):
-    matrix = matrix.copy()
+def fill_PFM(ref_seq, matrix):
     '''
     The matrix should represent the mismatch. This should be checked
     before calling this function.
@@ -270,11 +269,11 @@ def fill_PFM(ref_seq, matrix, flanking_n):
 
     E.g. ref_seq = ATTGCTTAG -> flanking_n=4 and base=C
     '''
-    assert matrix.shape[1] == flanking_n, "{} flanking resudues do not fit in the PFM with shape: {}".format(matrix.shape)
+    matrix = matrix.copy()
+    #assert len(ref_seq) <= matrix.shape[0]
 
     loc_m = {'A':0, 'C':1, 'T':2, 'G':3, 'N':4} # position (location) in the matrix
     for n,i in enumerate(ref_seq):
-        print(n, matrix.shape, loc_m[i], i)
         matrix[n,loc_m[i]] +=1
     
     return matrix
