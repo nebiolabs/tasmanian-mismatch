@@ -22,7 +22,7 @@ except Exception as e: #ImportError: #ModuleNotFoundError:
     utils_path = p + '/utils'
     sys.path = [utils_path] + sys.path
 
-    from utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table
+    from utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table, fill_PFM, initialize_PFM
     from plot import plot_html
 
 ###############################################################################
