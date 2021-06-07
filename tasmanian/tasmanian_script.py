@@ -393,7 +393,7 @@ def analyze_artifacts(Input, Args):
                     if PWM:
                         this_seq = ref[pos-flanking_n-1:pos+flanking_n] # Assuming 0-based index
                         other_seq= seq[pos-flanking_n-1:pos+flanking_n]
-                        print(this_seq, Base, base, other_seq, seq[pos], ref[pos])
+                        print(this_seq, Base, base, other_seq, seq[pos], ref[pos], "---", ref[pos-6:pos+5] )
 
                 except Exception as e:
                     if debug:
