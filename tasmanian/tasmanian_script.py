@@ -3,6 +3,7 @@
 # TODO: add context nucleotides? 
 
 import sys, os, re, time
+from tasmanian.utils.utils import initialize_PFM
 import numpy as np
 import pandas as pd
 from itertools import product
@@ -52,6 +53,7 @@ def analyze_artifacts(Input, Args):
         -d|--debug (create a log file)
         -O|--ont (this is ONT data)
         -p|--picard-logic (normalize tables based on picard CollectSequencingArtifactMetrics logic)
+        -P|--include-pwm
     """
 
     SKIP_READS = {
@@ -84,6 +86,7 @@ def analyze_artifacts(Input, Args):
     debug = False
     ONT = False
     picard = False
+    PWM=False
 
     # if there are arguments get them
     for n,i in enumerate(Args):
@@ -127,6 +130,9 @@ def analyze_artifacts(Input, Args):
             check_lengths = READ_LENGTH
         if i in ['-p','--picard-logic']:
             picard = True
+        if i in ['P','--include-pwm']:
+            PWM = True
+            flanking_n = sys.argv[n+1]
 
 
     if debug:
@@ -166,7 +172,14 @@ def analyze_artifacts(Input, Args):
     # in thee tables the CONFIDENCE reads ONLY. These are reads with >= CONFIDENCE bases in the complement
     errors_intersectionB = init_artifacts_table(READ_LENGTH)
     errors_complementB = init_artifacts_table(READ_LENGTH)
-    
+
+    # initialize PFM (later on converted to PWM)    
+    if PWM:
+        All_combinations = [
+            ''.join(i) for i in itertools.permutations(['A','C','T','G'], 2)] +\
+                 ['AA','CC','GG','TT']
+
+        PFM = {i: initialize_PFM(flanking_n=flanking_n for i in All_combinations}
 
     # to check that there are tasmanian flags in sam file and if not, use unrelateds table only.
     bed_tag = False
@@ -376,6 +389,10 @@ def analyze_artifacts(Input, Args):
                     if debug:
                         if ref_pos != Base and Base in ['A','C','T','G']:
                             sys.stderr.write('{},{},{},{},{},{},{}\n'.format(read_id, flag, read_pos, chrom, pos+start, ref_pos, Base))
+                    
+                    if PWM:
+                        this_seq = ref[pos-flanking_n-1:pos+flanking_n] # Assuming 0-based index
+                        print(this_seq)
 
                 except Exception as e:
                     if debug:
