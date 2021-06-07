@@ -246,3 +246,33 @@ proper_flags = {
     163:'second rev'
 }
 
+def initialize_PFM(flanking_n=5):
+    '''
+    Initialize a position frequency matrix
+    with flanking_n * 2 columns and 4 rows. (not including middle-base)
+    Matrix looks loke this:
+    A       -n ... 0 ... n   -> matrix[0]
+    C        .     .     .
+    T        .     .     .
+    G        .     .     .
+    N        .     .     .
+    '''
+    return np.zeros(shape=(flanking_n,5))
+
+def fill_PFM(ref_seq, matrix, flanking_n):
+    '''
+    The matrix should represent the mismatch. This should be checked
+    before calling this function.
+    We could check the flanking_n here, but we can speed up a tincy bit 
+    having the value instead of calculating it.
+    ALSO the seqeuence from reference IS PROVIDED, not the ref_position.
+
+    E.g. ref_seq = ATTGCTTAG -> flanking_n=4 and base=C
+    '''
+    assert matrix.shape[1] == flanking_n, "{} flanking resudues do not fit in the PFM with shape: {}".format(matrix.shape)
+
+    loc_m = {'A':0, 'C':1, 'T':2, 'G':3} # position (location) in the matrix
+    for i in ref_seq:
+        matrix[loc_m[i]] +=1
+    
+    return matrix
