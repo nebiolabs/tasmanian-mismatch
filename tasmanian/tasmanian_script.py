@@ -406,8 +406,8 @@ def analyze_artifacts(Input, Args):
                             continue
 
                         this_seq = ''.join(this_seq)
-                        print(this_seq, Base, base, seq[pos], ref[pos], "---",strand)
-                        #fill_PFM(this_seq, PFM[])
+                        print(this_seq, Base, base, seq[pos], ref[pos], "---",strand,ref_pos,Base)
+                        fill_PFM(this_seq, PFM[])
                 except Exception as e:
                     if debug:
                         logger.warning('error:{} in chr:{}, position:{}, read:{}, base:{}, seq:{}, start:{} and ref_pos:{}'.format(\
