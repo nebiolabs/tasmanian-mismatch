@@ -86,7 +86,7 @@ def analyze_artifacts(Input, Args):
     debug = False
     ONT = False
     picard = False
-    PWM=False
+    PWM, flanking_n = False, 5
 
     # if there are arguments get them
     for n,i in enumerate(Args):
