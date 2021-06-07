@@ -406,13 +406,14 @@ def analyze_artifacts(Input, Args):
                             continue
 
                         this_seq = ''.join(this_seq)
-                        print(this_seq, Base, base, seq[pos], ref[pos], "---",strand,ref_pos,Base)
-                        #fill_PFM(this_seq, PFM[])
+                        #print(this_seq, Base, base, seq[pos], ref[pos], "---",strand,ref_pos,Base)
+                        fill_PFM(this_seq, PFM[''.join([ref_pos,Base])])
                 except Exception as e:
                     if debug:
                         logger.warning('error:{} in chr:{}, position:{}, read:{}, base:{}, seq:{}, start:{} and ref_pos:{}'.format(\
                                                                     str(e), chrom, pos, read, base, ''.join(seq), start, ref[pos]))
-
+    print(PFM)
+    
     # fix tables on length
     READ_LENGTH = mode(check_lengths)[0][0] if not ONT else check_lengths
     #READ_LENGTH = np.max(check_lengths)
