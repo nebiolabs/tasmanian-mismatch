@@ -3,7 +3,6 @@
 # TODO: add context nucleotides? 
 
 import sys, os, re, time
-from tasmanian.utils.utils import initialize_PFM
 import numpy as np
 import pandas as pd
 from itertools import product
@@ -12,7 +11,7 @@ from scipy.stats import mode
 
 try:
     from tasmanian.utils.utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table
-    from tasmanian.utils.utils import initialize_PFM, fill_PFM
+    from tasmanian.utils.utils import fill_PFM, initialize_PFM
     from tasmanian.utils.plot import plot_html
 except Exception as e: #ImportError: #ModuleNotFoundError:
     # Either tests or base_dir, it's downstream of ../tasmanian/tasmanian/
