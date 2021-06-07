@@ -393,6 +393,7 @@ def analyze_artifacts(Input, Args):
                     if PWM:
                         this_seq = ''.join(ref[pos-flanking_n:pos+flanking_n+1]) # Assuming 0-based index
                         if strand == 'rev':
+                            print("this is rev!!")
                             this_seq = revcomp(this_seq)
                         this_seq = ref[pos-flanking_n:pos+flanking_n+1] # Assuming 0-based index
                         print(this_seq, Base, base, seq[pos], ref[pos], "---",strand)
