@@ -407,7 +407,7 @@ def analyze_artifacts(Input, Args):
 
                         this_seq = ''.join(this_seq)
                         #print(this_seq, Base, base, seq[pos], ref[pos], "---",strand,ref_pos,Base)
-                        print(this_seq, ''.join([ref_pos,Base]), PFM[''.join([ref_pos,Base])])
+                        print(this_seq, ''.join([ref_pos,Base]), fill_PFM(this_seq, PFM[''.join([ref_pos,Base])]))
                         PFM[''.join([ref_pos,Base])] = fill_PFM(this_seq, PFM[''.join([ref_pos,Base])])
                 except Exception as e:
                     if debug:
