@@ -391,9 +391,11 @@ def analyze_artifacts(Input, Args):
                             sys.stderr.write('{},{},{},{},{},{},{}\n'.format(read_id, flag, read_pos, chrom, pos+start, ref_pos, Base))
                     
                     if PWM:
-                        this_seq = ref[pos-flanking_n-1:pos+flanking_n] # Assuming 0-based index
-                        other_seq= seq[pos-flanking_n-1:pos+flanking_n]
-                        print(this_seq, Base, base, other_seq, seq[pos], ref[pos], "---", ref[pos-6:pos+5] )
+                        this_seq = ''.join(ref[pos-flanking_n:pos+flanking_n+1]) # Assuming 0-based index
+                        if strand == 'rev':
+                            this_seq = revcomp(this_seq)
+                        this_seq = ref[pos-flanking_n:pos+flanking_n+1] # Assuming 0-based index
+                        print(this_seq, Base, base, seq[pos], ref[pos], "---",strand)
 
                 except Exception as e:
                     if debug:
