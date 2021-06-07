@@ -1,7 +1,6 @@
 import numpy as np
 import logging 
 import sys, os, re
-import itertools
 
 try:
     from tasmanian.utils.sam_reads import reads
