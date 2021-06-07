@@ -179,7 +179,7 @@ def analyze_artifacts(Input, Args):
             ''.join(i) for i in itertools.permutations(['A','C','T','G'], 2)] +\
                  ['AA','CC','GG','TT']
 
-        PFM = {i: initialize_PFM(flanking_n=flanking_n for i in All_combinations}
+        PFM = {i: initialize_PFM(flanking_n=flanking_n) for i in All_combinations}
 
     # to check that there are tasmanian flags in sam file and if not, use unrelateds table only.
     bed_tag = False
