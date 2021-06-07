@@ -132,7 +132,7 @@ def analyze_artifacts(Input, Args):
             picard = True
         if i in ['-P','--include-pwm']:
             PWM = True
-            flanking_n = sys.argv[n+1]
+            flanking_n = int(sys.argv[n+1])
 
 
     if debug:
