@@ -130,7 +130,7 @@ def analyze_artifacts(Input, Args):
             check_lengths = READ_LENGTH
         if i in ['-p','--picard-logic']:
             picard = True
-        if i in ['P','--include-pwm']:
+        if i in ['-P','--include-pwm']:
             PWM = True
             flanking_n = sys.argv[n+1]
 
