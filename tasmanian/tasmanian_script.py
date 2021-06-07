@@ -5,7 +5,7 @@
 import sys, os, re, time
 import numpy as np
 import pandas as pd
-from itertools import product
+from itertools import product, permutations
 import logging, uuid
 from scipy.stats import mode
 
@@ -176,7 +176,7 @@ def analyze_artifacts(Input, Args):
     # initialize PFM (later on converted to PWM)    
     if PWM:
         All_combinations = [
-            ''.join(i) for i in itertools.permutations(['A','C','T','G'], 2)] +\
+            ''.join(i) for i in permutations(['A','C','T','G'], 2)] +\
                  ['AA','CC','GG','TT']
 
         PFM = {i: initialize_PFM(flanking_n=flanking_n) for i in All_combinations}
