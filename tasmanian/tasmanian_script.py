@@ -133,7 +133,7 @@ def analyze_artifacts(Input, Args):
         if i in ['-P','--include-pwm']:
             PWM = True
             if len(sys.argv)>n: 
-                flanking_n = int(sys.argv[n+1]) if if sys.argv[n+1].isnumeric() else flanking_n
+                flanking_n = int(sys.argv[n+1]) if sys.argv[n+1].isnumeric() else flanking_n
 
 
     if debug:
