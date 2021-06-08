@@ -278,3 +278,6 @@ def fill_PFM(ref_seq, matrix):
     
     #return matrix2
     return
+
+def pfm2ppm(matrix):
+    return matrix / matrix.sum(axis=1).reshape(-1,1)

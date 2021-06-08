@@ -11,7 +11,7 @@ from scipy.stats import mode
 
 try:
     from tasmanian.utils.utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table
-    from tasmanian.utils.utils import fill_PFM, initialize_PFM
+    from tasmanian.utils.utils import fill_PFM, initialize_PFM, pfm2ppm
     from tasmanian.utils.plot import plot_html
 except Exception as e: #ImportError: #ModuleNotFoundError:
     # Either tests or base_dir, it's downstream of ../tasmanian/tasmanian/
@@ -402,19 +402,19 @@ def analyze_artifacts(Input, Args):
                         if strand == 'rev':
                             this_seq = [revcomp(b) for b in this_seq][::-1]
                         
+                        # This will be replaced with a smarter option.
                         if len(this_seq) < flanking_n*2+1:
                             continue
 
                         this_seq = ''.join(this_seq)
-                        #print(this_seq, Base, base, seq[pos], ref[pos], "---",strand,ref_pos,Base)
-                        #print(this_seq, ''.join([ref_pos,Base]), fill_PFM(this_seq, PFM[''.join([ref_pos,Base])]))
-                        #PFM[''.join([ref_pos,Base])] = fill_PFM(this_seq, PFM[''.join([ref_pos,Base])])
                         fill_PFM(this_seq, PFM[''.join([ref_pos,Base])])
+
                 except Exception as e:
                     if debug:
                         logger.warning('error:{} in chr:{}, position:{}, read:{}, base:{}, seq:{}, start:{} and ref_pos:{}'.format(\
                                                                     str(e), chrom, pos, read, base, ''.join(seq), start, ref[pos]))
-    print(PFM)
+
+    print(pfm2ppm(PFM))
 
     # fix tables on length
     READ_LENGTH = mode(check_lengths)[0][0] if not ONT else check_lengths
