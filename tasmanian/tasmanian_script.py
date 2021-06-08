@@ -415,7 +415,8 @@ def analyze_artifacts(Input, Args):
                         logger.warning('error:{} in chr:{}, position:{}, read:{}, base:{}, seq:{}, start:{} and ref_pos:{}'.format(\
                                                                     str(e), chrom, pos, read, base, ''.join(seq), start, ref[pos]))
     for k,v in PFM.items():
-        print(k, pfm2ppm(v))
+        mx = pfm2ppm(v)
+        print(k, mx)
         
 
     # fix tables on length
