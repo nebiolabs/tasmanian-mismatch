@@ -2,7 +2,7 @@
 
 # TODO: add context nucleotides? 
 
-import sys, os, re, time
+import sys, os, re, time, pickle
 import numpy as np
 import pandas as pd
 from itertools import product, permutations
@@ -11,7 +11,7 @@ from scipy.stats import mode
 
 try:
     from tasmanian.utils.utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table
-    from tasmanian.utils.utils import fill_PFM, initialize_PFM, pfm2ppm
+    from tasmanian.utils.utils import fill_PFM, initialize_PFM, pfm2ppm, ppm2pwm
     from tasmanian.utils.plot import plot_html
 except Exception as e: #ImportError: #ModuleNotFoundError:
     # Either tests or base_dir, it's downstream of ../tasmanian/tasmanian/
@@ -22,7 +22,7 @@ except Exception as e: #ImportError: #ModuleNotFoundError:
     utils_path = p + '/utils'
     sys.path = [utils_path] + sys.path
 
-    from utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table, fill_PFM, initialize_PFM, pfm2ppm
+    from utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table, fill_PFM, initialize_PFM, pfm2ppm, ppm2pwm
     from plot import plot_html
 
 ###############################################################################
@@ -414,10 +414,17 @@ def analyze_artifacts(Input, Args):
                     if debug:
                         logger.warning('error:{} in chr:{}, position:{}, read:{}, base:{}, seq:{}, start:{} and ref_pos:{}'.format(\
                                                                     str(e), chrom, pos, read, base, ''.join(seq), start, ref[pos]))
+    PWM = {}
     for k,v in PFM.items():
-        mx = pfm2ppm(v)
-        print(k, mx)
-        
+        PWM[k] = pfm2ppm(v)
+
+    for k,v in PWM.items():
+        if v[0]==v[1]: # careful dont make CC, GG, TT, AA to matrices of ones!!
+            continue
+        else:
+            base_dist = PWM[k[0]+k[0]]
+            PWM[k] = ppm2pwm(v, base_dist)
+    
 
     # fix tables on length
     READ_LENGTH = mode(check_lengths)[0][0] if not ONT else check_lengths
@@ -497,7 +504,7 @@ def analyze_artifacts(Input, Args):
     #f.write('\n'.join(logging))
     #f.close()
     
-    return table
+    return table, PWM
 
 
 
@@ -510,7 +517,7 @@ if __name__=='__main__':
         Args = sys.argv
 
     # run tasmanian
-    table = analyze_artifacts(sys.stdin, Args) 
+    table, PWM = analyze_artifacts(sys.stdin, Args) 
 
     # print results
     table_print = pd.concat(
@@ -540,3 +547,7 @@ if __name__=='__main__':
     with open(report_filename, 'w') as f:
         f.write(report_html)
 
+    # save PWM into pickle
+    pwm_filename = 'Tasmanian_pwm_file' + str(file_num)
+    with open(pwm_filename) as f:
+        pickle.dump(PWM, f)

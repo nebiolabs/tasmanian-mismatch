@@ -281,3 +281,12 @@ def fill_PFM(ref_seq, matrix):
 
 def pfm2ppm(matrix):
     return matrix / matrix.sum(axis=1).reshape(-1,1)
+
+def ppm2pwm(ppm1, ppm2):
+    '''
+    ppm1 = measured distribution
+    ppm2 = base distribution
+    e.g. ppm1='c_t' then ppm2='c_c' 
+    '''
+    return np.log2(ppm1 / ppm2)
+
