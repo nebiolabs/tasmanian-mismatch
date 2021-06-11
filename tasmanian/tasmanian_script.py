@@ -551,3 +551,5 @@ if __name__=='__main__':
     pwm_filename = 'Tasmanian_pwm_file' + str(file_num)
     with open(pwm_filename) as f:
         pickle.dump(PWM, f)
+
+    sys.stderr.write('\n' + report_filename + " and " + pwm_filename + " related files created\n")
