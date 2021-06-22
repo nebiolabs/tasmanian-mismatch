@@ -1,0 +1,828 @@
+INFO	2021-03-10 13:06:27	CollectSequencingArtifactMetrics	
+
+********** NOTE: Picard's command line syntax is changing.
+**********
+********** For more information, please see:
+********** https://github.com/broadinstitute/picard/wiki/Command-Line-Syntax-Transition-For-Users-(Pre-Transition)
+**********
+********** The command line looks like this in the new syntax:
+**********
+**********    CollectSequencingArtifactMetrics -I C-T.read1.fwd.bam -O C-T.read1.fwd.picard -R genome/small_region.fa
+**********
+
+
+13:06:27.685 INFO  NativeLibraryLoader - Loading libgkl_compression.dylib from jar:file:/Users/aerijman/miniconda3/envs/picard/share/picard-2.25.0-0/picard.jar!/com/intel/gkl/native/libgkl_compression.dylib
+[Wed Mar 10 13:06:27 EST 2021] CollectSequencingArtifactMetrics INPUT=C-T.read1.fwd.bam OUTPUT=C-T.read1.fwd.picard REFERENCE_SEQUENCE=genome/small_region.fa    MINIMUM_QUALITY_SCORE=20 MINIMUM_MAPPING_QUALITY=30 MINIMUM_INSERT_SIZE=60 MAXIMUM_INSERT_SIZE=600 INCLUDE_UNPAIRED=false INCLUDE_DUPLICATES=false INCLUDE_NON_PF_READS=false TANDEM_READS=false USE_OQ=true CONTEXT_SIZE=1 ASSUME_SORTED=true STOP_AFTER=0 VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false GA4GH_CLIENT_SECRETS=client_secrets.json USE_JDK_DEFLATER=false USE_JDK_INFLATER=false
+[Wed Mar 10 13:06:27 EST 2021] Executing as aerijman@m-aerijman.local on Mac OS X 10.15.7 x86_64; OpenJDK 64-Bit Server VM 11.0.6+8-b765.1; Deflater: Intel; Inflater: Intel; Provider GCS is not available; Picard version: 2.25.0
+WARNING	2021-03-10 13:06:27	SinglePassSamProgram	File reports sort order 'unsorted', assuming it's coordinate sorted anyway.
+[Wed Mar 10 13:06:27 EST 2021] picard.analysis.artifacts.CollectSequencingArtifactMetrics done. Elapsed time: 0.00 minutes.
+Runtime.totalMemory()=536870912
+using genome/small_region.fa as reference genome
+log filename: errors_C-T.read1.fwd.tasmanian.log
+read reference in 3.4848848978678387e-06 minutes
+tasmanian finished the analysis in 0.03371286392211914 seconds 
+reads discarded
+===============
+indel           0
+mapquality      0
+fragLength      0
+softclips       0
+readlength      0
+others          0
+
+Bases discarded
+===============
+quality         0
+softclips       0
+INFO	2021-03-10 13:06:30	CollectSequencingArtifactMetrics	
+
+********** NOTE: Picard's command line syntax is changing.
+**********
+********** For more information, please see:
+********** https://github.com/broadinstitute/picard/wiki/Command-Line-Syntax-Transition-For-Users-(Pre-Transition)
+**********
+********** The command line looks like this in the new syntax:
+**********
+**********    CollectSequencingArtifactMetrics -I C-T.read1.rev.bam -O C-T.read1.rev.picard -R genome/small_region.fa
+**********
+
+
+13:06:31.260 INFO  NativeLibraryLoader - Loading libgkl_compression.dylib from jar:file:/Users/aerijman/miniconda3/envs/picard/share/picard-2.25.0-0/picard.jar!/com/intel/gkl/native/libgkl_compression.dylib
+[Wed Mar 10 13:06:31 EST 2021] CollectSequencingArtifactMetrics INPUT=C-T.read1.rev.bam OUTPUT=C-T.read1.rev.picard REFERENCE_SEQUENCE=genome/small_region.fa    MINIMUM_QUALITY_SCORE=20 MINIMUM_MAPPING_QUALITY=30 MINIMUM_INSERT_SIZE=60 MAXIMUM_INSERT_SIZE=600 INCLUDE_UNPAIRED=false INCLUDE_DUPLICATES=false INCLUDE_NON_PF_READS=false TANDEM_READS=false USE_OQ=true CONTEXT_SIZE=1 ASSUME_SORTED=true STOP_AFTER=0 VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false GA4GH_CLIENT_SECRETS=client_secrets.json USE_JDK_DEFLATER=false USE_JDK_INFLATER=false
+[Wed Mar 10 13:06:31 EST 2021] Executing as aerijman@m-aerijman.local on Mac OS X 10.15.7 x86_64; OpenJDK 64-Bit Server VM 11.0.6+8-b765.1; Deflater: Intel; Inflater: Intel; Provider GCS is not available; Picard version: 2.25.0
+WARNING	2021-03-10 13:06:31	SinglePassSamProgram	File reports sort order 'unsorted', assuming it's coordinate sorted anyway.
+[Wed Mar 10 13:06:31 EST 2021] picard.analysis.artifacts.CollectSequencingArtifactMetrics done. Elapsed time: 0.00 minutes.
+Runtime.totalMemory()=536870912
+using genome/small_region.fa as reference genome
+log filename: errors_C-T.read1.rev.tasmanian.log
+read reference in 3.6517779032389322e-06 minutes
+tasmanian finished the analysis in 0.04158830642700195 seconds 
+reads discarded
+===============
+indel           0
+mapquality      0
+fragLength      0
+softclips       0
+readlength      0
+others          0
+
+Bases discarded
+===============
+quality         0
+softclips       0
+INFO	2021-03-10 13:06:34	CollectSequencingArtifactMetrics	
+
+********** NOTE: Picard's command line syntax is changing.
+**********
+********** For more information, please see:
+********** https://github.com/broadinstitute/picard/wiki/Command-Line-Syntax-Transition-For-Users-(Pre-Transition)
+**********
+********** The command line looks like this in the new syntax:
+**********
+**********    CollectSequencingArtifactMetrics -I C-T.read2.fwd.bam -O C-T.read2.fwd.picard -R genome/small_region.fa
+**********
+
+
+13:06:34.876 INFO  NativeLibraryLoader - Loading libgkl_compression.dylib from jar:file:/Users/aerijman/miniconda3/envs/picard/share/picard-2.25.0-0/picard.jar!/com/intel/gkl/native/libgkl_compression.dylib
+[Wed Mar 10 13:06:34 EST 2021] CollectSequencingArtifactMetrics INPUT=C-T.read2.fwd.bam OUTPUT=C-T.read2.fwd.picard REFERENCE_SEQUENCE=genome/small_region.fa    MINIMUM_QUALITY_SCORE=20 MINIMUM_MAPPING_QUALITY=30 MINIMUM_INSERT_SIZE=60 MAXIMUM_INSERT_SIZE=600 INCLUDE_UNPAIRED=false INCLUDE_DUPLICATES=false INCLUDE_NON_PF_READS=false TANDEM_READS=false USE_OQ=true CONTEXT_SIZE=1 ASSUME_SORTED=true STOP_AFTER=0 VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false GA4GH_CLIENT_SECRETS=client_secrets.json USE_JDK_DEFLATER=false USE_JDK_INFLATER=false
+[Wed Mar 10 13:06:34 EST 2021] Executing as aerijman@m-aerijman.local on Mac OS X 10.15.7 x86_64; OpenJDK 64-Bit Server VM 11.0.6+8-b765.1; Deflater: Intel; Inflater: Intel; Provider GCS is not available; Picard version: 2.25.0
+WARNING	2021-03-10 13:06:34	SinglePassSamProgram	File reports sort order 'unsorted', assuming it's coordinate sorted anyway.
+[Wed Mar 10 13:06:35 EST 2021] picard.analysis.artifacts.CollectSequencingArtifactMetrics done. Elapsed time: 0.00 minutes.
+Runtime.totalMemory()=536870912
+using genome/small_region.fa as reference genome
+log filename: errors_C-T.read2.fwd.tasmanian.log
+read reference in 3.902117411295573e-06 minutes
+tasmanian finished the analysis in 0.03671622276306152 seconds 
+reads discarded
+===============
+indel           0
+mapquality      0
+fragLength      0
+softclips       0
+readlength      0
+others          0
+
+Bases discarded
+===============
+quality         0
+softclips       0
+INFO	2021-03-10 13:06:38	CollectSequencingArtifactMetrics	
+
+********** NOTE: Picard's command line syntax is changing.
+**********
+********** For more information, please see:
+********** https://github.com/broadinstitute/picard/wiki/Command-Line-Syntax-Transition-For-Users-(Pre-Transition)
+**********
+********** The command line looks like this in the new syntax:
+**********
+**********    CollectSequencingArtifactMetrics -I C-T.read2.rev.bam -O C-T.read2.rev.picard -R genome/small_region.fa
+**********
+
+
+13:06:38.659 INFO  NativeLibraryLoader - Loading libgkl_compression.dylib from jar:file:/Users/aerijman/miniconda3/envs/picard/share/picard-2.25.0-0/picard.jar!/com/intel/gkl/native/libgkl_compression.dylib
+[Wed Mar 10 13:06:38 EST 2021] CollectSequencingArtifactMetrics INPUT=C-T.read2.rev.bam OUTPUT=C-T.read2.rev.picard REFERENCE_SEQUENCE=genome/small_region.fa    MINIMUM_QUALITY_SCORE=20 MINIMUM_MAPPING_QUALITY=30 MINIMUM_INSERT_SIZE=60 MAXIMUM_INSERT_SIZE=600 INCLUDE_UNPAIRED=false INCLUDE_DUPLICATES=false INCLUDE_NON_PF_READS=false TANDEM_READS=false USE_OQ=true CONTEXT_SIZE=1 ASSUME_SORTED=true STOP_AFTER=0 VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false GA4GH_CLIENT_SECRETS=client_secrets.json USE_JDK_DEFLATER=false USE_JDK_INFLATER=false
+[Wed Mar 10 13:06:38 EST 2021] Executing as aerijman@m-aerijman.local on Mac OS X 10.15.7 x86_64; OpenJDK 64-Bit Server VM 11.0.6+8-b765.1; Deflater: Intel; Inflater: Intel; Provider GCS is not available; Picard version: 2.25.0
+WARNING	2021-03-10 13:06:38	SinglePassSamProgram	File reports sort order 'unsorted', assuming it's coordinate sorted anyway.
+[Wed Mar 10 13:06:38 EST 2021] picard.analysis.artifacts.CollectSequencingArtifactMetrics done. Elapsed time: 0.00 minutes.
+Runtime.totalMemory()=536870912
+using genome/small_region.fa as reference genome
+log filename: errors_C-T.read2.rev.tasmanian.log
+read reference in 3.516674041748047e-06 minutes
+tasmanian finished the analysis in 0.0331120491027832 seconds 
+reads discarded
+===============
+indel           0
+mapquality      0
+fragLength      0
+softclips       0
+readlength      0
+others          0
+
+Bases discarded
+===============
+quality         0
+softclips       0
+INFO	2021-03-10 13:06:41	CollectSequencingArtifactMetrics	
+
+********** NOTE: Picard's command line syntax is changing.
+**********
+********** For more information, please see:
+********** https://github.com/broadinstitute/picard/wiki/Command-Line-Syntax-Transition-For-Users-(Pre-Transition)
+**********
+********** The command line looks like this in the new syntax:
+**********
+**********    CollectSequencingArtifactMetrics -I C-T_end.read1.fwd.bam -O C-T_end.read1.fwd.picard -R genome/small_region.fa
+**********
+
+
+13:06:42.246 INFO  NativeLibraryLoader - Loading libgkl_compression.dylib from jar:file:/Users/aerijman/miniconda3/envs/picard/share/picard-2.25.0-0/picard.jar!/com/intel/gkl/native/libgkl_compression.dylib
+[Wed Mar 10 13:06:42 EST 2021] CollectSequencingArtifactMetrics INPUT=C-T_end.read1.fwd.bam OUTPUT=C-T_end.read1.fwd.picard REFERENCE_SEQUENCE=genome/small_region.fa    MINIMUM_QUALITY_SCORE=20 MINIMUM_MAPPING_QUALITY=30 MINIMUM_INSERT_SIZE=60 MAXIMUM_INSERT_SIZE=600 INCLUDE_UNPAIRED=false INCLUDE_DUPLICATES=false INCLUDE_NON_PF_READS=false TANDEM_READS=false USE_OQ=true CONTEXT_SIZE=1 ASSUME_SORTED=true STOP_AFTER=0 VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false GA4GH_CLIENT_SECRETS=client_secrets.json USE_JDK_DEFLATER=false USE_JDK_INFLATER=false
+[Wed Mar 10 13:06:42 EST 2021] Executing as aerijman@m-aerijman.local on Mac OS X 10.15.7 x86_64; OpenJDK 64-Bit Server VM 11.0.6+8-b765.1; Deflater: Intel; Inflater: Intel; Provider GCS is not available; Picard version: 2.25.0
+WARNING	2021-03-10 13:06:42	SinglePassSamProgram	File reports sort order 'unsorted', assuming it's coordinate sorted anyway.
+[Wed Mar 10 13:06:42 EST 2021] picard.analysis.artifacts.CollectSequencingArtifactMetrics done. Elapsed time: 0.00 minutes.
+Runtime.totalMemory()=536870912
+using genome/small_region.fa as reference genome
+log filename: errors_C-T_end.read1.fwd.tasmanian.log
+read reference in 2.9007593790690103e-06 minutes
+tasmanian finished the analysis in 0.03315091133117676 seconds 
+reads discarded
+===============
+indel           0
+mapquality      0
+fragLength      0
+softclips       0
+readlength      0
+others          0
+
+Bases discarded
+===============
+quality         0
+softclips       0
+INFO	2021-03-10 13:06:45	CollectSequencingArtifactMetrics	
+
+********** NOTE: Picard's command line syntax is changing.
+**********
+********** For more information, please see:
+********** https://github.com/broadinstitute/picard/wiki/Command-Line-Syntax-Transition-For-Users-(Pre-Transition)
+**********
+********** The command line looks like this in the new syntax:
+**********
+**********    CollectSequencingArtifactMetrics -I C-T_end.read2.rev.bam -O C-T_end.read2.rev.picard -R genome/small_region.fa
+**********
+
+
+13:06:45.735 INFO  NativeLibraryLoader - Loading libgkl_compression.dylib from jar:file:/Users/aerijman/miniconda3/envs/picard/share/picard-2.25.0-0/picard.jar!/com/intel/gkl/native/libgkl_compression.dylib
+[Wed Mar 10 13:06:45 EST 2021] CollectSequencingArtifactMetrics INPUT=C-T_end.read2.rev.bam OUTPUT=C-T_end.read2.rev.picard REFERENCE_SEQUENCE=genome/small_region.fa    MINIMUM_QUALITY_SCORE=20 MINIMUM_MAPPING_QUALITY=30 MINIMUM_INSERT_SIZE=60 MAXIMUM_INSERT_SIZE=600 INCLUDE_UNPAIRED=false INCLUDE_DUPLICATES=false INCLUDE_NON_PF_READS=false TANDEM_READS=false USE_OQ=true CONTEXT_SIZE=1 ASSUME_SORTED=true STOP_AFTER=0 VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false GA4GH_CLIENT_SECRETS=client_secrets.json USE_JDK_DEFLATER=false USE_JDK_INFLATER=false
+[Wed Mar 10 13:06:45 EST 2021] Executing as aerijman@m-aerijman.local on Mac OS X 10.15.7 x86_64; OpenJDK 64-Bit Server VM 11.0.6+8-b765.1; Deflater: Intel; Inflater: Intel; Provider GCS is not available; Picard version: 2.25.0
+WARNING	2021-03-10 13:06:45	SinglePassSamProgram	File reports sort order 'unsorted', assuming it's coordinate sorted anyway.
+[Wed Mar 10 13:06:45 EST 2021] picard.analysis.artifacts.CollectSequencingArtifactMetrics done. Elapsed time: 0.00 minutes.
+Runtime.totalMemory()=536870912
+using genome/small_region.fa as reference genome
+log filename: errors_C-T_end.read2.rev.tasmanian.log
+read reference in 3.0159950256347657e-06 minutes
+tasmanian finished the analysis in 0.03322601318359375 seconds 
+reads discarded
+===============
+indel           0
+mapquality      0
+fragLength      0
+softclips       0
+readlength      0
+others          0
+
+Bases discarded
+===============
+quality         0
+softclips       0
+INFO	2021-03-10 13:06:49	CollectSequencingArtifactMetrics	
+
+********** NOTE: Picard's command line syntax is changing.
+**********
+********** For more information, please see:
+********** https://github.com/broadinstitute/picard/wiki/Command-Line-Syntax-Transition-For-Users-(Pre-Transition)
+**********
+********** The command line looks like this in the new syntax:
+**********
+**********    CollectSequencingArtifactMetrics -I G-A.read1.fwd.bam -O G-A.read1.fwd.picard -R genome/small_region.fa
+**********
+
+
+13:06:49.574 INFO  NativeLibraryLoader - Loading libgkl_compression.dylib from jar:file:/Users/aerijman/miniconda3/envs/picard/share/picard-2.25.0-0/picard.jar!/com/intel/gkl/native/libgkl_compression.dylib
+[Wed Mar 10 13:06:49 EST 2021] CollectSequencingArtifactMetrics INPUT=G-A.read1.fwd.bam OUTPUT=G-A.read1.fwd.picard REFERENCE_SEQUENCE=genome/small_region.fa    MINIMUM_QUALITY_SCORE=20 MINIMUM_MAPPING_QUALITY=30 MINIMUM_INSERT_SIZE=60 MAXIMUM_INSERT_SIZE=600 INCLUDE_UNPAIRED=false INCLUDE_DUPLICATES=false INCLUDE_NON_PF_READS=false TANDEM_READS=false USE_OQ=true CONTEXT_SIZE=1 ASSUME_SORTED=true STOP_AFTER=0 VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false GA4GH_CLIENT_SECRETS=client_secrets.json USE_JDK_DEFLATER=false USE_JDK_INFLATER=false
+[Wed Mar 10 13:06:49 EST 2021] Executing as aerijman@m-aerijman.local on Mac OS X 10.15.7 x86_64; OpenJDK 64-Bit Server VM 11.0.6+8-b765.1; Deflater: Intel; Inflater: Intel; Provider GCS is not available; Picard version: 2.25.0
+WARNING	2021-03-10 13:06:49	SinglePassSamProgram	File reports sort order 'unsorted', assuming it's coordinate sorted anyway.
+[Wed Mar 10 13:06:49 EST 2021] picard.analysis.artifacts.CollectSequencingArtifactMetrics done. Elapsed time: 0.00 minutes.
+Runtime.totalMemory()=536870912
+using genome/small_region.fa as reference genome
+log filename: errors_G-A.read1.fwd.tasmanian.log
+read reference in 4.800160725911458e-06 minutes
+tasmanian finished the analysis in 0.04562211036682129 seconds 
+reads discarded
+===============
+indel           0
+mapquality      0
+fragLength      0
+softclips       0
+readlength      0
+others          0
+
+Bases discarded
+===============
+quality         0
+softclips       0
+INFO	2021-03-10 13:06:52	CollectSequencingArtifactMetrics	
+
+********** NOTE: Picard's command line syntax is changing.
+**********
+********** For more information, please see:
+********** https://github.com/broadinstitute/picard/wiki/Command-Line-Syntax-Transition-For-Users-(Pre-Transition)
+**********
+********** The command line looks like this in the new syntax:
+**********
+**********    CollectSequencingArtifactMetrics -I G-A.read1.rev.bam -O G-A.read1.rev.picard -R genome/small_region.fa
+**********
+
+
+13:06:53.268 INFO  NativeLibraryLoader - Loading libgkl_compression.dylib from jar:file:/Users/aerijman/miniconda3/envs/picard/share/picard-2.25.0-0/picard.jar!/com/intel/gkl/native/libgkl_compression.dylib
+[Wed Mar 10 13:06:53 EST 2021] CollectSequencingArtifactMetrics INPUT=G-A.read1.rev.bam OUTPUT=G-A.read1.rev.picard REFERENCE_SEQUENCE=genome/small_region.fa    MINIMUM_QUALITY_SCORE=20 MINIMUM_MAPPING_QUALITY=30 MINIMUM_INSERT_SIZE=60 MAXIMUM_INSERT_SIZE=600 INCLUDE_UNPAIRED=false INCLUDE_DUPLICATES=false INCLUDE_NON_PF_READS=false TANDEM_READS=false USE_OQ=true CONTEXT_SIZE=1 ASSUME_SORTED=true STOP_AFTER=0 VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false GA4GH_CLIENT_SECRETS=client_secrets.json USE_JDK_DEFLATER=false USE_JDK_INFLATER=false
+[Wed Mar 10 13:06:53 EST 2021] Executing as aerijman@m-aerijman.local on Mac OS X 10.15.7 x86_64; OpenJDK 64-Bit Server VM 11.0.6+8-b765.1; Deflater: Intel; Inflater: Intel; Provider GCS is not available; Picard version: 2.25.0
+WARNING	2021-03-10 13:06:53	SinglePassSamProgram	File reports sort order 'unsorted', assuming it's coordinate sorted anyway.
+[Wed Mar 10 13:06:53 EST 2021] picard.analysis.artifacts.CollectSequencingArtifactMetrics done. Elapsed time: 0.00 minutes.
+Runtime.totalMemory()=536870912
+using genome/small_region.fa as reference genome
+log filename: errors_G-A.read1.rev.tasmanian.log
+read reference in 3.0199686686197915e-06 minutes
+tasmanian finished the analysis in 0.03278708457946777 seconds 
+reads discarded
+===============
+indel           0
+mapquality      0
+fragLength      0
+softclips       0
+readlength      0
+others          0
+
+Bases discarded
+===============
+quality         0
+softclips       0
+INFO	2021-03-10 13:06:56	CollectSequencingArtifactMetrics	
+
+********** NOTE: Picard's command line syntax is changing.
+**********
+********** For more information, please see:
+********** https://github.com/broadinstitute/picard/wiki/Command-Line-Syntax-Transition-For-Users-(Pre-Transition)
+**********
+********** The command line looks like this in the new syntax:
+**********
+**********    CollectSequencingArtifactMetrics -I G-A.read2.fwd.bam -O G-A.read2.fwd.picard -R genome/small_region.fa
+**********
+
+
+13:06:56.749 INFO  NativeLibraryLoader - Loading libgkl_compression.dylib from jar:file:/Users/aerijman/miniconda3/envs/picard/share/picard-2.25.0-0/picard.jar!/com/intel/gkl/native/libgkl_compression.dylib
+[Wed Mar 10 13:06:56 EST 2021] CollectSequencingArtifactMetrics INPUT=G-A.read2.fwd.bam OUTPUT=G-A.read2.fwd.picard REFERENCE_SEQUENCE=genome/small_region.fa    MINIMUM_QUALITY_SCORE=20 MINIMUM_MAPPING_QUALITY=30 MINIMUM_INSERT_SIZE=60 MAXIMUM_INSERT_SIZE=600 INCLUDE_UNPAIRED=false INCLUDE_DUPLICATES=false INCLUDE_NON_PF_READS=false TANDEM_READS=false USE_OQ=true CONTEXT_SIZE=1 ASSUME_SORTED=true STOP_AFTER=0 VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false GA4GH_CLIENT_SECRETS=client_secrets.json USE_JDK_DEFLATER=false USE_JDK_INFLATER=false
+[Wed Mar 10 13:06:56 EST 2021] Executing as aerijman@m-aerijman.local on Mac OS X 10.15.7 x86_64; OpenJDK 64-Bit Server VM 11.0.6+8-b765.1; Deflater: Intel; Inflater: Intel; Provider GCS is not available; Picard version: 2.25.0
+WARNING	2021-03-10 13:06:56	SinglePassSamProgram	File reports sort order 'unsorted', assuming it's coordinate sorted anyway.
+[Wed Mar 10 13:06:56 EST 2021] picard.analysis.artifacts.CollectSequencingArtifactMetrics done. Elapsed time: 0.00 minutes.
+Runtime.totalMemory()=536870912
+using genome/small_region.fa as reference genome
+log filename: errors_G-A.read2.fwd.tasmanian.log
+read reference in 3.9656956990559895e-06 minutes
+tasmanian finished the analysis in 0.04548764228820801 seconds 
+reads discarded
+===============
+indel           0
+mapquality      0
+fragLength      0
+softclips       0
+readlength      0
+others          0
+
+Bases discarded
+===============
+quality         0
+softclips       0
+INFO	2021-03-10 13:07:00	CollectSequencingArtifactMetrics	
+
+********** NOTE: Picard's command line syntax is changing.
+**********
+********** For more information, please see:
+********** https://github.com/broadinstitute/picard/wiki/Command-Line-Syntax-Transition-For-Users-(Pre-Transition)
+**********
+********** The command line looks like this in the new syntax:
+**********
+**********    CollectSequencingArtifactMetrics -I G-A.read2.rev.bam -O G-A.read2.rev.picard -R genome/small_region.fa
+**********
+
+
+13:07:00.435 INFO  NativeLibraryLoader - Loading libgkl_compression.dylib from jar:file:/Users/aerijman/miniconda3/envs/picard/share/picard-2.25.0-0/picard.jar!/com/intel/gkl/native/libgkl_compression.dylib
+[Wed Mar 10 13:07:00 EST 2021] CollectSequencingArtifactMetrics INPUT=G-A.read2.rev.bam OUTPUT=G-A.read2.rev.picard REFERENCE_SEQUENCE=genome/small_region.fa    MINIMUM_QUALITY_SCORE=20 MINIMUM_MAPPING_QUALITY=30 MINIMUM_INSERT_SIZE=60 MAXIMUM_INSERT_SIZE=600 INCLUDE_UNPAIRED=false INCLUDE_DUPLICATES=false INCLUDE_NON_PF_READS=false TANDEM_READS=false USE_OQ=true CONTEXT_SIZE=1 ASSUME_SORTED=true STOP_AFTER=0 VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false GA4GH_CLIENT_SECRETS=client_secrets.json USE_JDK_DEFLATER=false USE_JDK_INFLATER=false
+[Wed Mar 10 13:07:00 EST 2021] Executing as aerijman@m-aerijman.local on Mac OS X 10.15.7 x86_64; OpenJDK 64-Bit Server VM 11.0.6+8-b765.1; Deflater: Intel; Inflater: Intel; Provider GCS is not available; Picard version: 2.25.0
+WARNING	2021-03-10 13:07:00	SinglePassSamProgram	File reports sort order 'unsorted', assuming it's coordinate sorted anyway.
+[Wed Mar 10 13:07:00 EST 2021] picard.analysis.artifacts.CollectSequencingArtifactMetrics done. Elapsed time: 0.00 minutes.
+Runtime.totalMemory()=536870912
+using genome/small_region.fa as reference genome
+log filename: errors_G-A.read2.rev.tasmanian.log
+read reference in 3.1034151713053387e-06 minutes
+tasmanian finished the analysis in 0.033258914947509766 seconds 
+reads discarded
+===============
+indel           0
+mapquality      0
+fragLength      0
+softclips       0
+readlength      0
+others          0
+
+Bases discarded
+===============
+quality         0
+softclips       0
+INFO	2021-03-10 13:07:03	CollectSequencingArtifactMetrics	
+
+********** NOTE: Picard's command line syntax is changing.
+**********
+********** For more information, please see:
+********** https://github.com/broadinstitute/picard/wiki/Command-Line-Syntax-Transition-For-Users-(Pre-Transition)
+**********
+********** The command line looks like this in the new syntax:
+**********
+**********    CollectSequencingArtifactMetrics -I G-A_end.read1.fwd.bam -O G-A_end.read1.fwd.picard -R genome/small_region.fa
+**********
+
+
+13:07:03.935 INFO  NativeLibraryLoader - Loading libgkl_compression.dylib from jar:file:/Users/aerijman/miniconda3/envs/picard/share/picard-2.25.0-0/picard.jar!/com/intel/gkl/native/libgkl_compression.dylib
+[Wed Mar 10 13:07:03 EST 2021] CollectSequencingArtifactMetrics INPUT=G-A_end.read1.fwd.bam OUTPUT=G-A_end.read1.fwd.picard REFERENCE_SEQUENCE=genome/small_region.fa    MINIMUM_QUALITY_SCORE=20 MINIMUM_MAPPING_QUALITY=30 MINIMUM_INSERT_SIZE=60 MAXIMUM_INSERT_SIZE=600 INCLUDE_UNPAIRED=false INCLUDE_DUPLICATES=false INCLUDE_NON_PF_READS=false TANDEM_READS=false USE_OQ=true CONTEXT_SIZE=1 ASSUME_SORTED=true STOP_AFTER=0 VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false GA4GH_CLIENT_SECRETS=client_secrets.json USE_JDK_DEFLATER=false USE_JDK_INFLATER=false
+[Wed Mar 10 13:07:03 EST 2021] Executing as aerijman@m-aerijman.local on Mac OS X 10.15.7 x86_64; OpenJDK 64-Bit Server VM 11.0.6+8-b765.1; Deflater: Intel; Inflater: Intel; Provider GCS is not available; Picard version: 2.25.0
+WARNING	2021-03-10 13:07:04	SinglePassSamProgram	File reports sort order 'unsorted', assuming it's coordinate sorted anyway.
+[Wed Mar 10 13:07:04 EST 2021] picard.analysis.artifacts.CollectSequencingArtifactMetrics done. Elapsed time: 0.00 minutes.
+Runtime.totalMemory()=536870912
+using genome/small_region.fa as reference genome
+log filename: errors_G-A_end.read1.fwd.tasmanian.log
+read reference in 3.6517779032389322e-06 minutes
+tasmanian finished the analysis in 0.035687923431396484 seconds 
+reads discarded
+===============
+indel           0
+mapquality      0
+fragLength      0
+softclips       0
+readlength      0
+others          0
+
+Bases discarded
+===============
+quality         0
+softclips       0
+INFO	2021-03-10 13:07:07	CollectSequencingArtifactMetrics	
+
+********** NOTE: Picard's command line syntax is changing.
+**********
+********** For more information, please see:
+********** https://github.com/broadinstitute/picard/wiki/Command-Line-Syntax-Transition-For-Users-(Pre-Transition)
+**********
+********** The command line looks like this in the new syntax:
+**********
+**********    CollectSequencingArtifactMetrics -I G-A_end.read2.rev.bam -O G-A_end.read2.rev.picard -R genome/small_region.fa
+**********
+
+
+13:07:07.417 INFO  NativeLibraryLoader - Loading libgkl_compression.dylib from jar:file:/Users/aerijman/miniconda3/envs/picard/share/picard-2.25.0-0/picard.jar!/com/intel/gkl/native/libgkl_compression.dylib
+[Wed Mar 10 13:07:07 EST 2021] CollectSequencingArtifactMetrics INPUT=G-A_end.read2.rev.bam OUTPUT=G-A_end.read2.rev.picard REFERENCE_SEQUENCE=genome/small_region.fa    MINIMUM_QUALITY_SCORE=20 MINIMUM_MAPPING_QUALITY=30 MINIMUM_INSERT_SIZE=60 MAXIMUM_INSERT_SIZE=600 INCLUDE_UNPAIRED=false INCLUDE_DUPLICATES=false INCLUDE_NON_PF_READS=false TANDEM_READS=false USE_OQ=true CONTEXT_SIZE=1 ASSUME_SORTED=true STOP_AFTER=0 VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false GA4GH_CLIENT_SECRETS=client_secrets.json USE_JDK_DEFLATER=false USE_JDK_INFLATER=false
+[Wed Mar 10 13:07:07 EST 2021] Executing as aerijman@m-aerijman.local on Mac OS X 10.15.7 x86_64; OpenJDK 64-Bit Server VM 11.0.6+8-b765.1; Deflater: Intel; Inflater: Intel; Provider GCS is not available; Picard version: 2.25.0
+WARNING	2021-03-10 13:07:07	SinglePassSamProgram	File reports sort order 'unsorted', assuming it's coordinate sorted anyway.
+[Wed Mar 10 13:07:07 EST 2021] picard.analysis.artifacts.CollectSequencingArtifactMetrics done. Elapsed time: 0.00 minutes.
+Runtime.totalMemory()=536870912
+using genome/small_region.fa as reference genome
+log filename: errors_G-A_end.read2.rev.tasmanian.log
+read reference in 3.266334533691406e-06 minutes
+tasmanian finished the analysis in 0.03459286689758301 seconds 
+reads discarded
+===============
+indel           0
+mapquality      0
+fragLength      0
+softclips       0
+readlength      0
+others          0
+
+Bases discarded
+===============
+quality         0
+softclips       0
+INFO	2021-03-10 13:07:10	CollectSequencingArtifactMetrics	
+
+********** NOTE: Picard's command line syntax is changing.
+**********
+********** For more information, please see:
+********** https://github.com/broadinstitute/picard/wiki/Command-Line-Syntax-Transition-For-Users-(Pre-Transition)
+**********
+********** The command line looks like this in the new syntax:
+**********
+**********    CollectSequencingArtifactMetrics -I flag-duplicates.bam -O flag-duplicates.picard -R genome/small_region.fa
+**********
+
+
+13:07:11.013 INFO  NativeLibraryLoader - Loading libgkl_compression.dylib from jar:file:/Users/aerijman/miniconda3/envs/picard/share/picard-2.25.0-0/picard.jar!/com/intel/gkl/native/libgkl_compression.dylib
+[Wed Mar 10 13:07:11 EST 2021] CollectSequencingArtifactMetrics INPUT=flag-duplicates.bam OUTPUT=flag-duplicates.picard REFERENCE_SEQUENCE=genome/small_region.fa    MINIMUM_QUALITY_SCORE=20 MINIMUM_MAPPING_QUALITY=30 MINIMUM_INSERT_SIZE=60 MAXIMUM_INSERT_SIZE=600 INCLUDE_UNPAIRED=false INCLUDE_DUPLICATES=false INCLUDE_NON_PF_READS=false TANDEM_READS=false USE_OQ=true CONTEXT_SIZE=1 ASSUME_SORTED=true STOP_AFTER=0 VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false GA4GH_CLIENT_SECRETS=client_secrets.json USE_JDK_DEFLATER=false USE_JDK_INFLATER=false
+[Wed Mar 10 13:07:11 EST 2021] Executing as aerijman@m-aerijman.local on Mac OS X 10.15.7 x86_64; OpenJDK 64-Bit Server VM 11.0.6+8-b765.1; Deflater: Intel; Inflater: Intel; Provider GCS is not available; Picard version: 2.25.0
+WARNING	2021-03-10 13:07:11	SinglePassSamProgram	File reports sort order 'unsorted', assuming it's coordinate sorted anyway.
+[Wed Mar 10 13:07:11 EST 2021] picard.analysis.artifacts.CollectSequencingArtifactMetrics done. Elapsed time: 0.00 minutes.
+Runtime.totalMemory()=536870912
+using genome/small_region.fa as reference genome
+log filename: errors_flag-duplicates.tasmanian.log
+read reference in 3.715356190999349e-06 minutes
+tasmanian finished the analysis in 0.12235903739929199 seconds 
+reads discarded
+===============
+indel           0
+mapquality      0
+fragLength      0
+softclips       0
+readlength      0
+others          0
+
+Bases discarded
+===============
+quality         0
+softclips       0
+INFO	2021-03-10 13:07:14	CollectSequencingArtifactMetrics	
+
+********** NOTE: Picard's command line syntax is changing.
+**********
+********** For more information, please see:
+********** https://github.com/broadinstitute/picard/wiki/Command-Line-Syntax-Transition-For-Users-(Pre-Transition)
+**********
+********** The command line looks like this in the new syntax:
+**********
+**********    CollectSequencingArtifactMetrics -I flag-supp-align.bam -O flag-supp-align.picard -R genome/small_region.fa
+**********
+
+
+13:07:14.816 INFO  NativeLibraryLoader - Loading libgkl_compression.dylib from jar:file:/Users/aerijman/miniconda3/envs/picard/share/picard-2.25.0-0/picard.jar!/com/intel/gkl/native/libgkl_compression.dylib
+[Wed Mar 10 13:07:14 EST 2021] CollectSequencingArtifactMetrics INPUT=flag-supp-align.bam OUTPUT=flag-supp-align.picard REFERENCE_SEQUENCE=genome/small_region.fa    MINIMUM_QUALITY_SCORE=20 MINIMUM_MAPPING_QUALITY=30 MINIMUM_INSERT_SIZE=60 MAXIMUM_INSERT_SIZE=600 INCLUDE_UNPAIRED=false INCLUDE_DUPLICATES=false INCLUDE_NON_PF_READS=false TANDEM_READS=false USE_OQ=true CONTEXT_SIZE=1 ASSUME_SORTED=true STOP_AFTER=0 VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false GA4GH_CLIENT_SECRETS=client_secrets.json USE_JDK_DEFLATER=false USE_JDK_INFLATER=false
+[Wed Mar 10 13:07:14 EST 2021] Executing as aerijman@m-aerijman.local on Mac OS X 10.15.7 x86_64; OpenJDK 64-Bit Server VM 11.0.6+8-b765.1; Deflater: Intel; Inflater: Intel; Provider GCS is not available; Picard version: 2.25.0
+WARNING	2021-03-10 13:07:14	SinglePassSamProgram	File reports sort order 'unsorted', assuming it's coordinate sorted anyway.
+[Wed Mar 10 13:07:14 EST 2021] picard.analysis.artifacts.CollectSequencingArtifactMetrics done. Elapsed time: 0.00 minutes.
+Runtime.totalMemory()=536870912
+using genome/small_region.fa as reference genome
+log filename: errors_flag-supp-align.tasmanian.log
+read reference in 3.5524368286132813e-06 minutes
+tasmanian finished the analysis in 0.12381696701049805 seconds 
+reads discarded
+===============
+indel           0
+mapquality      0
+fragLength      0
+softclips       0
+readlength      0
+others          0
+
+Bases discarded
+===============
+quality         0
+softclips       0
+INFO	2021-03-10 13:07:18	CollectSequencingArtifactMetrics	
+
+********** NOTE: Picard's command line syntax is changing.
+**********
+********** For more information, please see:
+********** https://github.com/broadinstitute/picard/wiki/Command-Line-Syntax-Transition-For-Users-(Pre-Transition)
+**********
+********** The command line looks like this in the new syntax:
+**********
+**********    CollectSequencingArtifactMetrics -I flag-unmap.bam -O flag-unmap.picard -R genome/small_region.fa
+**********
+
+
+13:07:18.653 INFO  NativeLibraryLoader - Loading libgkl_compression.dylib from jar:file:/Users/aerijman/miniconda3/envs/picard/share/picard-2.25.0-0/picard.jar!/com/intel/gkl/native/libgkl_compression.dylib
+[Wed Mar 10 13:07:18 EST 2021] CollectSequencingArtifactMetrics INPUT=flag-unmap.bam OUTPUT=flag-unmap.picard REFERENCE_SEQUENCE=genome/small_region.fa    MINIMUM_QUALITY_SCORE=20 MINIMUM_MAPPING_QUALITY=30 MINIMUM_INSERT_SIZE=60 MAXIMUM_INSERT_SIZE=600 INCLUDE_UNPAIRED=false INCLUDE_DUPLICATES=false INCLUDE_NON_PF_READS=false TANDEM_READS=false USE_OQ=true CONTEXT_SIZE=1 ASSUME_SORTED=true STOP_AFTER=0 VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false GA4GH_CLIENT_SECRETS=client_secrets.json USE_JDK_DEFLATER=false USE_JDK_INFLATER=false
+[Wed Mar 10 13:07:18 EST 2021] Executing as aerijman@m-aerijman.local on Mac OS X 10.15.7 x86_64; OpenJDK 64-Bit Server VM 11.0.6+8-b765.1; Deflater: Intel; Inflater: Intel; Provider GCS is not available; Picard version: 2.25.0
+WARNING	2021-03-10 13:07:18	SinglePassSamProgram	File reports sort order 'unsorted', assuming it's coordinate sorted anyway.
+[Wed Mar 10 13:07:18 EST 2021] picard.analysis.artifacts.CollectSequencingArtifactMetrics done. Elapsed time: 0.00 minutes.
+Runtime.totalMemory()=536870912
+using genome/small_region.fa as reference genome
+log filename: errors_flag-unmap.tasmanian.log
+read reference in 3.234545389811198e-06 minutes
+tasmanian finished the analysis in 0.11647891998291016 seconds 
+reads discarded
+===============
+indel           0
+mapquality      0
+fragLength      0
+softclips       0
+readlength      0
+others          1
+
+Bases discarded
+===============
+quality         0
+softclips       0
+INFO	2021-03-10 13:07:22	CollectSequencingArtifactMetrics	
+
+********** NOTE: Picard's command line syntax is changing.
+**********
+********** For more information, please see:
+********** https://github.com/broadinstitute/picard/wiki/Command-Line-Syntax-Transition-For-Users-(Pre-Transition)
+**********
+********** The command line looks like this in the new syntax:
+**********
+**********    CollectSequencingArtifactMetrics -I original.bam -O original.picard -R genome/small_region.fa
+**********
+
+
+13:07:22.843 INFO  NativeLibraryLoader - Loading libgkl_compression.dylib from jar:file:/Users/aerijman/miniconda3/envs/picard/share/picard-2.25.0-0/picard.jar!/com/intel/gkl/native/libgkl_compression.dylib
+[Wed Mar 10 13:07:22 EST 2021] CollectSequencingArtifactMetrics INPUT=original.bam OUTPUT=original.picard REFERENCE_SEQUENCE=genome/small_region.fa    MINIMUM_QUALITY_SCORE=20 MINIMUM_MAPPING_QUALITY=30 MINIMUM_INSERT_SIZE=60 MAXIMUM_INSERT_SIZE=600 INCLUDE_UNPAIRED=false INCLUDE_DUPLICATES=false INCLUDE_NON_PF_READS=false TANDEM_READS=false USE_OQ=true CONTEXT_SIZE=1 ASSUME_SORTED=true STOP_AFTER=0 VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false GA4GH_CLIENT_SECRETS=client_secrets.json USE_JDK_DEFLATER=false USE_JDK_INFLATER=false
+[Wed Mar 10 13:07:22 EST 2021] Executing as aerijman@m-aerijman.local on Mac OS X 10.15.7 x86_64; OpenJDK 64-Bit Server VM 11.0.6+8-b765.1; Deflater: Intel; Inflater: Intel; Provider GCS is not available; Picard version: 2.25.0
+WARNING	2021-03-10 13:07:22	SinglePassSamProgram	File reports sort order 'unsorted', assuming it's coordinate sorted anyway.
+[Wed Mar 10 13:07:22 EST 2021] picard.analysis.artifacts.CollectSequencingArtifactMetrics done. Elapsed time: 0.00 minutes.
+Runtime.totalMemory()=536870912
+using genome/small_region.fa as reference genome
+log filename: errors_original.tasmanian.log
+read reference in 3.612041473388672e-06 minutes
+tasmanian finished the analysis in 0.036380767822265625 seconds 
+reads discarded
+===============
+indel           0
+mapquality      0
+fragLength      0
+softclips       0
+readlength      0
+others          0
+
+Bases discarded
+===============
+quality         0
+softclips       0
+INFO	2021-03-10 13:07:26	CollectSequencingArtifactMetrics	
+
+********** NOTE: Picard's command line syntax is changing.
+**********
+********** For more information, please see:
+********** https://github.com/broadinstitute/picard/wiki/Command-Line-Syntax-Transition-For-Users-(Pre-Transition)
+**********
+********** The command line looks like this in the new syntax:
+**********
+**********    CollectSequencingArtifactMetrics -I soft_clip.read1.1-6.fwd.bam -O soft_clip.read1.1-6.fwd.picard -R genome/small_region.fa
+**********
+
+
+13:07:26.596 INFO  NativeLibraryLoader - Loading libgkl_compression.dylib from jar:file:/Users/aerijman/miniconda3/envs/picard/share/picard-2.25.0-0/picard.jar!/com/intel/gkl/native/libgkl_compression.dylib
+[Wed Mar 10 13:07:26 EST 2021] CollectSequencingArtifactMetrics INPUT=soft_clip.read1.1-6.fwd.bam OUTPUT=soft_clip.read1.1-6.fwd.picard REFERENCE_SEQUENCE=genome/small_region.fa    MINIMUM_QUALITY_SCORE=20 MINIMUM_MAPPING_QUALITY=30 MINIMUM_INSERT_SIZE=60 MAXIMUM_INSERT_SIZE=600 INCLUDE_UNPAIRED=false INCLUDE_DUPLICATES=false INCLUDE_NON_PF_READS=false TANDEM_READS=false USE_OQ=true CONTEXT_SIZE=1 ASSUME_SORTED=true STOP_AFTER=0 VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false GA4GH_CLIENT_SECRETS=client_secrets.json USE_JDK_DEFLATER=false USE_JDK_INFLATER=false
+[Wed Mar 10 13:07:26 EST 2021] Executing as aerijman@m-aerijman.local on Mac OS X 10.15.7 x86_64; OpenJDK 64-Bit Server VM 11.0.6+8-b765.1; Deflater: Intel; Inflater: Intel; Provider GCS is not available; Picard version: 2.25.0
+WARNING	2021-03-10 13:07:26	SinglePassSamProgram	File reports sort order 'unsorted', assuming it's coordinate sorted anyway.
+[Wed Mar 10 13:07:26 EST 2021] picard.analysis.artifacts.CollectSequencingArtifactMetrics done. Elapsed time: 0.00 minutes.
+Runtime.totalMemory()=536870912
+using genome/small_region.fa as reference genome
+log filename: errors_soft_clip.read1.1-6.fwd.tasmanian.log
+read reference in 3.949801127115885e-06 minutes
+tasmanian finished the analysis in 0.03889179229736328 seconds 
+reads discarded
+===============
+indel           0
+mapquality      0
+fragLength      0
+softclips       0
+readlength      0
+others          0
+
+Bases discarded
+===============
+quality         0
+softclips       0
+INFO	2021-03-10 13:07:30	CollectSequencingArtifactMetrics	
+
+********** NOTE: Picard's command line syntax is changing.
+**********
+********** For more information, please see:
+********** https://github.com/broadinstitute/picard/wiki/Command-Line-Syntax-Transition-For-Users-(Pre-Transition)
+**********
+********** The command line looks like this in the new syntax:
+**********
+**********    CollectSequencingArtifactMetrics -I soft_clip.read1.2-6.fwd.bam -O soft_clip.read1.2-6.fwd.picard -R genome/small_region.fa
+**********
+
+
+13:07:30.375 INFO  NativeLibraryLoader - Loading libgkl_compression.dylib from jar:file:/Users/aerijman/miniconda3/envs/picard/share/picard-2.25.0-0/picard.jar!/com/intel/gkl/native/libgkl_compression.dylib
+[Wed Mar 10 13:07:30 EST 2021] CollectSequencingArtifactMetrics INPUT=soft_clip.read1.2-6.fwd.bam OUTPUT=soft_clip.read1.2-6.fwd.picard REFERENCE_SEQUENCE=genome/small_region.fa    MINIMUM_QUALITY_SCORE=20 MINIMUM_MAPPING_QUALITY=30 MINIMUM_INSERT_SIZE=60 MAXIMUM_INSERT_SIZE=600 INCLUDE_UNPAIRED=false INCLUDE_DUPLICATES=false INCLUDE_NON_PF_READS=false TANDEM_READS=false USE_OQ=true CONTEXT_SIZE=1 ASSUME_SORTED=true STOP_AFTER=0 VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false GA4GH_CLIENT_SECRETS=client_secrets.json USE_JDK_DEFLATER=false USE_JDK_INFLATER=false
+[Wed Mar 10 13:07:30 EST 2021] Executing as aerijman@m-aerijman.local on Mac OS X 10.15.7 x86_64; OpenJDK 64-Bit Server VM 11.0.6+8-b765.1; Deflater: Intel; Inflater: Intel; Provider GCS is not available; Picard version: 2.25.0
+WARNING	2021-03-10 13:07:30	SinglePassSamProgram	File reports sort order 'unsorted', assuming it's coordinate sorted anyway.
+[Wed Mar 10 13:07:30 EST 2021] picard.analysis.artifacts.CollectSequencingArtifactMetrics done. Elapsed time: 0.00 minutes.
+Runtime.totalMemory()=536870912
+using genome/small_region.fa as reference genome
+log filename: errors_soft_clip.read1.2-6.fwd.tasmanian.log
+read reference in 3.699461619059245e-06 minutes
+tasmanian finished the analysis in 0.03473496437072754 seconds 
+reads discarded
+===============
+indel           0
+mapquality      0
+fragLength      0
+softclips       0
+readlength      0
+others          0
+
+Bases discarded
+===============
+quality         0
+softclips       0
+INFO	2021-03-10 13:07:33	CollectSequencingArtifactMetrics	
+
+********** NOTE: Picard's command line syntax is changing.
+**********
+********** For more information, please see:
+********** https://github.com/broadinstitute/picard/wiki/Command-Line-Syntax-Transition-For-Users-(Pre-Transition)
+**********
+********** The command line looks like this in the new syntax:
+**********
+**********    CollectSequencingArtifactMetrics -I soft_clip.read1.3-12.fwd.bam -O soft_clip.read1.3-12.fwd.picard -R genome/small_region.fa
+**********
+
+
+13:07:34.087 INFO  NativeLibraryLoader - Loading libgkl_compression.dylib from jar:file:/Users/aerijman/miniconda3/envs/picard/share/picard-2.25.0-0/picard.jar!/com/intel/gkl/native/libgkl_compression.dylib
+[Wed Mar 10 13:07:34 EST 2021] CollectSequencingArtifactMetrics INPUT=soft_clip.read1.3-12.fwd.bam OUTPUT=soft_clip.read1.3-12.fwd.picard REFERENCE_SEQUENCE=genome/small_region.fa    MINIMUM_QUALITY_SCORE=20 MINIMUM_MAPPING_QUALITY=30 MINIMUM_INSERT_SIZE=60 MAXIMUM_INSERT_SIZE=600 INCLUDE_UNPAIRED=false INCLUDE_DUPLICATES=false INCLUDE_NON_PF_READS=false TANDEM_READS=false USE_OQ=true CONTEXT_SIZE=1 ASSUME_SORTED=true STOP_AFTER=0 VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false GA4GH_CLIENT_SECRETS=client_secrets.json USE_JDK_DEFLATER=false USE_JDK_INFLATER=false
+[Wed Mar 10 13:07:34 EST 2021] Executing as aerijman@m-aerijman.local on Mac OS X 10.15.7 x86_64; OpenJDK 64-Bit Server VM 11.0.6+8-b765.1; Deflater: Intel; Inflater: Intel; Provider GCS is not available; Picard version: 2.25.0
+WARNING	2021-03-10 13:07:34	SinglePassSamProgram	File reports sort order 'unsorted', assuming it's coordinate sorted anyway.
+[Wed Mar 10 13:07:34 EST 2021] picard.analysis.artifacts.CollectSequencingArtifactMetrics done. Elapsed time: 0.00 minutes.
+Runtime.totalMemory()=536870912
+using genome/small_region.fa as reference genome
+log filename: errors_soft_clip.read1.3-12.fwd.tasmanian.log
+read reference in 3.1828880310058593e-06 minutes
+tasmanian finished the analysis in 0.034088850021362305 seconds 
+reads discarded
+===============
+indel           0
+mapquality      0
+fragLength      0
+softclips       0
+readlength      0
+others          0
+
+Bases discarded
+===============
+quality         0
+softclips       3
+INFO	2021-03-10 13:07:37	CollectSequencingArtifactMetrics	
+
+********** NOTE: Picard's command line syntax is changing.
+**********
+********** For more information, please see:
+********** https://github.com/broadinstitute/picard/wiki/Command-Line-Syntax-Transition-For-Users-(Pre-Transition)
+**********
+********** The command line looks like this in the new syntax:
+**********
+**********    CollectSequencingArtifactMetrics -I soft_clip.read1.3-6.fwd.bam -O soft_clip.read1.3-6.fwd.picard -R genome/small_region.fa
+**********
+
+
+13:07:37.891 INFO  NativeLibraryLoader - Loading libgkl_compression.dylib from jar:file:/Users/aerijman/miniconda3/envs/picard/share/picard-2.25.0-0/picard.jar!/com/intel/gkl/native/libgkl_compression.dylib
+[Wed Mar 10 13:07:37 EST 2021] CollectSequencingArtifactMetrics INPUT=soft_clip.read1.3-6.fwd.bam OUTPUT=soft_clip.read1.3-6.fwd.picard REFERENCE_SEQUENCE=genome/small_region.fa    MINIMUM_QUALITY_SCORE=20 MINIMUM_MAPPING_QUALITY=30 MINIMUM_INSERT_SIZE=60 MAXIMUM_INSERT_SIZE=600 INCLUDE_UNPAIRED=false INCLUDE_DUPLICATES=false INCLUDE_NON_PF_READS=false TANDEM_READS=false USE_OQ=true CONTEXT_SIZE=1 ASSUME_SORTED=true STOP_AFTER=0 VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false GA4GH_CLIENT_SECRETS=client_secrets.json USE_JDK_DEFLATER=false USE_JDK_INFLATER=false
+[Wed Mar 10 13:07:37 EST 2021] Executing as aerijman@m-aerijman.local on Mac OS X 10.15.7 x86_64; OpenJDK 64-Bit Server VM 11.0.6+8-b765.1; Deflater: Intel; Inflater: Intel; Provider GCS is not available; Picard version: 2.25.0
+WARNING	2021-03-10 13:07:37	SinglePassSamProgram	File reports sort order 'unsorted', assuming it's coordinate sorted anyway.
+[Wed Mar 10 13:07:38 EST 2021] picard.analysis.artifacts.CollectSequencingArtifactMetrics done. Elapsed time: 0.00 minutes.
+Runtime.totalMemory()=536870912
+using genome/small_region.fa as reference genome
+log filename: errors_soft_clip.read1.3-6.fwd.tasmanian.log
+read reference in 3.3656756083170574e-06 minutes
+tasmanian finished the analysis in 0.03425788879394531 seconds 
+reads discarded
+===============
+indel           0
+mapquality      0
+fragLength      0
+softclips       0
+readlength      0
+others          0
+
+Bases discarded
+===============
+quality         0
+softclips       6
+INFO	2021-03-10 13:07:41	CollectSequencingArtifactMetrics	
+
+********** NOTE: Picard's command line syntax is changing.
+**********
+********** For more information, please see:
+********** https://github.com/broadinstitute/picard/wiki/Command-Line-Syntax-Transition-For-Users-(Pre-Transition)
+**********
+********** The command line looks like this in the new syntax:
+**********
+**********    CollectSequencingArtifactMetrics -I soft_clip.read1.3-9.fwd.bam -O soft_clip.read1.3-9.fwd.picard -R genome/small_region.fa
+**********
+
+
+13:07:41.686 INFO  NativeLibraryLoader - Loading libgkl_compression.dylib from jar:file:/Users/aerijman/miniconda3/envs/picard/share/picard-2.25.0-0/picard.jar!/com/intel/gkl/native/libgkl_compression.dylib
+[Wed Mar 10 13:07:41 EST 2021] CollectSequencingArtifactMetrics INPUT=soft_clip.read1.3-9.fwd.bam OUTPUT=soft_clip.read1.3-9.fwd.picard REFERENCE_SEQUENCE=genome/small_region.fa    MINIMUM_QUALITY_SCORE=20 MINIMUM_MAPPING_QUALITY=30 MINIMUM_INSERT_SIZE=60 MAXIMUM_INSERT_SIZE=600 INCLUDE_UNPAIRED=false INCLUDE_DUPLICATES=false INCLUDE_NON_PF_READS=false TANDEM_READS=false USE_OQ=true CONTEXT_SIZE=1 ASSUME_SORTED=true STOP_AFTER=0 VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false GA4GH_CLIENT_SECRETS=client_secrets.json USE_JDK_DEFLATER=false USE_JDK_INFLATER=false
+[Wed Mar 10 13:07:41 EST 2021] Executing as aerijman@m-aerijman.local on Mac OS X 10.15.7 x86_64; OpenJDK 64-Bit Server VM 11.0.6+8-b765.1; Deflater: Intel; Inflater: Intel; Provider GCS is not available; Picard version: 2.25.0
+WARNING	2021-03-10 13:07:41	SinglePassSamProgram	File reports sort order 'unsorted', assuming it's coordinate sorted anyway.
+[Wed Mar 10 13:07:41 EST 2021] picard.analysis.artifacts.CollectSequencingArtifactMetrics done. Elapsed time: 0.00 minutes.
+Runtime.totalMemory()=536870912
+using genome/small_region.fa as reference genome
+log filename: errors_soft_clip.read1.3-9.fwd.tasmanian.log
+read reference in 3.0994415283203125e-06 minutes
+tasmanian finished the analysis in 0.03335404396057129 seconds 
+reads discarded
+===============
+indel           0
+mapquality      0
+fragLength      0
+softclips       0
+readlength      0
+others          0
+
+Bases discarded
+===============
+quality         0
+softclips       8
+INFO	2021-03-10 13:07:45	CollectSequencingArtifactMetrics	
+
+********** NOTE: Picard's command line syntax is changing.
+**********
+********** For more information, please see:
+********** https://github.com/broadinstitute/picard/wiki/Command-Line-Syntax-Transition-For-Users-(Pre-Transition)
+**********
+********** The command line looks like this in the new syntax:
+**********
+**********    CollectSequencingArtifactMetrics -I soft_clip.read1.fwd.bam -O soft_clip.read1.fwd.picard -R genome/small_region.fa
+**********
+
+
+13:07:45.418 INFO  NativeLibraryLoader - Loading libgkl_compression.dylib from jar:file:/Users/aerijman/miniconda3/envs/picard/share/picard-2.25.0-0/picard.jar!/com/intel/gkl/native/libgkl_compression.dylib
+[Wed Mar 10 13:07:45 EST 2021] CollectSequencingArtifactMetrics INPUT=soft_clip.read1.fwd.bam OUTPUT=soft_clip.read1.fwd.picard REFERENCE_SEQUENCE=genome/small_region.fa    MINIMUM_QUALITY_SCORE=20 MINIMUM_MAPPING_QUALITY=30 MINIMUM_INSERT_SIZE=60 MAXIMUM_INSERT_SIZE=600 INCLUDE_UNPAIRED=false INCLUDE_DUPLICATES=false INCLUDE_NON_PF_READS=false TANDEM_READS=false USE_OQ=true CONTEXT_SIZE=1 ASSUME_SORTED=true STOP_AFTER=0 VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false GA4GH_CLIENT_SECRETS=client_secrets.json USE_JDK_DEFLATER=false USE_JDK_INFLATER=false
+[Wed Mar 10 13:07:45 EST 2021] Executing as aerijman@m-aerijman.local on Mac OS X 10.15.7 x86_64; OpenJDK 64-Bit Server VM 11.0.6+8-b765.1; Deflater: Intel; Inflater: Intel; Provider GCS is not available; Picard version: 2.25.0
+WARNING	2021-03-10 13:07:45	SinglePassSamProgram	File reports sort order 'unsorted', assuming it's coordinate sorted anyway.
+[Wed Mar 10 13:07:45 EST 2021] picard.analysis.artifacts.CollectSequencingArtifactMetrics done. Elapsed time: 0.00 minutes.
+Runtime.totalMemory()=536870912
+using genome/small_region.fa as reference genome
+log filename: errors_soft_clip.read1.fwd.tasmanian.log
+read reference in 3.7829081217447918e-06 minutes
+tasmanian finished the analysis in 0.03650808334350586 seconds 
+reads discarded
+===============
+indel           0
+mapquality      0
+fragLength      0
+softclips       0
+readlength      0
+others          0
+
+Bases discarded
+===============
+quality         0
+softclips       6
+INFO	2021-03-10 13:07:48	CollectSequencingArtifactMetrics	
+
+********** NOTE: Picard's command line syntax is changing.
+**********
+********** For more information, please see:
+********** https://github.com/broadinstitute/picard/wiki/Command-Line-Syntax-Transition-For-Users-(Pre-Transition)
+**********
+********** The command line looks like this in the new syntax:
+**********
+**********    CollectSequencingArtifactMetrics -I soft_clip.read2.rev.bam -O soft_clip.read2.rev.picard -R genome/small_region.fa
+**********
+
+
+13:07:49.190 INFO  NativeLibraryLoader - Loading libgkl_compression.dylib from jar:file:/Users/aerijman/miniconda3/envs/picard/share/picard-2.25.0-0/picard.jar!/com/intel/gkl/native/libgkl_compression.dylib
+[Wed Mar 10 13:07:49 EST 2021] CollectSequencingArtifactMetrics INPUT=soft_clip.read2.rev.bam OUTPUT=soft_clip.read2.rev.picard REFERENCE_SEQUENCE=genome/small_region.fa    MINIMUM_QUALITY_SCORE=20 MINIMUM_MAPPING_QUALITY=30 MINIMUM_INSERT_SIZE=60 MAXIMUM_INSERT_SIZE=600 INCLUDE_UNPAIRED=false INCLUDE_DUPLICATES=false INCLUDE_NON_PF_READS=false TANDEM_READS=false USE_OQ=true CONTEXT_SIZE=1 ASSUME_SORTED=true STOP_AFTER=0 VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false GA4GH_CLIENT_SECRETS=client_secrets.json USE_JDK_DEFLATER=false USE_JDK_INFLATER=false
+[Wed Mar 10 13:07:49 EST 2021] Executing as aerijman@m-aerijman.local on Mac OS X 10.15.7 x86_64; OpenJDK 64-Bit Server VM 11.0.6+8-b765.1; Deflater: Intel; Inflater: Intel; Provider GCS is not available; Picard version: 2.25.0
+WARNING	2021-03-10 13:07:49	SinglePassSamProgram	File reports sort order 'unsorted', assuming it's coordinate sorted anyway.
+[Wed Mar 10 13:07:49 EST 2021] picard.analysis.artifacts.CollectSequencingArtifactMetrics done. Elapsed time: 0.00 minutes.
+Runtime.totalMemory()=536870912
+using genome/small_region.fa as reference genome
+log filename: errors_soft_clip.read2.rev.tasmanian.log
+read reference in 3.798802693684896e-06 minutes
+tasmanian finished the analysis in 0.0351710319519043 seconds 
+reads discarded
+===============
+indel           0
+mapquality      0
+fragLength      0
+softclips       0
+readlength      0
+others          0
+
+Bases discarded
+===============
+quality         0
+softclips       5

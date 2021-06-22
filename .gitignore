@@ -1,8 +1,15 @@
 **/.DS_Store
-.*pyc
+*pyc
 /dist/
 /*.egg-info
 *.swp
 tasmanian/tests/*html
 ./tasmanian_venv/
 tasmanian_venv/*
+*pyc 
+*table 
+*metrics 
+*html
+*summary
+*bam
+tasmanian/test_suite/Damage-estimator

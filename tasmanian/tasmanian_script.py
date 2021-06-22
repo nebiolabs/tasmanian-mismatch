@@ -1,16 +1,17 @@
-#!/bin/python
+#!/usr/bin/env python
 
 # TODO: add context nucleotides? 
 
-import sys, os, re, time
+import sys, os, re, time, pickle
 import numpy as np
 import pandas as pd
-from itertools import product
+from itertools import product, permutations
 import logging, uuid
 from scipy.stats import mode
 
 try:
     from tasmanian.utils.utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table
+    from tasmanian.utils.utils import fill_PFM, initialize_PFM, pfm2ppm, ppm2pwm
     from tasmanian.utils.plot import plot_html
 except Exception as e: #ImportError: #ModuleNotFoundError:
     # Either tests or base_dir, it's downstream of ../tasmanian/tasmanian/
@@ -21,7 +22,7 @@ except Exception as e: #ImportError: #ModuleNotFoundError:
     utils_path = p + '/utils'
     sys.path = [utils_path] + sys.path
 
-    from utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table
+    from utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table, fill_PFM, initialize_PFM, pfm2ppm, ppm2pwm
     from plot import plot_html
 
 ###############################################################################
@@ -49,7 +50,10 @@ def analyze_artifacts(Input, Args):
         -g|--fragment-length (use fragments withi these lengths ONLY)
         -o|--output-prefix (use this prefix for the output and logging files)
         -c|--confidence (number of bases in the complement region of the read) 
-        -d|--debug (create a log file) 
+        -d|--debug (create a log file)
+        -O|--ont (this is ONT data)
+        -p|--picard-logic (normalize tables based on picard CollectSequencingArtifactMetrics logic)
+        -P|--include-pwm
     """
 
     SKIP_READS = {
@@ -80,6 +84,9 @@ def analyze_artifacts(Input, Args):
     check_lengths_counter = 0
     confidence = 20
     debug = False
+    ONT = False
+    picard = False
+    PWM, flanking_n = False, 5
 
     # if there are arguments get them
     for n,i in enumerate(Args):
@@ -115,6 +122,19 @@ def analyze_artifacts(Input, Args):
             confidence = int(sys.argv[n+1])
         if i in ['-d','--debug']:
             debug = True
+        if i in ['-O','--ont']:
+            ONT = True
+            READ_LENGTH=100000
+            MAX_LENGTH=100000
+            TLEN=np.array([0,100000])
+            check_lengths = READ_LENGTH
+        if i in ['-p','--picard-logic']:
+            picard = True
+        if i in ['-P','--include-pwm']:
+            PWM = True
+            if len(sys.argv)>n+1: 
+                flanking_n = int(sys.argv[n+1]) if sys.argv[n+1].isnumeric() else flanking_n
+
 
     if debug:
         # if debugging create this logfile    
@@ -153,7 +173,14 @@ def analyze_artifacts(Input, Args):
     # in thee tables the CONFIDENCE reads ONLY. These are reads with >= CONFIDENCE bases in the complement
     errors_intersectionB = init_artifacts_table(READ_LENGTH)
     errors_complementB = init_artifacts_table(READ_LENGTH)
-    
+
+    # initialize PFM (later on converted to PWM)    
+    if PWM:
+        All_combinations = [
+            ''.join(i) for i in permutations(['A','C','T','G'], 2)] +\
+                 ['AA','CC','GG','TT']
+
+        PFM = {i: initialize_PFM(flanking_n=flanking_n) for i in All_combinations}
 
     # to check that there are tasmanian flags in sam file and if not, use unrelateds table only.
     bed_tag = False
@@ -166,7 +193,7 @@ def analyze_artifacts(Input, Args):
         if line[0]=="@":
             continue
 
-        _, flag, chrom, start, mapq, cigar, _, _, tlen, seq, phred = line.split('\t')[:11]
+        read_id, flag, chrom, start, mapq, cigar, _, _, tlen, seq, phred = line.split('\t')[:11]
 
         # If sam data does not have the tasmanian tag, there is no intersection with bed and proceed to a single output table
         if bed_tag_counter<10 and bed_tag==False:
@@ -262,6 +289,10 @@ def analyze_artifacts(Input, Args):
                 
                 elif i=='D':
                     ref_idx[position:position+number]=0
+                
+                elif i=='H':
+                    ref_idx[position:position+number]=0
+                    seq_idx[position:position+number]=0
 
                 position += number
                 last = current+1
@@ -277,20 +308,23 @@ def analyze_artifacts(Input, Args):
             pass
 
         # if bin(int(flag))[2:][-5]=='1' or make it easy for now...
-        if flag==99: 
+        if flag==99 or (ONT and flag in [0, 2048]): # for ont, not considering "secondary alignments", only "supp"
             strand='fwd'; read=1
         elif flag==163: 
             strand='fwd'; read=2
-        elif flag==83:
+        elif flag==83 or (ONT and flag in [16, 2064]):
             strand='rev'; read=1
         elif flag==147: 
             strand='rev'; read=2
         else: continue
 
         # At this point only accepted reads are analyzed. incorporate the fist X read length and later get mode
-        if check_lengths_counter < 100:
+        if check_lengths_counter<100 and not ONT:
             check_lengths.append(seq_len)
             check_lengths_counter +=1
+        elif ONT:
+            if seq_len > check_lengths: # If ONT, check_lengths is a number not a list
+                check_lengths = seq_len # THIS IS SAFE: if read length is > TLEN, it will be discarded
 
         if _UNMASK_GENOME: 
             ref = ''.join(ref).upper() # re-think before doing this.
@@ -350,14 +384,49 @@ def analyze_artifacts(Input, Args):
                              errors_complementB[read][read_pos][ref_pos][Base.upper()] += 1
                         else:
                              errors_complement[read][read_pos][ref_pos][Base] += 1
+                    
+                    # write somewhere read_id, flag(read-number + strand), 
+                    # read_position, chrom, genomic-position, mismatch-type.
+                    if debug:
+                        if ref_pos != Base and Base in ['A','C','T','G']:
+                            sys.stderr.write('{},{},{},{},{},{},{}\n'.format(read_id, flag, read_pos, chrom, pos+start, ref_pos, Base))
+                    
+                    if PWM:
+                        # We have to fix this. For now, avoid positions too close to the ends of the reads
+                        #if pos <=flanking_n:
+                        #    this_seq = ref[0:pos*2+1] # keep it symetrical (I am not sure though)
+                        #elif pos+flanking_n > len(ref):
+                        #    continue
+                        #else:
+                        this_seq = ref[pos-flanking_n:pos+flanking_n+1] # Assuming 0-based index
+                        
+                        if strand == 'rev':
+                            this_seq = [revcomp(b) for b in this_seq][::-1]
+                        
+                        # This will be replaced with a smarter option.
+                        if len(this_seq) < flanking_n*2+1:
+                            continue
+
+                        this_seq = ''.join(this_seq)
+                        fill_PFM(this_seq, PFM[''.join([ref_pos,Base])])
 
                 except Exception as e:
                     if debug:
                         logger.warning('error:{} in chr:{}, position:{}, read:{}, base:{}, seq:{}, start:{} and ref_pos:{}'.format(\
                                                                     str(e), chrom, pos, read, base, ''.join(seq), start, ref[pos]))
+    PWM = {}
+    for k,v in PFM.items():
+        PWM[k] = pfm2ppm(v)
+
+    for k,v in PWM.items():
+        if k[0]==k[1]: # careful dont make CC, GG, TT, AA to matrices of ones!!
+            continue
+        else:
+            base_dist = PWM[k[0]+k[0]]
+            PWM[k] = ppm2pwm(v, base_dist)
 
     # fix tables on length
-    READ_LENGTH = mode(check_lengths)[0][0]
+    READ_LENGTH = mode(check_lengths)[0][0] if not ONT else check_lengths
     #READ_LENGTH = np.max(check_lengths)
     
     if debug:
@@ -372,7 +441,7 @@ def analyze_artifacts(Input, Args):
     errors_complementB = trim_table(errors_complementB, READ_LENGTH)
 
     #######################
-    ## REPORTING SECTION ##
+    # REPORTING SECTION ##
     #######################
     
     # Report performance and less relevant statistics
@@ -434,7 +503,7 @@ def analyze_artifacts(Input, Args):
     #f.write('\n'.join(logging))
     #f.close()
     
-    return table
+    return table, PWM
 
 
 
@@ -447,7 +516,18 @@ if __name__=='__main__':
         Args = sys.argv
 
     # run tasmanian
-    table = analyze_artifacts(sys.stdin, Args) 
+    table, PWM = analyze_artifacts(sys.stdin, Args) 
+
+    # print results
+    table_print = pd.concat(
+        [i if n==0 else i.iloc[:,2:] for n,i in enumerate(table.values())]
+        , axis=1)
+        
+    table_print.columns = ['read','position'] + ','.join([
+        ','.join([t+i for i in table['intersection'].columns[2:]]) for t in ['I','C','N','cI','cC']
+        ]).split(',')
+
+    table_print.to_csv(sys.stdout, index=False)
 
     # avoid overrighting report file before saving.
     report_filename = 'Tasmanian_artifact_report.html'
@@ -466,3 +546,9 @@ if __name__=='__main__':
     with open(report_filename, 'w') as f:
         f.write(report_html)
 
+    # save PWM into pickle
+    pwm_filename = 'Tasmanian_pwm_file' + str(file_num)
+    with open(pwm_filename, 'wb') as f:
+        pickle.dump(PWM, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+    sys.stderr.write('\n' + report_filename + " and " + pwm_filename + " related files created\n")

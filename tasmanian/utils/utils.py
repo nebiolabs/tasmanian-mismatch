@@ -246,3 +246,47 @@ proper_flags = {
     163:'second rev'
 }
 
+def initialize_PFM(flanking_n=5):
+    '''
+    Initialize a position frequency matrix
+    with flanking_n * 2 columns and 4 rows. (not including middle-base)
+    Matrix looks loke this:
+    A       -n ... 0 ... n   -> matrix[0]
+    C        .     .     .
+    T        .     .     .
+    G        .     .     .
+    N        .     .     .
+    '''
+    return np.zeros(shape=(flanking_n*2+1, 5))
+
+def fill_PFM(ref_seq, matrix):
+    '''
+    The matrix should represent the mismatch. This should be checked
+    before calling this function.
+    We could check the flanking_n here, but we can speed up a tincy bit 
+    having the value instead of calculating it.
+    ALSO the seqeuence from reference IS PROVIDED, not the ref_position.
+
+    E.g. ref_seq = ATTGCTTAG -> flanking_n=4 and base=C
+    '''
+    #matrix2 = matrix.copy()
+    #assert len(ref_seq) <= matrix.shape[0]
+
+    loc_m = {'A':0, 'C':1, 'T':2, 'G':3, 'N':4} # position (location) in the matrix
+    for n,i in enumerate(ref_seq):
+        matrix[n,loc_m[i]] +=1
+    
+    #return matrix2
+    return
+
+def pfm2ppm(matrix):
+    return matrix / matrix.sum(axis=1).reshape(-1,1)
+
+def ppm2pwm(ppm1, ppm2):
+    '''
+    ppm1 = measured distribution
+    ppm2 = base distribution
+    e.g. ppm1='c_t' then ppm2='c_c' 
+    '''
+    return np.log2(ppm1 / ppm2)
+
