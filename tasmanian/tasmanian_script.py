@@ -419,12 +419,11 @@ def analyze_artifacts(Input, Args):
         PWM[k] = pfm2ppm(v)
 
     for k,v in PWM.items():
-        if v[0]==v[1]: # careful dont make CC, GG, TT, AA to matrices of ones!!
+        if k[0]==k[1]: # careful dont make CC, GG, TT, AA to matrices of ones!!
             continue
         else:
             base_dist = PWM[k[0]+k[0]]
             PWM[k] = ppm2pwm(v, base_dist)
-    
 
     # fix tables on length
     READ_LENGTH = mode(check_lengths)[0][0] if not ONT else check_lengths
@@ -442,7 +441,7 @@ def analyze_artifacts(Input, Args):
     errors_complementB = trim_table(errors_complementB, READ_LENGTH)
 
     #######################
-    ## REPORTING SECTION ##
+    # REPORTING SECTION ##
     #######################
     
     # Report performance and less relevant statistics
@@ -549,7 +548,7 @@ if __name__=='__main__':
 
     # save PWM into pickle
     pwm_filename = 'Tasmanian_pwm_file' + str(file_num)
-    with open(pwm_filename) as f:
-        pickle.dump(PWM, f)
+    with open(pwm_filename, 'wb') as f:
+        pickle.dump(PWM, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     sys.stderr.write('\n' + report_filename + " and " + pwm_filename + " related files created\n")
