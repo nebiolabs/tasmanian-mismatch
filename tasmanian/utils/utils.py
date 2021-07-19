@@ -160,6 +160,9 @@ def load_reference(ref_file):
         while True:
             try:
                 line = next(f).strip()
+
+                if len(line)<2: continue
+
                 if line[0] == ">":
                     if 'current_key' in locals():
                         reference[current_key] = ''.join(tmp)
