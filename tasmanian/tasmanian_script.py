@@ -415,15 +415,16 @@ def analyze_artifacts(Input, Args):
                         logger.warning('error:{} in chr:{}, position:{}, read:{}, base:{}, seq:{}, start:{} and ref_pos:{}'.format(\
                                                                     str(e), chrom, pos, read, base, ''.join(seq), start, ref[pos]))
     PWM = {}
-    for k,v in PFM.items():
-        PWM[k] = pfm2ppm(v)
+    if PWM:
+        for k,v in PFM.items():
+            PWM[k] = pfm2ppm(v)
 
-    for k,v in PWM.items():
-        if k[0]==k[1]: # careful dont make CC, GG, TT, AA to matrices of ones!!
-            continue
-        else:
-            base_dist = PWM[k[0]+k[0]]
-            PWM[k] = ppm2pwm(v, base_dist)
+        for k,v in PWM.items():
+            if k[0]==k[1]: # careful dont make CC, GG, TT, AA to matrices of ones!!
+                continue
+            else:
+                base_dist = PWM[k[0]+k[0]]
+                PWM[k] = ppm2pwm(v, base_dist)
 
     # fix tables on length
     READ_LENGTH = mode(check_lengths)[0][0] if not ONT else check_lengths
@@ -457,11 +458,11 @@ def analyze_artifacts(Input, Args):
         sys.stderr.write('{:<15} {}\n'.format(k,v))
 
     # print table header
-    sys.stdout.write('read,position,' + ','.join \
-        ([','.join([
-            Sample+mut for mut in 'a_a,a_t,a_c,a_g,t_a,t_t,t_c,t_g,c_a,c_t,c_c,c_g,g_a,g_t,g_c,g_g'.split(',')
-            ]) for Sample in ['I','C','N','cI','cC']
-        ]) + '\n')
+    #sys.stdout.write('read,position,' + ','.join \
+    #    ([','.join([
+    #        Sample+mut for mut in 'a_a,a_t,a_c,a_g,t_a,t_t,t_c,t_g,c_a,c_t,c_c,c_g,g_a,g_t,g_c,g_g'.split(',')
+    #        ]) for Sample in ['I','C','N','cI','cC']
+    #    ]) + '\n')
 
     # print rows
     prnt = []
@@ -471,8 +472,8 @@ def analyze_artifacts(Input, Args):
                 ','.join([str(Table[read][pos][i][j]) for i,j in zip(['A','A','A','A','T','T','T','T','C','C','C','C','G','G','G','G'], ['A','T','C','G']*4)])
             for Table in [errors_intersection, errors_complement, errors_unrelated, errors_intersectionB, errors_complementB]]))
 
-    sys.stdout.write('\n'.join(prnt))
-
+    #sys.stdout.write('\n'.join(prnt))
+    
     # also save table as numpy arrays in dicts for ploting into the html report
     # we already printed the table as an array of strings. Just parse it into pandas and 
     # re-assign data-types
