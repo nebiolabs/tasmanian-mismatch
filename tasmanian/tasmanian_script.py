@@ -305,7 +305,6 @@ def analyze_artifacts(Input, Args):
         except Exception as e:
             if debug:
                 logger.warning('error: {} occurred while fixing for different lengths of seq and ref'.format(str(e)))
-            pass
 
         # if bin(int(flag))[2:][-5]=='1' or make it easy for now...
         if flag==99 or (ONT and flag in [0, 2048]): # for ont, not considering "secondary alignments", only "supp"
@@ -534,9 +533,13 @@ if __name__=='__main__':
     for n,i in enumerate(Args):
         if i in ['-o','--output-prefix']:
             report_filename = Args[n+1] + '.html'
+            pwm_filename = Args[n+1] # pickle will add .pkl for now
+            ############################################
+            #LATER CHANGE EXTENTION TO A CSV FILE WITH A TABLE.
+            ############################################
 
     file_num = 0
-    while os.path.isfile(report_filename) and report_filename == 'Tasmanian_artifact_report.html':
+    while os.path.isfile(report_filename): 
         file_num += 1
         report_filename = 'Tasmanian_artifact_report-' + str(file_num) + '.html'
 
