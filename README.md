@@ -33,6 +33,10 @@ samtools view bam | run_intersections [OPTIONS] | run_tasmanian [OPTIONS]
 1. Classification of each base of the read into overlapping (in which case could be contained or boundary - see figure below) or Non-overlapping with regions of interest included in a bed/bedgraph file.
 2. Positional analysis of artifacts splitted by read 1 and read 2.
 
+
+[](https://github.com/nebiolabs/tasmanian-mismatch/raw/master/figures/intersections_tasmanian.jpg)
+
+
 <img src="https://github.com/nebiolabs/tasmanian/raw/master/figures/intersections_tasmanian.jpg" alt="drawing" width="600"/>
 
 ---
