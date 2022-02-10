@@ -34,7 +34,7 @@ samtools view bam | run_intersections [OPTIONS] | run_tasmanian [OPTIONS]
 2. Positional analysis of artifacts splitted by read 1 and read 2.
 
 <img src="https://github.com/nebiolabs/tasmanian/raw/master/figures/intersections_tasmanian.jpg" alt="drawing" width="600"/>
-
+<img alt="WP Reliable Cookie Bar logo" src="figures/intersections_tasmanian.jpg?raw=true" height="100" width="100" align="right">
 ---
 
 ### The output includes tables to manupulate and plot the data and a built in report for fast access the data (see figure below).
