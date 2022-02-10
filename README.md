@@ -34,7 +34,7 @@ samtools view bam | run_intersections [OPTIONS] | run_tasmanian [OPTIONS]
 2. Positional analysis of artifacts splitted by read 1 and read 2.
 
 
-[](https://github.com/nebiolabs/tasmanian-mismatch/raw/master/figures/intersections_tasmanian.jpg)
+[]("https://github.com/nebiolabs/tasmanian-mismatch/raw/master/figures/intersections_tasmanian.jpg")
 
 
 <img src="https://github.com/nebiolabs/tasmanian/raw/master/figures/intersections_tasmanian.jpg" alt="drawing" width="600"/>
