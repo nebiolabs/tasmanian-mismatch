@@ -14,11 +14,17 @@ A tool for the analysis of reference mismatches in high throughput sequencing da
 
 <!---toc start-->
   * [Goals](#goals)
+  * [Install](#install)
   * [Contributing](#contributing)
   * [Authors](#authors)
   * [License](#license)
 
 <!---toc end-->
+
+# Install
+conda: `conda install -c bioconda tasmanian-mismatch`  
+pip:   `pip install tasmanian-mismatch`
+
 
 # Goals
 
