@@ -51,7 +51,7 @@ samtools view bam | run_intersections [OPTIONS] | run_tasmanian [OPTIONS]
 
 
 * Easy to use command-line and [nextflow](https://www.nextflow.io/) implementation.
-* Includes a [Galaxy](https://usegalaxy.org/) wrapper 
+* Includes a [Galaxy](https://toolshed.g2.bx.psu.edu/) wrapper 
 
 
 ## Contributing
