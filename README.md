@@ -1,7 +1,5 @@
-<!--[![Build Status](https://travis-ci.org/fulcrumgenomics/fgbio.svg?branch=master)](https://travis-ci.org/fulcrumgenomics/fgbio)-->
-![CircleCI](https://img.shields.io/circleci/build/github/nebiolabs/tasmanian-mismatch/master?token=bcde94f)
 [![Bioconda](https://img.shields.io/conda/dn/bioconda/fgbio.svg?label=Bioconda)](http://bioconda.github.io/recipes/fgbio/README.html)
-[![License](http://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/nebiolabs/tasmanian/blob/master/LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Language](https://img.shields.io/badge/Made%20with-Python-1f425f.svg)](https://www.python.org)
 
 ![Image of Tasmanian Devil](https://upload.wikimedia.org/wikipedia/commons/thumb/4/43/Sarcophilus_harrisii_taranna.jpg/512px-Sarcophilus_harrisii_taranna.jpg)
@@ -39,13 +37,12 @@ samtools view bam | run_intersections [OPTIONS] | run_tasmanian [OPTIONS]
 1. Classification of each base of the read into overlapping (in which case could be contained or boundary - see figure below) or Non-overlapping with regions of interest included in a bed/bedgraph file.
 2. Positional analysis of artifacts splitted by read 1 and read 2.
 
-<img src="https://github.com/nebiolabs/tasmanian/raw/master/figures/intersections_tasmanian.jpg" alt="drawing" width="600"/>
-<img alt="WP Reliable Cookie Bar logo" src="figures/intersections_tasmanian.jpg?raw=true" height="100" width="100" align="right">
+[method schematic](figures/intersections_tasmanian.jpg?raw=true)
 ---
 
 ### The output includes tables to manupulate and plot the data and a built in report for fast access the data (see figure below).
 
-<img src="https://github.com/nebiolabs/tasmanian/raw/master/figures/snapshot_good.jpg" alt="drawing" width="800"/>
+[data snapshot](figures/snapshot_good.jpg?raw=true)
 <!--![snapshot of results html file](./figures/snapshot.jpg =100x20)-->
 
 
@@ -65,5 +62,5 @@ Contributions are welcome and encouraged.
 
 ## License
 
-`tasmanian artifact metrics tool` is open source software released under the [GNU License](https://github.com/nebiolabs/tasmanian/blob/master/LICENCE.txt).
+`tasmanian artifact metrics tool` is open source software released under the [GNU License](LICENCE.txt).
 
