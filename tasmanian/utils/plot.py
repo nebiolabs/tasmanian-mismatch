@@ -199,14 +199,14 @@ def plot_html(table):
         </script>
         
          <div class="sidebar">
-          <a href="#" style="font-size:30px; background-color:#8bd9ff;">Raw Couts</a>
+          <a href="#" style="font-size:30px; background-color:#8bd9ff;">Raw Counts</a>
           <a href="#section_divPlotly1">Contained</a>
           <a href="#section_divPlotly2">Boundary</a>
           <a href="#section_divPlotly3">non-overlapping</a>
           <a href="#section_divPlotly4">Contained - confidence</a>
           <a href="#section_divPlotly5">Boundary - confidence</a>
             
-          <!--<a href="#" style="font-size:30px; background-color:#8bd9ff;">Normalized Couts</a>
+          <!--<a href="#" style="font-size:30px; background-color:#8bd9ff;">Normalized Counts</a>
           <a href="#divPlotly1_norm">Intersections</a>
           <a href="#divPlotly2_norm">Complementss</a>
           <a href="#divPlotly4_norm">Intersections - confidence</a>
