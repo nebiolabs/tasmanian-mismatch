@@ -98,7 +98,7 @@ def analyze_artifacts(Input, Args):
             sys.stderr.write('unmasking genome. You are potentially including repetitive regions...\n')
         if i in ['-q', '--base-quality']:
             PHRED = int(sys.argv[n+1])+ 33
-            sys.stderr.write('base queality set to {}\n'.format(PHRED))
+            sys.stderr.write('minimum base quality set to {}\n'.format(PHRED))
         if i in ['-f', '--filter-indel']: 
             SKIP_INDEL=True
             sys.stderr.write('Skipping all reads with INDELS\n')
@@ -110,7 +110,7 @@ def analyze_artifacts(Input, Args):
             sys.stderr.write('softclip bypass set to {}\n'.format(SOFTCLIP_BYPASS))
         if i in ['-m', '--mapping-quality']:
             MinMapQuality = int(sys.argv[n+1])
-            sys.stderr.write('Filterung out reads with Mapping quality < {}\n'.format(MinMapQuality))
+            sys.stderr.write('Filtering out reads with Mapping quality < {}\n'.format(MinMapQuality))
         if i in ['-g','--fragment-length']:
             TLEN = np.array(sys.argv[n+1].split(',')).astype(int)
             sys.stderr.write('Only reads comming from fragments of lengths {}-{} are considered here\n'.format(TLEN[0], TLEN[1]))
