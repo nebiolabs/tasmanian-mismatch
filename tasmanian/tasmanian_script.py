@@ -7,10 +7,8 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath(__f
 sys.path.insert(0, project_root)
 from tasmanian.utils.constants import constants
 
-if len(sys.argv)==1: exit('\n-h|--help\n') # there should be at least one argument = '--reference-genome'
-
 # sanity check before loading all the modules for faster execution
-if '-h' in sys.argv or '--help' in sys.argv:
+if len(sys.argv)==1 or '-h' in sys.argv or '--help' in sys.argv:
     exit(constants.HELP)
 
 import os, re, time, pickle
