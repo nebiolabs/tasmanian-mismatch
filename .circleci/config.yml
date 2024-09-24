@@ -2,7 +2,7 @@ version: 2.1
 jobs:
   build:
     docker: 
-      - image: circleci/python:3.8.20 # the primary container, where your job's commands are run
+      - image: circleci/python:3.8.9 # the primary container, where your job's commands are run
         environment: # environment variables for primary container
           PIPENV_VENV_IN_PROJECT: true
 
