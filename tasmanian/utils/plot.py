@@ -34,7 +34,8 @@ def plot_html(table):
         mutations_list = list(mutations)
         
         if normalize:
-            dfc[mutations_list] = dfc[mutations_list].div(dfc[mutations_list].sum(axis=1), axis=0)
+            row_sums = dfc[mutations_list].sum(axis=1)
+            dfc[mutations_list] = dfc[mutations_list].div(np.where(row_sums == 0, 10e-6, row_sums), axis=0)
             # Use newer NumPy syntax for type conversion
             dfc[mutations_list] = np.array(dfc[mutations_list], dtype=np.float64)
         
