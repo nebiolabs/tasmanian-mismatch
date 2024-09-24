@@ -1,6 +1,6 @@
-numpy==1.24.3
-plotly==4.3.0
-scikit-learn==1.0.2
-seaborn==0.9.0
-statsmodels==0.14
-termcolor==1.1.0
+numpy==2.1.1
+plotly==5.24.1
+scikit-learn==1.5.2
+seaborn==0.13.2
+statsmodels==0.14.3
+termcolor==2.4.0

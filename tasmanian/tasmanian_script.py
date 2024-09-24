@@ -427,7 +427,7 @@ def analyze_artifacts(Input, Args):
                 PWM[k] = ppm2pwm(v, base_dist)
 
     # fix tables on length
-    READ_LENGTH = mode(check_lengths)[0][0] if not ONT else check_lengths
+    READ_LENGTH = mode(check_lengths).mode if not ONT else check_lengths
     #READ_LENGTH = np.max(check_lengths)
     
     if debug:

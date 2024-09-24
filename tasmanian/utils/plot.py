@@ -31,12 +31,15 @@ def plot_html(table):
         dfc = df.copy()
         errors = {'a': a, 'c': c, 'g': g, 't': t}
         
+        mutations_list = list(mutations)
+        
         if normalize:
-            for i in errors.keys():
-                dfc.loc[:, errors[i]] /= (dfc.loc[:, errors[i]].sum(axis=1).values.reshape(-1,1) + 10e-6 )
-            
-        table_max = dfc[mutations].max().max() * 1.1
-        table_min = dfc[mutations].min().min() * 0.5
+            dfc[mutations_list] = dfc[mutations_list].div(dfc[mutations_list].sum(axis=1), axis=0)
+            # Use newer NumPy syntax for type conversion
+            dfc[mutations_list] = np.array(dfc[mutations_list], dtype=np.float64)
+        
+        table_max = dfc[mutations_list].max().max() * 1.1
+        table_min = dfc[mutations_list].min().min() * 0.5
 
         df1 = dfc[(dfc.read==1)]
         df2 = dfc[(dfc.read==2)]

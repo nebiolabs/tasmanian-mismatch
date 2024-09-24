@@ -1,15 +1,15 @@
 version: 2.1
 jobs:
-  build:
+  build310:
     docker: 
-      - image: circleci/python:3.8.9 # the primary container, where your job's commands are run
+      - image: cimg/python:3.10 # the primary container, where your job's commands are run
         environment: # environment variables for primary container
           PIPENV_VENV_IN_PROJECT: true
 
     steps:
       - checkout # check out source code to working directory
       - run: sudo chown -R circleci:circleci /usr/local/bin
-      - run: sudo chown -R circleci:circleci /usr/local/lib/python3.8/site-packages
+      - run: sudo chown -R circleci:circleci /usr/local/lib/python3.10/site-packages
       - run: 
           command: |
              python3 -m venv ./tasmanian_venv
@@ -18,7 +18,24 @@ jobs:
              bash tasmanian/tests/basic_tests.sh
              #sudo pip install pipenv
              #pipenv install
+  build312:
+    docker: 
+      - image: cimg/python:3.12 # the primary container, where your job's commands are run
+        environment: # environment variables for primary container
+          PIPENV_VENV_IN_PROJECT: true
 
+    steps:
+      - checkout # check out source code to working directory
+      - run: sudo chown -R circleci:circleci /usr/local/bin
+      - run: sudo chown -R circleci:circleci /usr/local/lib/python3.12/site-packages
+      - run: 
+          command: |
+             python3 -m venv ./tasmanian_venv
+             source ./tasmanian_venv/bin/activate
+             pip install -r requirements.txt 
+             bash tasmanian/tests/basic_tests.sh
+             #sudo pip install pipenv
+             #pipenv install
       #- save_cache: # cache Python dependencies using checksum of Pipfile as the cache-key
       #    key: deps9-{{ .Branch }}-{{ checksum "Pipfile.lock" }}
       #    paths:

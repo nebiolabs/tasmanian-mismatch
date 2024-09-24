@@ -5,7 +5,7 @@
 *.swp
 tasmanian/tests/*html
 tasmanian/tests/new_test.table.csv
-tasmanian_venv
+tasmanian_venv*
 *pyc 
 *table 
 *metrics 
