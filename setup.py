@@ -21,7 +21,7 @@ setup(name='tasmanian-mismatch',
           'plotly'
       ],
       zip_safe=False,
-      python_requires='>=3.6',
+      python_requires='>=3.6,<3.9',
       scripts=[
            'bin/run_tasmanian',
            'bin/run_intersections'

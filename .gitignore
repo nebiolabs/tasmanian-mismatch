@@ -4,8 +4,8 @@
 /*.egg-info
 *.swp
 tasmanian/tests/*html
-./tasmanian_venv/
-tasmanian_venv/*
+tasmanian/tests/new_test.table.csv
+tasmanian_venv
 *pyc 
 *table 
 *metrics 

@@ -1,9 +1,6 @@
-matplotlib==3.1.1
-numpy==1.16.4
-pandas==0.25.1
+numpy==1.24.3
 plotly==4.3.0
-scikit-learn==0.21.2
-scipy==1.2.1
+scikit-learn==1.0.2
 seaborn==0.9.0
-statsmodels==0.10.1
+statsmodels==0.14
 termcolor==1.1.0
