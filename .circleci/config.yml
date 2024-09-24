@@ -1,6 +1,6 @@
 version: 2.1
 jobs:
-  build310:
+  build_310:
     docker: 
       - image: cimg/python:3.10 # the primary container, where your job's commands are run
         environment: # environment variables for primary container
@@ -18,7 +18,7 @@ jobs:
              bash tasmanian/tests/basic_tests.sh
              #sudo pip install pipenv
              #pipenv install
-  build312:
+  build_312:
     docker: 
       - image: cimg/python:3.12 # the primary container, where your job's commands are run
         environment: # environment variables for primary container
@@ -45,3 +45,9 @@ jobs:
 
       #- run:
       #    bash tasmanian/tests/basic_tests.sh # run test
+workflows:
+  version: 2
+  build-and-test:
+    jobs:
+      - build_310
+      - build_312
