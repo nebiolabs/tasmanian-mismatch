@@ -9,7 +9,6 @@ jobs:
     steps:
       - checkout # check out source code to working directory
       - run: sudo chown -R circleci:circleci /usr/local/bin
-      - run: sudo chown -R circleci:circleci /usr/local/lib/python3.10/site-packages
       - run: 
           command: |
              python3 -m venv ./tasmanian_venv
@@ -27,7 +26,6 @@ jobs:
     steps:
       - checkout # check out source code to working directory
       - run: sudo chown -R circleci:circleci /usr/local/bin
-      - run: sudo chown -R circleci:circleci /usr/local/lib/python3.12/site-packages
       - run: 
           command: |
              python3 -m venv ./tasmanian_venv
