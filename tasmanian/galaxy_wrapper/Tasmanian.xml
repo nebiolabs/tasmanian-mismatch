@@ -35,7 +35,7 @@
   ]]></command>
   <inputs>
     <!-- Bam alignment file -->
-    <param type="data" name="bam_input" label="Bam/Sam alignemnt file" format="bam" help="Specify BAM/SAM dataset. If not using a bed file, this file MUST BE SORTED"/>
+    <param type="data" name="bam_input" label="Bam/Sam alignment file" format="bam" help="Specify BAM/SAM dataset. If not using a bed file, this file MUST BE SORTED"/>
     <!-- reference genome upload -->
     <conditional name="reference_source">
       <param name="reference_source_selector" type="select" label="Reference genome" help="You can select a reference genome from your history or use a built-in index (Local cache)">
@@ -56,7 +56,7 @@
     </conditional>
             
     <!-- bed file -->       
-    <param name="bed_filename" type="data" format="bed" optional="true" label="Select a bed file" help="The bed file should contain at least: &quot;chrN&quot;, &quot;start&quot; and &quot;stop&quot;, and is tab separated."/>
+    <param name="bed_filename" type="data" format="bed" optional="true" label="Select a bed file of repeat regions" help="Mismatches will be tabulated in 3 categories. Completely overlapping with regions in this file, intersecting a boundary of this region, or not overlapping."/>
 
     <!-- Additional parameters -->
     <param name="confidence" label="Boundary" type="integer" value="20" min="0" max="100"
@@ -65,7 +65,7 @@
         help="How sofclips whould be treated. Values include 0,1 or 2 (read the help below). Default=0">
       <option value="1">Never use softcliped bases</option>
       <option value="2">Always use softcliped bases</option>
-      <option value="0" selected="True">Automatic desicion (Default)</option>
+      <option value="0" selected="True">Automatic decision (Default)</option>
     </param>
     <param name="mapquality" label="Map quality" type="integer" min="0" max="70" value="20" help="Exclude reads with lower mapQ than this number. Default=20"/>
     <param name="basequality" label="Base quality" type="integer" min="0" max="70" value="20" help="Exclude bases with lower Base quality than this number. Default=20"/>
@@ -144,7 +144,8 @@ The *softclips* field allows for 3 different ways at treating softclips:
 
 .. class:: warningmark   
 
-BAM/SAM file must be **sorted** if not using a bed file.
+BAM/SAM file must be coordinate sorted.
+By default all all reads are inclued in the analysis (secondary, supplementary, duplicate, etc.)
   
     ]]>
   </help>
