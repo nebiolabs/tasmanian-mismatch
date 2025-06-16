@@ -32,8 +32,8 @@ def plot_html(table):
         errors = {'a': a, 'c': c, 'g': g, 't': t}
         
         if normalize:
-            row_sums = dfc[mutations].sum(axis=1) + 10e-6
-            dfc[mutations] = dfc[mutations].div(row_susms) 
+            row_sums = dfc[mutations].sum(axis=1).values.reshape(-1,1) + 10e-6
+            dfc[mutations] = dfc[mutations].div(row_sums) 
         
         table_max = dfc[mutations].max().max() * 1.1
         table_min = dfc[mutations].min().min() * 0.5
