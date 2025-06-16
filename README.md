@@ -58,7 +58,7 @@ To run the test suite for Tasmanian, follow these steps:
 
 1. Create a virtual environment:
   ```
-  python3.8 -m venv tasmanian_venv
+  python3.10 -m venv tasmanian_venv
   source tasmanian_venv/bin/activate
   ```
 
