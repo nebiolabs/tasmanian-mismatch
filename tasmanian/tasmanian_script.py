@@ -2,28 +2,25 @@
 
 # TODO: add context nucleotides? 
 
-import sys, os, re, time, pickle
+import sys, os
+project_root = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath(__file__)), '..'))
+sys.path.insert(0, project_root)
+from tasmanian.utils.constants import constants
+
+# sanity check before loading all the modules for faster execution
+if len(sys.argv)==1 or '-h' in sys.argv or '--help' in sys.argv:
+    exit(constants.HELP)
+
+import os, re, time, pickle
 import numpy as np
 import pandas as pd
 from itertools import product, permutations
 import logging, uuid
 from scipy.stats import mode
 
-try:
-    from tasmanian.utils.utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table
-    from tasmanian.utils.utils import fill_PFM, initialize_PFM, pfm2ppm, ppm2pwm
-    from tasmanian.utils.plot import plot_html
-except Exception as e: #ImportError: #ModuleNotFoundError:
-    # Either tests or base_dir, it's downstream of ../tasmanian/tasmanian/
-    p = os.path.abspath(os.path.dirname(__file__))
-    #p = re.search("(.*tasmanian/tasmanian/).*",p).group(1)
-    p_start = [i for i in re.finditer('/tasmanian',p)][-1].end()
-    p = p[:p_start]
-    utils_path = p + '/utils'
-    sys.path = [utils_path] + sys.path
-
-    from utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table, fill_PFM, initialize_PFM, pfm2ppm, ppm2pwm
-    from plot import plot_html
+from tasmanian.utils.utils import revcomp, simple_deltas_is_this_garbage, init_artifacts_table, load_reference, trim_table
+from tasmanian.utils.utils import fill_PFM, initialize_PFM, pfm2ppm, ppm2pwm
+from tasmanian.utils.plot import plot_html
 
 ###############################################################################
 # In order to make the binary scripts work, make all these scripts modular.   # 
@@ -31,62 +28,16 @@ except Exception as e: #ImportError: #ModuleNotFoundError:
 ###############################################################################
 
 def analyze_artifacts(Input, Args):
+    globals().update(vars(constants))
 
-    HELP = """
-
-        required:
-        --------
-        -r|--reference-fasta
-
-        optional:
-        --------
-        -u|--unmask-genome (convert masked bases to upper case and include them in the calculations - default=False)
-        -q|--base-quality (default=20)
-        -f|--filter-indel (exclude reads with indels default=False)
-        -l|--filter-length (include only reads with x,y range of lengths, default=0, 76)
-        -s|--soft-clip-bypass (Decide when softclipped base is correct(0). Don\'t use these bases(1). Force use them(2).  default=0)
-        -m|--mapping-quality (minimum allowed mapping quality -defailt=0)
-        -h|--help
-        -g|--fragment-length (use fragments withi these lengths ONLY)
-        -o|--output-prefix (use this prefix for the output and logging files)
-        -c|--confidence (number of bases in the complement region of the read) 
-        -d|--debug (create a log file)
-        -O|--ont (this is ONT data)
-        -p|--picard-logic (normalize tables based on picard CollectSequencingArtifactMetrics logic)
-        -P|--include-pwm
-    """
-
-    SKIP_READS = {
-        'indel':0,
-        'mapquality':0,
-        'fragLength':0,
-        'softclips':0,
-        'readlength':0,
-        'others':0  # this could include cigar=* or mapq=255
-    }
-    SKIP_BASES = {
-        'quality':0,
-        'softclips':0
-    }
-
-    # set default parameters
-    _UNMASK_GENOME=False  #don't unmask the genome, aka don't use lower letter from genome but rather keep them out in the error.log file'
-    READ_LENGTH=1000
     MinMapQuality = 20
-    PHRED = 20 + 33
-    SOFTCLIP_BYPASS=0
-    SKIP_INDEL=False
-    MIN_LENGTH=0
-    MAX_LENGTH=350
-    TLEN=np.array([0,10000])
     randLogName = str(uuid.uuid4())
-    check_lengths = [READ_LENGTH] # this is to rezise the results table from READ_LENGTHS to the mode of the lengths
+    check_lengths = [constants.READ_LENGTH] # this is to rezise the results table from READ_LENGTHS to the mode of the lengths
     check_lengths_counter = 0
     confidence = 20
     debug = False
-    ONT = False
     picard = False
-    PWM, flanking_n = False, 5
+    flanking_n = False, 5
 
     # if there are arguments get them
     for n,i in enumerate(Args):
@@ -94,28 +45,26 @@ def analyze_artifacts(Input, Args):
             ref_file = sys.argv[n+1]
             sys.stderr.write('using {} as reference genome\n'.format(ref_file))
         if i in ['-u', '--unmask-genome']:
-            _UNMASK_GENOME = True 
+            constants._UNMASK_GENOME = True 
             sys.stderr.write('unmasking genome. You are potentially including repetitive regions...\n')
         if i in ['-q', '--base-quality']:
-            PHRED = int(sys.argv[n+1])+ 33
-            sys.stderr.write('minimum base quality set to {}\n'.format(PHRED))
+            constants.PHRED = int(sys.argv[n+1])+ 33
+            sys.stderr.write('minimum base quality set to {}\n'.format(constants.PHRED))
         if i in ['-f', '--filter-indel']: 
-            SKIP_INDEL=True
+            constants.SKIP_INDEL=True
             sys.stderr.write('Skipping all reads with INDELS\n')
         if i in ['-l', '--filter-length']: # min and max separated by a comma
-            MIN_LENGTH, MAX_LENGTH = np.array(sys.argv[n+1].strip('\n').split(','), dtype=np.uint16)
-            sys.stderr.write('range of fragment lengths allowed is {}-{}\n'.format(MIN_LENGTH, MAX_LENGTH))
+            constants.MIN_LENGTH, constants.MAX_LENGTH = np.array(sys.argv[n+1].strip('\n').split(','), dtype=np.uint16)
+            sys.stderr.write('range of fragment lengths allowed is {}-{}\n'.format(constants.MIN_LENGTH, constants.MAX_LENGTH))
         if i in ['-s', '--soft-clip-bypass']:
-            SOFTCLIP_BYPASS=int(sys.argv[n+1])
-            sys.stderr.write('softclip bypass set to {}\n'.format(SOFTCLIP_BYPASS))
+            constants.SOFTCLIP_BYPASS=int(sys.argv[n+1])
+            sys.stderr.write('softclip bypass set to {}\n'.format(constants.SOFTCLIP_BYPASS))
         if i in ['-m', '--mapping-quality']:
             MinMapQuality = int(sys.argv[n+1])
             sys.stderr.write('Filtering out reads with Mapping quality < {}\n'.format(MinMapQuality))
         if i in ['-g','--fragment-length']:
-            TLEN = np.array(sys.argv[n+1].split(',')).astype(int)
-            sys.stderr.write('Only reads comming from fragments of lengths {}-{} are considered here\n'.format(TLEN[0], TLEN[1]))
-        if i in ['-h', '--help']:
-            exit(HELP)
+            constants.TLEN = np.array(sys.argv[n+1].split(',')).astype(int)
+            sys.stderr.write('Only reads comming from fragments of lengths {}-{} are considered here\n'.format(constants.TLEN[0], constants.TLEN[1]))
         if i in ['-o','--output-prefix']:
             randLogName = sys.argv[n+1]
         if i in ['-c', '--confidence']:
@@ -123,11 +72,11 @@ def analyze_artifacts(Input, Args):
         if i in ['-d','--debug']:
             debug = True
         if i in ['-O','--ont']:
-            ONT = True
-            READ_LENGTH=100000
-            MAX_LENGTH=100000
-            TLEN=np.array([0,100000])
-            check_lengths = READ_LENGTH
+            constants.ONT = True
+            constants.READ_LENGTH=100000
+            constants.MAX_LENGTH=100000
+            constants.TLEN=np.array([0,100000])
+            check_lengths = constants.READ_LENGTH
         if i in ['-p','--picard-logic']:
             picard = True
         if i in ['-P','--include-pwm']:
@@ -144,7 +93,6 @@ def analyze_artifacts(Input, Args):
         logger = logging.getLogger()
         logger.setLevel(logging.DEBUG)
 
-    if len(sys.argv)==1: exit('\n-h|--help\n') # there should be at least one argument = '--reference-genome'
 
     #if os.path.isfile(outputFile): os.remove(outputFile) # avoid clashes and remove file.
     sys.stderr.write('log filename: errors_'+randLogName+'.log\n')
@@ -166,16 +114,16 @@ def analyze_artifacts(Input, Args):
     # table 1: all intersecting parts on reads that intersect bed file
     # table 2: all non-intersecting parts on reads that intersect bed file
     # table 3: all reads without interceptions.
-    errors_intersection = init_artifacts_table(READ_LENGTH)
-    errors_complement = init_artifacts_table(READ_LENGTH)
-    errors_unrelated = init_artifacts_table(READ_LENGTH)
+    errors_intersection = init_artifacts_table(constants.READ_LENGTH)
+    errors_complement = init_artifacts_table(constants.READ_LENGTH)
+    errors_unrelated = init_artifacts_table(constants.READ_LENGTH)
 
     # in thee tables the CONFIDENCE reads ONLY. These are reads with >= CONFIDENCE bases in the complement
-    errors_intersectionB = init_artifacts_table(READ_LENGTH)
-    errors_complementB = init_artifacts_table(READ_LENGTH)
+    errors_intersectionB = init_artifacts_table(constants.READ_LENGTH)
+    errors_complementB = init_artifacts_table(constants.READ_LENGTH)
 
     # initialize PFM (later on converted to PWM)    
-    if PWM:
+    if constants.PWM:
         All_combinations = [
             ''.join(i) for i in permutations(['A','C','T','G'], 2)] +\
                  ['AA','CC','GG','TT']
@@ -234,19 +182,19 @@ def analyze_artifacts(Input, Args):
         # unrecognized chromosome
 
         if cigar=="*" or mapq==255 or chrom not in reference: 
-            SKIP_READS['others']+=1
+            constants.SKIP_READS['others']+=1
             continue  
-        elif SKIP_INDEL and ("I" in cigar or "D" in cigar):
-            SKIP_READS['indel']+=1
+        elif constants.SKIP_INDEL and ("I" in cigar or "D" in cigar):
+            constants.SKIP_READS['indel']+=1
             continue
-        elif seq_len < MIN_LENGTH or seq_len > MAX_LENGTH:
-            SKIP_READS['readlength']+=1
+        elif seq_len <constants.MIN_LENGTH or seq_len > constants.MAX_LENGTH:
+            constants.SKIP_READS['readlength']+=1
             continue
         elif mapq<MinMapQuality:
-            SKIP_READS['mapquality']+=1
+            constants.SKIP_READS['mapquality']+=1
             continue
-        elif tlen<TLEN[0] or tlen>TLEN[1]:
-            SKIP_READS['fragLength']+=1
+        elif tlen<constants.TLEN[0] or tlen>constants.TLEN[1]:
+            constants.SKIP_READS['fragLength']+=1
             continue
 
         # INSTEAD OF EXPAND THE CIGAR, I PARSED MORE EFFICIENTLY THE CONTENT INTO A NUMPY INDEX
@@ -266,23 +214,23 @@ def analyze_artifacts(Input, Args):
                     if position==0: # beginning
                         start -= number # This already covers SOFTCLIP_BYPASS==2
                         end -= number
-                        if SOFTCLIP_BYPASS==0:
+                        if constants.SOFTCLIP_BYPASS==0:
                             s1, s2 = seq[:number], reference[chrom][start:start+number]
                             if simple_deltas_is_this_garbage(s1,s2):
                                 seq = 'N' * number + seq[number:]
-                                SKIP_BASES['softclips']+=number
-                        elif SOFTCLIP_BYPASS==1:
+                                constants.SKIP_BASES['softclips']+=number
+                        elif constants.SOFTCLIP_BYPASS==1:
                             seq = 'N' * number + seq[number:]
-                            SKIP_BASES['softclips']+=number 
+                            constants.SKIP_BASES['softclips']+=number 
                     else: # end
-                        if SOFTCLIP_BYPASS==0:
+                        if constants.SOFTCLIP_BYPASS==0:
                             s1, s2 = seq[position:position+number], reference[chrom][start+position:start+position+number]
                             if simple_deltas_is_this_garbage(s1,s2):
                                 seq = seq[:position] + 'N' * number
-                                SKIP_BASES['softclips']+=number
-                        elif SOFTCLIP_BYPASS==1:
+                                constants.SKIP_BASES['softclips']+=number
+                        elif constants.SOFTCLIP_BYPASS==1:
                             seq = seq[:position] + 'N' * number
-                            SKIP_BASES['softclips']+=number
+                            constants.SKIP_BASES['softclips']+=number
 
                 elif i=='I':
                     seq_idx[position:position+number]=0
@@ -308,25 +256,25 @@ def analyze_artifacts(Input, Args):
             pass
 
         # if bin(int(flag))[2:][-5]=='1' or make it easy for now...
-        if flag==99 or (ONT and flag in [0, 2048]): # for ont, not considering "secondary alignments", only "supp"
+        if flag==99 or (constants.ONT and flag in [0, 2048]): # for ont, not considering "secondary alignments", only "supp"
             strand='fwd'; read=1
         elif flag==163: 
             strand='fwd'; read=2
-        elif flag==83 or (ONT and flag in [16, 2064]):
+        elif flag==83 or (constants.ONT and flag in [16, 2064]):
             strand='rev'; read=1
         elif flag==147: 
             strand='rev'; read=2
         else: continue
 
         # At this point only accepted reads are analyzed. incorporate the fist X read length and later get mode
-        if check_lengths_counter<100 and not ONT:
+        if check_lengths_counter<100 and not constants.ONT:
             check_lengths.append(seq_len)
             check_lengths_counter +=1
-        elif ONT:
+        elif constants.ONT:
             if seq_len > check_lengths: # If ONT, check_lengths is a number not a list
                 check_lengths = seq_len # THIS IS SAFE: if read length is > TLEN, it will be discarded
 
-        if _UNMASK_GENOME: 
+        if constants._UNMASK_GENOME: 
             ref = ''.join(ref).upper() # re-think before doing this.
 
         if len(seq) != len(ref):
@@ -350,7 +298,7 @@ def analyze_artifacts(Input, Args):
                     logger.warning('ERROR processing read {}, with ref={}, phred={} and seq={}'.format(_,ref,phred,seq))
                 continue
 
-            if base=='N' or ref[pos]=='N' or ord(phred[pos]) < PHRED: # or (CIGAR[pos] not in ['M','X','=']):
+            if base=='N' or ref[pos]=='N' or ord(phred[pos]) < constants.PHRED: # or (CIGAR[pos] not in ['M','X','=']):
                 #SKIP_BASES['quality']+=1  # report this in stderr. 
                 continue
             else:
@@ -391,7 +339,7 @@ def analyze_artifacts(Input, Args):
                         if ref_pos != Base and Base in ['A','C','T','G']:
                             sys.stderr.write('{},{},{},{},{},{},{}\n'.format(read_id, flag, read_pos, chrom, pos+start, ref_pos, Base))
                     
-                    if PWM:
+                    if constants.PWM:
                         # We have to fix this. For now, avoid positions too close to the ends of the reads
                         #if pos <=flanking_n:
                         #    this_seq = ref[0:pos*2+1] # keep it symetrical (I am not sure though)
@@ -416,7 +364,7 @@ def analyze_artifacts(Input, Args):
                                                                     str(e), chrom, pos, read, base, ''.join(seq), start, ref[pos]))
     PWM = {}
     if PWM:
-        for k,v in PFM.items():
+        for k,v in constants.PFM.items():
             PWM[k] = pfm2ppm(v)
 
         for k,v in PWM.items():
@@ -427,19 +375,19 @@ def analyze_artifacts(Input, Args):
                 PWM[k] = ppm2pwm(v, base_dist)
 
     # fix tables on length
-    READ_LENGTH = mode(check_lengths)[0][0] if not ONT else check_lengths
+    constants.READ_LENGTH = mode(check_lengths).mode if not constants.ONT else check_lengths
     #READ_LENGTH = np.max(check_lengths)
     
     if debug:
-        logger.info('MODE READ LENGTH: {}'.format(str(READ_LENGTH)))
+        logger.info('MODE READ LENGTH: {}'.format(str(constants.READ_LENGTH)))
 
 
-    errors_intersection = trim_table(errors_intersection, READ_LENGTH)
-    errors_complement = trim_table(errors_complement, READ_LENGTH)
-    errors_unrelated = trim_table(errors_unrelated, READ_LENGTH)
+    errors_intersection = trim_table(errors_intersection, constants.READ_LENGTH)
+    errors_complement = trim_table(errors_complement, constants.READ_LENGTH)
+    errors_unrelated = trim_table(errors_unrelated, constants.READ_LENGTH)
  
-    errors_intersectionB = trim_table(errors_intersectionB, READ_LENGTH)
-    errors_complementB = trim_table(errors_complementB, READ_LENGTH)
+    errors_intersectionB = trim_table(errors_intersectionB, constants.READ_LENGTH)
+    errors_complementB = trim_table(errors_complementB, constants.READ_LENGTH)
 
     #######################
     # REPORTING SECTION ##
@@ -450,11 +398,11 @@ def analyze_artifacts(Input, Args):
     sys.stderr.write('tasmanian finished the analysis in {} seconds \n'.format(str(t2-t0)))
     sys.stderr.write('reads discarded\n')
     sys.stderr.write('===============\n')
-    for k,v in SKIP_READS.items():
+    for k,v in constants.SKIP_READS.items():
         sys.stderr.write('{:<15} {}\n'.format(k,v))
     sys.stderr.write('\nBases discarded\n')
     sys.stderr.write('===============\n')
-    for k,v in SKIP_BASES.items():
+    for k,v in constants.SKIP_BASES.items():
         sys.stderr.write('{:<15} {}\n'.format(k,v))
 
     # print table header
@@ -467,7 +415,7 @@ def analyze_artifacts(Input, Args):
     # print rows
     prnt = []
     for read in [1,2]:
-        for pos in np.arange(READ_LENGTH): 
+        for pos in np.arange(constants.READ_LENGTH): 
             prnt.append(str(read) + ',' + str(pos+1) + ',' + ','.join([ \
                 ','.join([str(Table[read][pos][i][j]) for i,j in zip(['A','A','A','A','T','T','T','T','C','C','C','C','G','G','G','G'], ['A','T','C','G']*4)])
             for Table in [errors_intersection, errors_complement, errors_unrelated, errors_intersectionB, errors_complementB]]))
@@ -504,7 +452,7 @@ def analyze_artifacts(Input, Args):
     #f.write('\n'.join(logging))
     #f.close()
     
-    return table, PWM
+    return table, constants.PWM
 
 
 
@@ -517,7 +465,7 @@ if __name__=='__main__':
         Args = sys.argv
 
     # run tasmanian
-    table, PWM = analyze_artifacts(sys.stdin, Args) 
+    table, constants.PWM = analyze_artifacts(sys.stdin, Args) 
 
     # print results
     table_print = pd.concat(
@@ -550,6 +498,6 @@ if __name__=='__main__':
     # save PWM into pickle
     pwm_filename = 'Tasmanian_pwm_file' + str(file_num)
     with open(pwm_filename, 'wb') as f:
-        pickle.dump(PWM, f, protocol=pickle.HIGHEST_PROTOCOL)
+        pickle.dump(constants.PWM, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     sys.stderr.write('\n' + report_filename + " and " + pwm_filename + " related files created\n")

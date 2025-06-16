@@ -52,6 +52,26 @@ samtools view bam | run_intersections [OPTIONS] | run_tasmanian [OPTIONS]
 
 Contributions are welcome and encouraged.
 
+## Running Tests
+
+To run the test suite for Tasmanian, follow these steps:
+
+1. Create a virtual environment:
+  ```
+  python3.10 -m venv tasmanian_venv
+  source tasmanian_venv/bin/activate
+  ```
+
+2. Install dependencies:
+  ```
+  pip install -r requirements.txt
+  ``` 
+
+3. Run the tests:
+  ```
+  bash tasmanian/tests/basic_tests.sh
+  ```
+
 ## Authors
 
 * [Brad Langhorst](https://github.com/bwlang)
