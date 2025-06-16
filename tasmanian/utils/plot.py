@@ -21,26 +21,22 @@ def plot_html(table):
         c = ['c_a','c_t','c_c','c_g']
         g = ['g_a','g_t','g_c','g_g']
         t = ['t_a','t_t','t_c','t_g']
-        mutations = set(a+c+g+t).difference(set(['a_a','c_c','t_t','g_g']))
+        mutations = list( set(a+c+g+t).difference(set(['a_a','c_c','t_t','g_g'])) )
 
         df.iloc[:,2:] #/= df[eval(column_name[0])].sum(axis=1).values.reshape(-1,1)
-        df = df.replace(np.inf,0).fillna(0)
+        df = df.replace(np.inf,0).fillna(0).astype(float)
 
 
         # normalize the data to later rescale the data to between 0-1
         dfc = df.copy()
         errors = {'a': a, 'c': c, 'g': g, 't': t}
         
-        mutations_list = list(mutations)
-        
         if normalize:
-            row_sums = dfc[mutations_list].sum(axis=1)
-            dfc[mutations_list] = dfc[mutations_list].div(np.where(row_sums == 0, 10e-6, row_sums), axis=0)
-            # Use newer NumPy syntax for type conversion
-            dfc[mutations_list] = np.array(dfc[mutations_list], dtype=np.float64)
+            row_sums = dfc[mutations].sum(axis=1) + 10e-6
+            dfc[mutations] = dfc[mutations].div(row_susms) 
         
-        table_max = dfc[mutations_list].max().max() * 1.1
-        table_min = dfc[mutations_list].min().min() * 0.5
+        table_max = dfc[mutations].max().max() * 1.1
+        table_min = dfc[mutations].min().min() * 0.5
 
         df1 = dfc[(dfc.read==1)]
         df2 = dfc[(dfc.read==2)]
