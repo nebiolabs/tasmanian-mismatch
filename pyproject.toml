@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tasmanian-mismatch"
+version = "1.0.9"
+description = "Tasmanian tool to analyze mismatches at read and position in high throughput sequencing data"
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+license = {text = "GNU"}
+authors = [
+    {name = "Ariel Erijman", email = "aerijman@neb.com"},
+    {name = "Brad Langhorst", email="blanghorst@neb.com"}
+]
+keywords = ["sequencing", "bioinformatics", "mismatch", "analysis"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License (GPL)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics"
+]
+dependencies = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "plotly"
+]
+
+[project.urls]
+Homepage = "https://github.com/nebiolabs/tasmanian-mismatch"
+Repository = "https://github.com/nebiolabs/tasmanian-mismatch"
+Issues = "https://github.com/nebiolabs/tasmanian-mismatch/issues"
+
+[tools.setuptools.scripts-files]
+scripts = ["bin/run_tasmanian", "bin/run_intersections"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tasmanian*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.md", "*.txt", "*.yml", "*.yaml"]
