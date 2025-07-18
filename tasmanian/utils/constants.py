@@ -24,7 +24,8 @@ class constants:
     TLEN=np.array([0,10000])
     ONT = False
     PWM  = False
-
+    RESCALE_PHRED_SCORES = False
+    
     HELP = f"""
     required:
     --------

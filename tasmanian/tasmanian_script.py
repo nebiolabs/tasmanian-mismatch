@@ -38,6 +38,9 @@ def analyze_artifacts(Input, Args):
     debug = False
     picard = False
     flanking_n = False, 5
+    sam_header = []
+    new_reads = [] # phred scores will be rescaled and written to this list, then printed to stdout
+    rescale_phred_scores = constants.RESCALE_PHRED_SCORES
 
     # if there are arguments get them
     for n,i in enumerate(Args):
@@ -83,7 +86,26 @@ def analyze_artifacts(Input, Args):
             PWM = True
             if len(sys.argv)>n+1: 
                 flanking_n = int(sys.argv[n+1]) if sys.argv[n+1].isnumeric() else flanking_n
+        if i in ['--rescale-phred-scores']:
+            rescale_phred_score_matrix = pd.read_csv(sys.argv[n+1])
+            rescale_phred_scores = True
 
+            # ONLY FOR TESTING PURPOSES!!
+            #reads = np.hstack([np.ones(76), np.ones(76) * 2]).T
+            #positions = np.tile( np.arange(1,77), 2).T
+            #all_mismatches = np.ones(shape=(2*76,12)).T  # * 0.98 
+            #rescale_phred_score_matrix = pd.DataFrame( np.vstack( [reads, positions, all_mismatches] ).T, 
+            #                                                    columns=['read','position',
+            #                                                                'A_C','A_G','A_T',
+            #                                                                'C_A','C_G','C_T',
+            #                                                                'G_A','A_C','G_T',
+            #                                                                'T_A','T_G','T_C'
+            #                                                                ] 
+            #            )
+            #rescale_phred_score_matrix['read'] = rescale_phred_score_matrix['read'].astype(int) 
+            #rescale_phred_score_matrix['position'] = rescale_phred_score_matrix['position'].astype(int) 
+            #rescale_phred_score_matrix = np.loadtxt(constants.rescale_phred_scores, dtype=int)
+            sys.stderr.write('Rescaling phred scores based on the matrix in provided\n')
 
     if debug:
         # if debugging create this logfile    
@@ -136,12 +158,17 @@ def analyze_artifacts(Input, Args):
      
     # read bam from "samtools view" and pipe 
     for line in sys.stdin:
-        
+
         # bypass header
         if line[0]=="@":
+            sam_header.append(line.strip())
             continue
 
         read_id, flag, chrom, start, mapq, cigar, _, _, tlen, seq, phred = line.split('\t')[:11]
+        num_phred = [ord(i) for i in phred] # np.array(p).astype(np.uint8) performs worse (-33 dealed with in CONSTANTS.PHRED)
+
+        #print(num_phred)
+
 
         # If sam data does not have the tasmanian tag, there is no intersection with bed and proceed to a single output table
         if bed_tag_counter<10 and bed_tag==False:
@@ -288,7 +315,6 @@ def analyze_artifacts(Input, Args):
 
         # If there are more than "N" bases in the complement area and (of course) the read intersects a bed region
         # include complement and interections in differents tables
-        
 
 
         for pos,base in enumerate(seq):
@@ -298,7 +324,7 @@ def analyze_artifacts(Input, Args):
                     logger.warning('ERROR processing read {}, with ref={}, phred={} and seq={}'.format(_,ref,phred,seq))
                 continue
 
-            if base=='N' or ref[pos]=='N' or ord(phred[pos]) < constants.PHRED: # or (CIGAR[pos] not in ['M','X','=']):
+            if base=='N' or ref[pos]=='N' or num_phred[pos] < constants.PHRED: # or (CIGAR[pos] not in ['M','X','=']):
                 #SKIP_BASES['quality']+=1  # report this in stderr. 
                 continue
             else:
@@ -312,6 +338,15 @@ def analyze_artifacts(Input, Args):
                         ref_pos = revcomp(ref[pos])
                         Base = revcomp(base)
                 
+
+                    #if rescale_phred_scores == True:
+                    #print(''.join(seq), len(seq), len(phred), phred, pos, base, seq[pos], ref[pos], phred[pos])
+                    ref_base_score, read_base_score = ref_pos.upper(), Base.upper()
+                    if rescale_phred_scores and ref_base_score != read_base_score:
+                        mismatch_type = ref_base_score + '_' + read_base_score
+                        multiplier_idx = (rescale_phred_score_matrix['read']==read) & (rescale_phred_score_matrix['position']==pos)
+                        num_phred[pos] = int(num_phred[pos] * rescale_phred_score_matrix[multiplier_idx][mismatch_type].values[0])
+                    #if debug:
                     #if pos == 0:
                     #    sys.stderr.write(seq[0], strand, ref_pos, Base)
 
@@ -338,6 +373,7 @@ def analyze_artifacts(Input, Args):
                     if debug:
                         if ref_pos != Base and Base in ['A','C','T','G']:
                             sys.stderr.write('{},{},{},{},{},{},{}\n'.format(read_id, flag, read_pos, chrom, pos+start, ref_pos, Base))
+                            continue
                     
                     if constants.PWM:
                         # We have to fix this. For now, avoid positions too close to the ends of the reads
@@ -362,6 +398,17 @@ def analyze_artifacts(Input, Args):
                     if debug:
                         logger.warning('error:{} in chr:{}, position:{}, read:{}, base:{}, seq:{}, start:{} and ref_pos:{}'.format(\
                                                                     str(e), chrom, pos, read, base, ''.join(seq), start, ref[pos]))
+
+        if rescale_phred_scores == True:
+            phred = [chr(num_phred[i]) for i in range(len(num_phred))] # rescale phred scores to the original scale
+            new_reads.append('\t'.join([read_id, str(flag), chrom, str(start), str(mapq), cigar, read_id, '0', str(tlen), ''.join(seq), ''.join(phred), 'tc:i:' + str(confidence_value)]))
+            if len(new_reads) == 100000:
+                sys.stdout.write('\n'.join(new_reads) + '\n')
+                new_reads = []
+    if rescale_phred_scores == True:        
+        sys.stdout.write('\n'.join(new_reads) + '\n') # remaining reads in buffer
+        return
+
     PWM = {}
     if PWM:
         for k,v in constants.PFM.items():
@@ -455,9 +502,7 @@ def analyze_artifacts(Input, Args):
     return table, constants.PWM
 
 
-
-if __name__=='__main__':
-
+def main():
     # logging in debug mode
     if '--debugging-mode' in sys.argv:
         Args = sys.argv + ['--debugging-mode']
@@ -465,6 +510,10 @@ if __name__=='__main__':
         Args = sys.argv
 
     # run tasmanian
+    if '--rescale-phred-scores' in Args:
+        analyze_artifacts(sys.stdin, Args)
+        exit(0)
+
     table, constants.PWM = analyze_artifacts(sys.stdin, Args) 
 
     # print results
@@ -501,3 +550,8 @@ if __name__=='__main__':
         pickle.dump(constants.PWM, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     sys.stderr.write('\n' + report_filename + " and " + pwm_filename + " related files created\n")
+
+
+
+if __name__=='__main__':
+    main()

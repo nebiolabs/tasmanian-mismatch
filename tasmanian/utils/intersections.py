@@ -1,4 +1,4 @@
-#!/bin/python
+#!/usr/bin/env python
 '''
     input sam file from stdin
     bedfile as one of the arguments (chromosome, start, end - delimiter=tab)

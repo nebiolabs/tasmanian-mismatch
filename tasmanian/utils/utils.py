@@ -292,4 +292,3 @@ def ppm2pwm(ppm1, ppm2):
     e.g. ppm1='c_t' then ppm2='c_c' 
     '''
     return np.log2(ppm1 / ppm2)
-
