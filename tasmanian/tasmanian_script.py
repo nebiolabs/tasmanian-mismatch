@@ -161,10 +161,11 @@ def analyze_artifacts(Input, Args):
 
         # bypass header
         if line[0]=="@":
-            sam_header.append(line.strip())
+            #sam_header.append(line.strip())
+            if rescale_phred_scores: print(line.strip())
             continue
 
-        read_id, flag, chrom, start, mapq, cigar, _, _, tlen, seq, phred = line.split('\t')[:11]
+        read_id, flag, chrom, start, mapq, cigar, _1, _2, tlen, seq, phred = line.split('\t')[:11]
         num_phred = [ord(i) for i in phred] # np.array(p).astype(np.uint8) performs worse (-33 dealed with in CONSTANTS.PHRED)
 
         #print(num_phred)
@@ -210,18 +211,23 @@ def analyze_artifacts(Input, Args):
 
         if cigar=="*" or mapq==255 or chrom not in reference: 
             constants.SKIP_READS['others']+=1
+            if rescale_phred_scores: print(line.strip())
             continue  
         elif constants.SKIP_INDEL and ("I" in cigar or "D" in cigar):
             constants.SKIP_READS['indel']+=1
+            if rescale_phred_scores: print(line.strip())
             continue
         elif seq_len <constants.MIN_LENGTH or seq_len > constants.MAX_LENGTH:
             constants.SKIP_READS['readlength']+=1
+            if rescale_phred_scores: print(line.strip())
             continue
         elif mapq<MinMapQuality:
             constants.SKIP_READS['mapquality']+=1
+            if rescale_phred_scores: print(line.strip())
             continue
         elif tlen<constants.TLEN[0] or tlen>constants.TLEN[1]:
             constants.SKIP_READS['fragLength']+=1
+            if rescale_phred_scores: print(line.strip())
             continue
 
         # INSTEAD OF EXPAND THE CIGAR, I PARSED MORE EFFICIENTLY THE CONTENT INTO A NUMPY INDEX
@@ -260,14 +266,17 @@ def analyze_artifacts(Input, Args):
                             constants.SKIP_BASES['softclips']+=number
 
                 elif i=='I':
-                    seq_idx[position:position+number]=0
+                    if not rescale_phred_scores:
+                        seq_idx[position:position+number]=0
                 
                 elif i=='D':
-                    ref_idx[position:position+number]=0
+                    if not rescale_phred_scores:
+                        ref_idx[position:position+number]=0
                 
                 elif i=='H':
-                    ref_idx[position:position+number]=0
-                    seq_idx[position:position+number]=0
+                    if not rescale_phred_scores:
+                        ref_idx[position:position+number]=0
+                        seq_idx[position:position+number]=0
 
                 position += number
                 last = current+1
@@ -280,6 +289,8 @@ def analyze_artifacts(Input, Args):
         except Exception as e:
             if debug:
                 logger.warning('error: {} occurred while fixing for different lengths of seq and ref'.format(str(e)))
+                if rescale_phred_scores: 
+                    print( line.strip() )
             pass
 
         # if bin(int(flag))[2:][-5]=='1' or make it easy for now...
@@ -291,7 +302,10 @@ def analyze_artifacts(Input, Args):
             strand='rev'; read=1
         elif flag==147: 
             strand='rev'; read=2
-        else: continue
+        else:
+            if rescale_phred_scores: 
+                print( line.strip() )
+            continue
 
         # At this point only accepted reads are analyzed. incorporate the fist X read length and later get mode
         if check_lengths_counter<100 and not constants.ONT:
@@ -307,6 +321,8 @@ def analyze_artifacts(Input, Args):
         if len(seq) != len(ref):
             if debug:
                 logger.warning('seq ={} and ref={} have different lengths'.format(seq,ref))
+                if rescale_phred_scores:
+                    print( line.strip() )
             continue    
 
         #if strand=='rev':
@@ -325,7 +341,9 @@ def analyze_artifacts(Input, Args):
                 continue
 
             if base=='N' or ref[pos]=='N' or num_phred[pos] < constants.PHRED: # or (CIGAR[pos] not in ['M','X','=']):
-                #SKIP_BASES['quality']+=1  # report this in stderr. 
+                #SKIP_BASES['quality']+=1  # report this in stderr.
+                if rescale_phred_scores: 
+                    num_phred[pos] = int(num_phred[pos])
                 continue
             else:
                 read_pos = [pos if strand=='fwd' else seq_len-pos-1][0]
@@ -346,6 +364,13 @@ def analyze_artifacts(Input, Args):
                         mismatch_type = ref_base_score + '_' + read_base_score
                         multiplier_idx = (rescale_phred_score_matrix['read']==read) & (rescale_phred_score_matrix['position']==pos)
                         num_phred[pos] = int(num_phred[pos] * rescale_phred_score_matrix[multiplier_idx][mismatch_type].values[0])
+
+
+
+                        #print(ref_base_score, read_base_score, mismatch_type, pos, read)
+
+
+
                     #if debug:
                     #if pos == 0:
                     #    sys.stderr.write(seq[0], strand, ref_pos, Base)
@@ -401,8 +426,8 @@ def analyze_artifacts(Input, Args):
 
         if rescale_phred_scores == True:
             phred = [chr(num_phred[i]) for i in range(len(num_phred))] # rescale phred scores to the original scale
-            new_reads.append('\t'.join([read_id, str(flag), chrom, str(start), str(mapq), cigar, read_id, '0', str(tlen), ''.join(seq), ''.join(phred), 'tc:i:' + str(confidence_value)]))
-            if len(new_reads) == 100000:
+            new_reads.append('\t'.join([read_id, str(flag), chrom, str(start), str(mapq), cigar, _1, _2, str(tlen), ''.join(seq), ''.join(phred), 'tc:i:' + str(confidence_value)]))
+            if len(new_reads) == 10000:
                 sys.stdout.write('\n'.join(new_reads) + '\n')
                 new_reads = []
     if rescale_phred_scores == True:        
