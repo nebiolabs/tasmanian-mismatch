@@ -165,7 +165,8 @@ def analyze_artifacts(Input, Args):
             if rescale_phred_scores: print(line.strip())
             continue
 
-        read_id, flag, chrom, start, mapq, cigar, _1, _2, tlen, seq, phred = line.split('\t')[:11]
+        full_read_list = line.split('\t')
+        read_id, flag, chrom, start, mapq, cigar, _1, _2, tlen, seq, phred = full_read_list[:11]
         num_phred = [ord(i) for i in phred] # np.array(p).astype(np.uint8) performs worse (-33 dealed with in CONSTANTS.PHRED)
 
         #print(num_phred)
@@ -426,7 +427,8 @@ def analyze_artifacts(Input, Args):
 
         if rescale_phred_scores == True:
             phred = [chr(num_phred[i]) for i in range(len(num_phred))] # rescale phred scores to the original scale
-            new_reads.append('\t'.join([read_id, str(flag), chrom, str(start), str(mapq), cigar, _1, _2, str(tlen), ''.join(seq), ''.join(phred), 'tc:i:' + str(confidence_value)]))
+            new_reads.append( '\t'.join( full_read_list[:10] + [''.join(phred)] + full_read_list[11:]  ) )
+    
             if len(new_reads) == 10000:
                 sys.stdout.write('\n'.join(new_reads) + '\n')
                 new_reads = []
