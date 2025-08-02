@@ -430,10 +430,12 @@ def analyze_artifacts(Input, Args):
             new_reads.append( '\t'.join( full_read_list[:10] + [''.join(phred)] + full_read_list[11:]  ) )
     
             if len(new_reads) == 10000:
-                sys.stdout.write('\n'.join(new_reads) + '\n')
+                sys.stdout.write(''.join(new_reads))
+                #sys.stdout.write('\n'.join(new_reads) + '\n')
                 new_reads = []
     if rescale_phred_scores == True:        
-        sys.stdout.write('\n'.join(new_reads) + '\n') # remaining reads in buffer
+        sys.stdout.write(''.join(new_reads)) # remaining reads in buffer
+        #sys.stdout.write('\n'.join(new_reads) + '\n') # remaining reads in buffer
         return
 
     PWM = {}
