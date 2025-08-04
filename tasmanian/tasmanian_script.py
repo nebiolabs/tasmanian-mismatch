@@ -102,8 +102,8 @@ def analyze_artifacts(Input, Args):
             #                                                                'T_A','T_G','T_C'
             #                                                                ] 
             #            )
-            #rescale_phred_score_matrix['read'] = rescale_phred_score_matrix['read'].astype(int) 
-            #rescale_phred_score_matrix['position'] = rescale_phred_score_matrix['position'].astype(int) 
+            rescale_phred_score_matrix['read'] = rescale_phred_score_matrix['read'].astype(int) 
+            rescale_phred_score_matrix['position'] = rescale_phred_score_matrix['position'].astype(int) 
             #rescale_phred_score_matrix = np.loadtxt(constants.rescale_phred_scores, dtype=int)
             sys.stderr.write('Rescaling phred scores based on the matrix in provided\n')
 
@@ -168,9 +168,6 @@ def analyze_artifacts(Input, Args):
         full_read_list = line.split('\t')
         read_id, flag, chrom, start, mapq, cigar, _1, _2, tlen, seq, phred = full_read_list[:11]
         num_phred = [ord(i) for i in phred] # np.array(p).astype(np.uint8) performs worse (-33 dealed with in CONSTANTS.PHRED)
-
-        #print(num_phred)
-
 
         # If sam data does not have the tasmanian tag, there is no intersection with bed and proceed to a single output table
         if bed_tag_counter<10 and bed_tag==False:
@@ -323,7 +320,7 @@ def analyze_artifacts(Input, Args):
             if debug:
                 logger.warning('seq ={} and ref={} have different lengths'.format(seq,ref))
                 if rescale_phred_scores:
-                    print( line.strip() )
+                    logger.warning( line.strip() )
             continue    
 
         #if strand=='rev':
@@ -358,19 +355,14 @@ def analyze_artifacts(Input, Args):
                         Base = revcomp(base)
                 
 
-                    #if rescale_phred_scores == True:
-                    #print(''.join(seq), len(seq), len(phred), phred, pos, base, seq[pos], ref[pos], phred[pos])
-                    ref_base_score, read_base_score = ref_pos.upper(), Base.upper()
+                    ref_base_score, read_base_score = ref_pos.lower(), Base.lower()
+
                     if rescale_phred_scores and ref_base_score != read_base_score:
-                        mismatch_type = ref_base_score + '_' + read_base_score
-                        multiplier_idx = (rescale_phred_score_matrix['read']==read) & (rescale_phred_score_matrix['position']==pos)
-                        num_phred[pos] = int(num_phred[pos] * rescale_phred_score_matrix[multiplier_idx][mismatch_type].values[0])
+                        mismatch_type = 'N' + ref_base_score + '_' + read_base_score
 
-
-
-                        #print(ref_base_score, read_base_score, mismatch_type, pos, read)
-
-
+                        multiplier_idx = (rescale_phred_score_matrix['read']==read) & (rescale_phred_score_matrix['position']==(pos+1) )
+                        num_phred[pos] = int(num_phred[pos] * rescale_phred_score_matrix.loc[multiplier_idx, mismatch_type].values[0])
+                        num_phred[pos] = 33 if num_phred[pos] < 33 else num_phred[pos]
 
                     #if debug:
                     #if pos == 0:
