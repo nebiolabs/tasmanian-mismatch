@@ -4,10 +4,10 @@ from sys import argv
 
 d = pd.read_csv('rescaling_matrix.csv')
 
-A = list(d.columns[2:6])
-T = list(d.columns[6:10])
-C = list(d.columns[10:14])
-G = list(d.columns[14:18])
+A = ['Na_t', 'Na_c', 'Na_g', 'Na_a'] #list(d.columns[2:6])
+T = ['Nt_a', 'Nt_c', 'Nt_g', 'Nt_t'] #list(d.columns[6:10])
+C = ['Nc_a', 'Nc_t', 'Nc_g', 'Nc_c'] #list(d.columns[10:14])
+G = ['Ng_a', 'Ng_t', 'Ng_c', 'Ng_g'] #list(d.columns[14:18])
 all=['Na_t', 'Na_c', 'Na_g', 'Nt_a',  'Nt_c', 'Nt_g', 'Nc_a', 'Nc_t', 'Nc_g', 'Ng_a', 'Ng_t', 'Ng_c']
 
 #d.loc[:, 'A'] = d.loc[:, A].sum(axis=1)
