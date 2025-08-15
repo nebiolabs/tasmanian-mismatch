@@ -2,7 +2,14 @@ import pandas as pd
 import numpy as np
 from sys import argv
 
-d = pd.read_csv('rescaling_matrix.csv')
+d = pd.read_csv('rescaling_matrix.csv') 
+
+try:
+    multiplier = int(sys.argv[2]) if len(sys.argv) > 2 else 300
+except ValueError:
+    print("no value given for multiplier. Using 300")
+    multiplier = 300
+
 
 A = ['Na_t', 'Na_c', 'Na_g', 'Na_a'] #list(d.columns[2:6])
 T = ['Nt_a', 'Nt_c', 'Nt_g', 'Nt_t'] #list(d.columns[6:10])
@@ -23,6 +30,6 @@ for i in [A,C,G,T]:
         df.loc[:,j] = df.loc[:,j].values / (df.loc[:, i].sum(axis=1).values + 1 ) # add 1 to avoid dividing by zero during tests.
 
 
-df.loc[:, all] = 1 / 10**(df.loc[:, all])
+df.loc[:, all] = multiplier / 10**(df.loc[:, all])
 
 df.loc[:, ['read', 'position'] + all].to_csv('rescaling_factors.csv', index=False)
