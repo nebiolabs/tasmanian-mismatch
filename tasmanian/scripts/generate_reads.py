@@ -1,11 +1,15 @@
 import sys, os
-sys.path.append(sys.os.realpath("./"))
+sys.path.append(os.path.realpath("./"))
 from simulate_mutations import *
 
 read_length = 76
-genome_dict = load_reference_genome("../test_data/test_genome.fa")
+genome_dict = load_reference_genome("../../test_data/test_genome.fa")
+variants_list = read_proposed_variants('variants_proposed.tsv')
+variants_dict = assign_contigs_to_variants(variants_list, genome_dict)
+
 reads = generate_reads(
     genome_dict=genome_dict,
+    variants_dict=variants_dict,
     read_length=read_length,
     n_reads=1000000,
     insert_length=100,

@@ -4,6 +4,8 @@ from itertools import product
 import numpy as np
 import re
 seed = 42 
+import sys, os
+from fast_string_replace import replace_at_positions
 
 '''
 The idea is to load a mock reference genome (short. About 1000 lines total) and sample from there
@@ -36,63 +38,160 @@ def load_reference_genome(fasta):
     return genome
 
 
+def read_proposed_variants(vars_file):
+    '''
+    vars_file is a tab separated file (TSV) and NO HEADER
+    each line in vars_file contains original_base, variant_base, frequency(%), strand
+    e.g. C  T   10  +
+         G  A   0.8 - (yes. 0.8%)
+    '''
+    with open(vars_file, 'r') as f:
+        pre_vars = [i.strip().split("\t") for i in f]
+
+
+    vars_list = [
+        {
+        'original':  i[0],
+        'variant':   i[1],
+        'frequency': float(i[2]),
+        'strand':    i[3]
+        }
+        for i in pre_vars
+    ]
+
+    return vars_list
+
+
 def complement(sequence):
         d = {'A': 'T', 'T':'A', 'C':'G', 'G':'C', 'N':'N'}
         return ''.join([d[i] for i in sequence])
 
+def reverse_complement(sequence):
+    return complement(sequence)[::-1]
 
-def generate_reads(genome_dict, library_type='FFPE', n_reads=100, read_length=76, insert_length=100, insert_length_var=10, base_noise_level=0.0001):
+def assign_contigs_to_variants(vars_list, genome_dict):
+    '''
+    goal:
+        assign variants to contigs randomly.
+    input: 
+        list of variants (loaded from the file)
+        genome (dict)
+
+    output:
+        nested dictionaries
+        kyes1   = contigs
+        keys2   = positions
+        values2 = list of characters containing 100 characters
+                  e.g. for a G->T with allele frequency=0.1
+                  [T,T,G,T,T,T,T,T,T,T...]
+    '''
+    global seed
+    np.random.seed(seed)
+
+    n_vars = len(vars_list)
+    n_contigs = len(genome_dict)
+
+    contig_vars = np.random.randint(0, n_contigs, n_vars)
+
+    variants_dict = { contig: {} for contig in genome_dict.keys() }
+
+    for n, (contig, sequence) in enumerate(genome_dict.items()):
+        idx_contig_vars = np.where(contig_vars == n)[0]
+        
+        for idx_contig_var in idx_contig_vars:
+            var_dict = vars_list[idx_contig_var]
+            strand = var_dict['strand']
+            old_base = [var_dict['original'] if strand == "+" else reverse_complement(var_dict['original'])][0]
+            new_base = [var_dict['variant'] if strand == "+" else reverse_complement(var_dict['variant'])][0]
+            positions_var = np.array( [i.span()[0] for i in  re.finditer(old_base, sequence)] )
+            selected_position = positions_var[ np.random.randint( len(positions_var) ) ]
+            floored_frequency = np.max( [var_dict['frequency'], 1] ).astype(int)
+            
+            # variant and original with their frequencies in a arr[10] 
+            variants_dict[contig][ selected_position ] = np.array( [old_base] * (100 - floored_frequency) + [new_base] * floored_frequency )
+            np.random.shuffle( variants_dict[contig][ selected_position ] )
+
+            # print(f"Assigned variant {var_dict['original']}->{var_dict['variant']} at contig {contig} position {selected_position} with frequency {var_dict['frequency']}%")
+            # print(f"floored frequency: {floored_frequency}")
+    
+    # e.g. variant_dict['chr1'][1014365] = np.arr( ['G','G','T','G','G','T','T','G','G',....'T'] )
+    return variants_dict
+
+
+def generate_reads(genome_dict, 
+                   variants_dict, 
+                   library_type='FFPE', 
+                   n_reads=100, 
+                   read_length=76, 
+                   insert_length=100, 
+                   insert_length_var=10, 
+                   base_noise_level=0.0001):
+
     global seed
     np.random.seed(seed)
     # insert length = WITHOUT adapter
 
-    # Distribute the reads evenly, based on the length of each contig.
+    simulated_reads = []
+
+
+    # Distribute the reads across contigs evenly, based on the length of each contig.
     contig_lengths = {name: len(seq) for name, seq in genome_dict.items()}
     total_length = np.sum([v for v in contig_lengths.values()])
     read_unit = n_reads / total_length
 
     contig_reads = {name: int(length * read_unit) for name, length in contig_lengths.items()}
 
-    for contig_name, sequence in genome_dict.items():
+    # Generate reads for each contig.
+    for contig_name, original_sequence in genome_dict.items():
         read_starts = np.random.randint(0, contig_lengths[contig_name] - read_length, contig_reads[contig_name])
         insert_lengths = np.random.randint(0, insert_length_var, contig_reads[contig_name])
 
-        # generate the reads (initially both ends are fwd)
-        reads  = { 
-            n: {
-                'left' : sequence[i               : i+read_length].upper(),
-                'right': sequence[i+insert_lengths[n] : i+ insert_lengths[n] +read_length].upper() 
-            }
-            for n,i in enumerate(read_starts)
-        }
-        
-        # randomly half of these reads will be: read1=rev and read2=fwd (and vice versa)
-        n_reads_tmp = len(read_starts)
-        idx = np.arange( n_reads_tmp ) 
-        np.random.shuffle(idx)
-        fr = idx[:n_reads_tmp//2]
-        rf = idx[n_reads_tmp//2:]
+        # repeat the sampling N times (Ideally 100 but let's start with 10)
+        # split array of starting positions in 10 (to make the sampling form "10 var-genomes" easier.
+        read_starts_split = np.array_split(read_starts,10)
+        insert_lengths_split = np.array_split(insert_lengths, 10)
 
-        # make the necessary reads reverse
-        new_reads = {n:{} for n in range(len(read_starts))}
-        
-        print(f"fr reads: {len(fr)}\trf reads: {len(rf)}")
+        # 10 times, generate a "variant-genome" and sample from it.
+        for var_index in range(10):
+            contig_vars_input = { int(var_position): str(var_nt[var_index]) for var_position, var_nt in variants_dict[contig_name].items() }
 
-        for n in fr:
-            new_reads[n] = {
-                    'R1': reads[n]['left'],
-                    'R2': complement( reads[n]['right'][::-1] )
-            }
-        for n in rf:
-            new_reads[n] = {
-                    'R1': complement( reads[n]['left' ] )[::-1],
-                    'R2': reads[n]['right']            
-            #new_reads[n] = {
-            #    'R2': complement( reads[n]['left' ] ),
-            #    'R1': reads[n]['right'][::-1]
+            sequence = replace_at_positions(original_sequence, contig_vars_input)
+
+            # generate the reads. You can only see the ends of the fragments (initially both ends are fwd for simplicity)
+            reads  = { 
+                n: {
+                    'left' : sequence[i                                    : i+read_length                                   ].upper(),
+                    'right': sequence[i+insert_lengths_split[var_index][n] : i+insert_lengths_split[var_index][n]+read_length].upper() 
+                }
+                for n,i in enumerate(read_starts_split[var_index])
             }
 
-    return new_reads
+            # randomly half of thes e reads will be: read1=rev and read2=fwd (and vice versa)
+            n_reads_tmp = len(read_starts_split[var_index])
+            idx = np.arange( n_reads_tmp ) 
+            np.random.shuffle(idx)
+            fr = idx[:n_reads_tmp//2]
+            rf = idx[n_reads_tmp//2:]
+
+            # make the necessary reads reverse
+            new_reads = {n * (var_index+1) :{} for n in range(len(read_starts_split[var_index]))} # n*(var_index+1) to have unique read IDs across var-genomes
+            
+            sys.stderr.write(f"fr reads: {len(fr)}\trf reads: {len(rf)}")
+
+            for n in fr:
+                new_reads[n * (var_index+1)] = {
+                        'R1': reads[n]['left'],
+                        'R2': complement( reads[n]['right'][::-1] )
+                }
+            for n in rf:
+                new_reads[n * (var_index+1)] = {
+                        'R1': complement( reads[n]['left' ] )[::-1],
+                        'R2': reads[n]['right']            
+                }
+            
+            simulated_reads.append(new_reads)
+
+    return {k: v for d in simulated_reads for k, v in d.items()}
 
 
 def print_reads(reads):
@@ -113,14 +212,14 @@ def print_reads(reads):
 
     preads1 = '\n'.join( 
             [
-                '\n'.join([header, read['R1'], "+", phred]) 
+                '\n'.join([ header, read['R1'], "+", phred[ :len(read['R1']) ] ]) 
                 for header, read, phred in zip(headers, reads.values(), phreds)
             ] 
     ) 
     
     preads2 = '\n'.join( 
             [
-                '\n'.join([header, read['R2'], "+", phred]) 
+                '\n'.join([ header, read['R2'], "+", phred[ :len(read['R2']) ] ]) 
                 for header, read, phred in zip(headers, reads.values(), phreds)
             ] 
     ) 
