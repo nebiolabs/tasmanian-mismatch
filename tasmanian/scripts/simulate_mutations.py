@@ -133,7 +133,6 @@ def generate_reads(genome_dict,
 
     simulated_reads = []
 
-
     # Distribute the reads across contigs evenly, based on the length of each contig.
     contig_lengths = {name: len(seq) for name, seq in genome_dict.items()}
     total_length = np.sum([v for v in contig_lengths.values()])
@@ -228,7 +227,20 @@ def print_reads(reads):
 
 
 def generate_probabilities(library_type='FFPE', read_length=76):
-
+    '''
+    INPUT:
+        type of library / pattern of positional mutations -> str
+        length of the read -> int
+    OUTPUT:
+        2 dictionaries for read1 and read2
+        each dict has mismatches as keys (e.g. CT=C->T, GT, etc...)
+        and values are numpy arrays with shape = (read_length, 1)
+        and values indicating the probabilidad of each position to 
+        make it into the library.
+        E.g. a CT at position 3 in read 1, with a value of 0.8 will be adopted 
+        (by other function) in the read, and the C will become T in 
+        ~80% of the positions 3 from read 1.
+    '''
     bases = ['A','T','C','G']
     mismatches = [''.join(i) for i in product(bases, repeat=2) if i[1]!=i[0]]
     read1 = {mismatch: np.zeros(read_length) for mismatch in mismatches}
