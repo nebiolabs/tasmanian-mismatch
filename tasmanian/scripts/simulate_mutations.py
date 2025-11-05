@@ -38,6 +38,32 @@ def load_reference_genome(fasta):
     return genome
 
 
+def make_reference_bisulfite(ref_genome, pct_methylation):
+
+    global seed
+    np.random.seed(seed)
+    
+    bisulfite_reference = {}
+    for contig, sequence in ref_genome.items():
+        CpG_fwd = np.array([i.span()[0] for i in re.finditer("CG", sequence)])
+        CpG_rev = np.array([i.span()[0] for i in re.finditer("GC", sequence)])
+
+        # randomly pick the pct_methylation
+        np.random.shuffle(CpG_fwd)
+        np.random.shuffle(CpG_rev)
+        n = ( CpG_fwd.shape[0] + CpG_rev.shape[0] ) * pct_methylation / 100
+        n = int(n//2) # roughly modify both strands equally.
+        
+        methylation_dict_fwd = { int(i):"T" for i in CpG_fwd[:n] }
+        methylation_dict_rev = { int(i):"A" for i in CpG_rev[:n] }
+
+        meth_dict = dict(sorted( (methylation_dict_fwd | methylation_dict_rev).items() ) )
+
+        bisulfite_reference[contig] = replace_at_positions(sequence, meth_dict)
+
+    return bisulfite_reference
+
+
 def read_proposed_variants(vars_file):
     '''
     vars_file is a tab separated file (TSV) and NO HEADER
@@ -139,6 +165,7 @@ def generate_reads(genome_dict,
     read_unit = n_reads / total_length
 
     contig_reads = {name: int(length * read_unit) for name, length in contig_lengths.items()}
+    previous_n = 0
 
     # Generate reads for each contig.
     for contig_name, original_sequence in genome_dict.items():
@@ -173,24 +200,26 @@ def generate_reads(genome_dict,
             rf = idx[n_reads_tmp//2:]
 
             # make the necessary reads reverse
-            new_reads = {n * (var_index+1) :{} for n in range(len(read_starts_split[var_index]))} # n*(var_index+1) to have unique read IDs across var-genomes
-            
-            sys.stderr.write(f"fr reads: {len(fr)}\trf reads: {len(rf)}")
+            new_reads = {n  :{} for n in range(previous_n, n_reads_tmp + previous_n)} # n*(var_index+1) to have unique read IDs across var-genomes
+
+            sys.stderr.write(f"fr reads: {len(fr)}\trf reads: {len(rf)}\n")
 
             for n in fr:
-                new_reads[n * (var_index+1)] = {
+                new_reads[ n + previous_n ] = {
                         'R1': reads[n]['left'],
                         'R2': complement( reads[n]['right'][::-1] )
                 }
             for n in rf:
-                new_reads[n * (var_index+1)] = {
+                new_reads[ n + previous_n ] = {
                         'R1': complement( reads[n]['left' ] )[::-1],
                         'R2': reads[n]['right']            
                 }
-            
+
             simulated_reads.append(new_reads)
 
-    return {k: v for d in simulated_reads for k, v in d.items()}
+            previous_n += n_reads_tmp
+
+    return {k:v for d in simulated_reads for k,v in d.items()}
 
 
 def print_reads(reads):
@@ -312,7 +341,8 @@ def generate_probabilities(library_type='FFPE', read_length=76):
 
 
 def mutate_single_read(read, read_probs, random_probs):
-    read_list = list(read)
+    # read_list = list(read)
+
     '''
     probs = dict
         keys   : AT, GA, etc. and
@@ -331,14 +361,20 @@ def mutate_single_read(read, read_probs, random_probs):
         prob_position = set( np.where(random_probs >= read_probs_complement)[0] )
         positions = base_position.intersection(prob_position)
 
-        for i in positions:
-            read_list[i] = m[1] 
+        
+       # for i in positions:
+       #      read_list[i] = m[1] 
 
-    return ''.join(read_list)
+        if len(positions) == 0: continue
+
+        read = replace_at_positions( read, {int(i):m[1] for i in positions} )
+
+    return read # ''.join(read_list)
 
 
 def mutate_reads(reads, probabilities, read_length):
-    simulated_reads = {}
+    simulated_reads= {}
+
     for n, read in enumerate(reads.values()):
         simulated_reads[n] = {
             'R1': mutate_single_read(read['R1'], probabilities[0], np.random.rand(read_length)),

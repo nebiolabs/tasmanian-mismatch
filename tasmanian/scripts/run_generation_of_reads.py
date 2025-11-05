@@ -4,17 +4,20 @@ from simulate_mutations import *
 
 read_length = 76
 genome_dict = load_reference_genome("../../test_data/test_genome.fa")
+methyl_genome = make_reference_bisulfite(genome_dict, pct_methylation=96)
+
 variants_list = read_proposed_variants('variants_proposed.tsv')
 variants_dict = assign_contigs_to_variants(variants_list, genome_dict)
 
 reads = generate_reads(
-    genome_dict=genome_dict,
+    genome_dict=methyl_genome, #genome_dict,
     variants_dict=variants_dict,
     read_length=read_length,
     n_reads=1000000,
     insert_length=100,
     insert_length_var=35
 )
+
 
 probs = generate_probabilities(read_length=read_length)
 
@@ -30,3 +33,4 @@ with open('simulated_reads_R1.fastq', 'w') as f:
 
 with open('simulated_reads_R2.fastq', 'w') as f:
     f.write(reads_dict[1])
+
