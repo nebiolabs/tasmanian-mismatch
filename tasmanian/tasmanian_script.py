@@ -316,26 +316,19 @@ def analyze_artifacts(Input, Args):
                         ref_pos = revcomp(ref[pos])
                         Base = revcomp(base)
                 
+                    if methylation_mode:
+                        if CpG_mode:
+                            if   (read == 1 and ref_pos in ['c','C'] and ref[pos+1] in ['g','G'] and Base == 'T'): Base = 'C'
+                            elif (read == 2 and ref_pos in ['g','G'] and ref[pos+1] in ['c','C'] and Base == 'A'): Base = 'G'
+                        else:
+                            if   (read ==1 and ref_pos in ['c','C'] and Base == 'T'): Base = 'C'
+                            elif (read ==2 and ref_pos in ['g','G'] and Base == 'A'): Base = 'G'
+                    
                     #if pos == 0:
                     #    sys.stderr.write(seq[0], strand, ref_pos, Base)
                     if tm_tag[0] == -1:
                         assert base in ['A','C','G','T'], "{} should be upper case".format(base)
-
-                    #    if not methylation_mode or ( methylation_mode and not \
-                    #        ( (read == 1 and ref_pos in ['c','C'] and ref[pos+1] in ['g','G']) or \
-                    #          (read == 2 and ref_pos in ['g','G'] and ref[pos+1] in ['c','C']) ):
-                    # above related specifically to CpG. Let's consider all options as other species also have NON CpG meethylated.
-                        if not methylation_mode \
-                                or ( methylation_mode and ( 
-                                    not ( \
-                                        (read ==1 and ref_pos in ['c','C'] and Base == 'T') or \
-                                        (read ==2 and ref_pos in ['g','G'] and Base == 'A') ) 
-                                    or CpG_mode and not ( \
-                                        (read == 1 and ref_pos in ['c','C'] and ref[pos+1] in ['g','G']) or \
-                                        (read == 2 and ref_pos in ['g','G'] and ref[pos+1] in ['c','C']) )
-                                    )
-                                ):
-                            errors_unrelated[read][read_pos][ref_pos][Base] += 1
+                        errors_unrelated[read][read_pos][ref_pos][Base] += 1
  
                     elif pos >= tm_tag[0] and pos < tm_tag[1]:
                         assert base in ['a','c','t','g'], "{} should be lower case".format(base) 
