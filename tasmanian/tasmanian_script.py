@@ -38,7 +38,7 @@ def analyze_artifacts(Input, Args):
     debug = False
     picard = False
     flanking_n = False, 5
-    methylation_mode, CpG_mode = False, False
+    methylation_flag, CpG_flag = False, False
 
     # if there are arguments get them
     for n,i in enumerate(Args):
@@ -85,9 +85,9 @@ def analyze_artifacts(Input, Args):
             if len(sys.argv)>n+1: 
                 flanking_n = int(sys.argv[n+1]) if sys.argv[n+1].isnumeric() else flanking_n
         if i == '--mask-methyl-c':
-            methylation_mode = True
+            methylation_flag = True
         if i == '--mask-methyl-cpg':
-            CpG_mode = True
+            CpG_flag = True
 
     if debug:
         # if debugging create this logfile    
@@ -316,8 +316,8 @@ def analyze_artifacts(Input, Args):
                         ref_pos = revcomp(ref[pos])
                         Base = revcomp(base)
                 
-                    if methylation_mode:
-                        if CpG_mode:
+                    if methylation_flag:
+                        if CpG_flag:
                             if   (read == 1 and ref_pos in ['c','C'] and ref[pos+1] in ['g','G'] and Base == 'T'): Base = 'C'
                             elif (read == 2 and ref_pos in ['g','G'] and ref[pos+1] in ['c','C'] and Base == 'A'): Base = 'G'
                         else:
