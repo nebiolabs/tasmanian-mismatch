@@ -84,9 +84,9 @@ def analyze_artifacts(Input, Args):
             PWM = True
             if len(sys.argv)>n+1: 
                 flanking_n = int(sys.argv[n+1]) if sys.argv[n+1].isnumeric() else flanking_n
-        if i == '--methylation-mode':
+        if i == '--mask-methyl-c':
             methylation_mode = True
-        if i == '--CpG-mode':
+        if i == '--mask-methyl-cpg':
             CpG_mode = True
 
     if debug:

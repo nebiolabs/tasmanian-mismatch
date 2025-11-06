@@ -46,6 +46,6 @@ class constants:
     -O|--ont (this is ONT data)
     -p|--picard-logic (normalize tables based on picard CollectSequencingArtifactMetrics logic)
     -P|--include-pwm
-    --methylation-mode (C->T in read1 and G->A in read2 are not counted)
-    --CpG-mode (the above becames valid only for CpG - not CHH or CHG)
+    --mask-methyl-c (C->T in read1 and G->A in read2 are not counted)
+    --mask-methyl-cpg (the above becames valid only for CpG - not CHH or CHG)
     """
