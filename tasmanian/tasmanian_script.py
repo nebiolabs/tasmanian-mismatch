@@ -41,52 +41,52 @@ def analyze_artifacts(Input, Args):
     methylation_flag, CpG_flag = False, False
 
     # if there are arguments get them
-    for n,i in enumerate(Args):
-        if i in ['-r','--reference-fasta']:
+    for n, opt in enumerate(Args):
+        if opt in ['-r','--reference-fasta']:
             ref_file = sys.argv[n+1]
             sys.stderr.write('using {} as reference genome\n'.format(ref_file))
-        if i in ['-u', '--unmask-genome']:
+        if opt in ['-u', '--unmask-genome']:
             constants._UNMASK_GENOME = True 
             sys.stderr.write('unmasking genome. You are potentially including repetitive regions...\n')
-        if i in ['-q', '--base-quality']:
+        if opt in ['-q', '--base-quality']:
             constants.PHRED = int(sys.argv[n+1])+ 33
             sys.stderr.write('minimum base quality set to {}\n'.format(constants.PHRED))
-        if i in ['-f', '--filter-indel']: 
+        if opt in ['-f', '--filter-indel']: 
             constants.SKIP_INDEL=True
             sys.stderr.write('Skipping all reads with INDELS\n')
-        if i in ['-l', '--filter-length']: # min and max separated by a comma
+        if opt in ['-l', '--filter-length']: # min and max separated by a comma
             constants.MIN_LENGTH, constants.MAX_LENGTH = np.array(sys.argv[n+1].strip('\n').split(','), dtype=np.uint16)
             sys.stderr.write('range of fragment lengths allowed is {}-{}\n'.format(constants.MIN_LENGTH, constants.MAX_LENGTH))
-        if i in ['-s', '--soft-clip-bypass']:
+        if opt in ['-s', '--soft-clip-bypass']:
             constants.SOFTCLIP_BYPASS=int(sys.argv[n+1])
             sys.stderr.write('softclip bypass set to {}\n'.format(constants.SOFTCLIP_BYPASS))
-        if i in ['-m', '--mapping-quality']:
+        if opt in ['-m', '--mapping-quality']:
             MinMapQuality = int(sys.argv[n+1])
             sys.stderr.write('Filtering out reads with Mapping quality < {}\n'.format(MinMapQuality))
-        if i in ['-g','--fragment-length']:
+        if opt in ['-g','--fragment-length']:
             constants.TLEN = np.array(sys.argv[n+1].split(',')).astype(int)
             sys.stderr.write('Only reads comming from fragments of lengths {}-{} are considered here\n'.format(constants.TLEN[0], constants.TLEN[1]))
-        if i in ['-o','--output-prefix']:
+        if opt in ['-o','--output-prefix']:
             randLogName = sys.argv[n+1]
-        if i in ['-c', '--confidence']:
+        if opt in ['-c', '--confidence']:
             confidence = int(sys.argv[n+1])
-        if i in ['-d','--debug']:
+        if opt in ['-d','--debug']:
             debug = True
-        if i in ['-O','--ont']:
+        if opt in ['-O','--ont']:
             constants.ONT = True
             constants.READ_LENGTH=100000
             constants.MAX_LENGTH=100000
             constants.TLEN=np.array([0,100000])
             check_lengths = constants.READ_LENGTH
-        if i in ['-p','--picard-logic']:
+        if opt in ['-p','--picard-logic']:
             picard = True
-        if i in ['-P','--include-pwm']:
+        if opt in ['-P','--include-pwm']:
             PWM = True
             if len(sys.argv)>n+1: 
                 flanking_n = int(sys.argv[n+1]) if sys.argv[n+1].isnumeric() else flanking_n
-        if i == '--mask-methyl-c':
+        if opt == '--mask-methyl-c':
             methylation_flag = True
-        if i == '--mask-methyl-cpg':
+        if opt == '--mask-methyl-cpg':
             CpG_flag = True
 
     if debug:
