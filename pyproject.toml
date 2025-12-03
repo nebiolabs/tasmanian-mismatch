@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tasmanian-mismatch"
-version = "1.1.0"
+version = "1.1.1"
 description = "Tasmanian tool to analyze mismatches at read and position in high throughput sequencing data"
 readme = "README.md"
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.10"
 license = {text = "GNU"}
 authors = [
     {name = "Ariel Erijman", email = "aerijman@neb.com"},

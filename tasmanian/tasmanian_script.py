@@ -317,12 +317,15 @@ def analyze_artifacts(Input, Args):
                         Base = revcomp(base)
                 
                     if methylation_flag:
+                        r1ct = read == 1 and ref_pos in ['c','C'] and Base == 'T'
+                        r2ga = read == 2 and ref_pos in ['g','G'] and Base == 'A'
+
                         if CpG_flag:
-                            if   (read == 1 and ref_pos in ['c','C'] and ref[pos+1] in ['g','G'] and Base == 'T'): Base = 'C'
-                            elif (read == 2 and ref_pos in ['g','G'] and ref[pos+1] in ['c','C'] and Base == 'A'): Base = 'G'
+                            if   (r1ct and ref[pos+1] in ['g','G']): Base = 'C'
+                            elif (r2ga and ref[pos+1] in ['c','C']): Base = 'G'
                         else:
-                            if   (read ==1 and ref_pos in ['c','C'] and Base == 'T'): Base = 'C'
-                            elif (read ==2 and ref_pos in ['g','G'] and Base == 'A'): Base = 'G'
+                            if   r1ct: Base = 'C'
+                            elif r2ga: Base = 'G'
                     
                     #if pos == 0:
                     #    sys.stderr.write(seq[0], strand, ref_pos, Base)
@@ -468,6 +471,8 @@ def analyze_artifacts(Input, Args):
 
 
 if __name__=='__main__':
+
+    sys.stderr.write('\nTasmanian artifact analyzer v' + constants.VERSION + '\n')
 
     # logging in debug mode
     if '--debugging-mode' in sys.argv:

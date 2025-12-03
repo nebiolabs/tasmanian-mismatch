@@ -5,7 +5,7 @@ def readme():
         return f.read()
 
 setup(name='tasmanian-mismatch',
-      version='1.1.0',
+      version='1.1.1',
       description='Tasmanian tool to analyze mismatches at read and position in high throughput sequencing data',
       long_description=readme(),
       long_description_content_type="text/markdown",
@@ -21,7 +21,7 @@ setup(name='tasmanian-mismatch',
           'plotly'
       ],
       zip_safe=False,
-      python_requires='>=3.10,<3.13',
+      python_requires='>=3.10',
       scripts=[
            'bin/run_tasmanian',
            'bin/run_intersections'
