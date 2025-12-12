@@ -1,0 +1,1 @@
+(noodles::noodles_sam::alignment::record::data::field::Tag, noodles::noodles_sam::alignment::record::data::field::Value<'_>)

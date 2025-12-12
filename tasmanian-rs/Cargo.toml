@@ -1,0 +1,36 @@
+[package]
+name = "tasmanian"
+version = "0.1.0"
+edition = "2021"
+authors = ["NEB Bioinformatics"]
+description = "A tool for analysis of reference mismatches in high throughput sequencing data"
+license = "AGPL-3.0"
+repository = "https://github.com/nebiolabs/tasmanian-mismatch"
+keywords = ["bioinformatics", "sequencing", "sam", "bam", "artifacts"]
+categories = ["command-line-utilities", "science"]
+
+[dependencies]
+# Bioinformatics I/O
+noodles = { version = "0.85", features = ["sam", "fasta", "bed"] }
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+
+# Output
+csv = "1.3"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+[profile.release]
+lto = true
+codegen-units = 1
+
+[[bin]]
+name = "tasmanian"
+path = "src/main.rs"
