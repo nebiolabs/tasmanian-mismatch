@@ -332,8 +332,12 @@ fn main() {
         
         for result in bam.records() {
             if let Ok(record) = result {
-                process_record(&record, &mut region_counts, &ref_clone, &tid_clone);
-                local_count += 1;
+                // Only process reads that START in this region to avoid duplicates
+                let read_start = record.pos();
+                if read_start >= *start && read_start < *end {
+                    process_record(&record, &mut region_counts, &ref_clone, &tid_clone);
+                    local_count += 1;
+                }
             }
         }
         
