@@ -1,0 +1,9 @@
+[package]
+name = "rustmanian-mismatch"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rust-htslib = "0.47"
+rayon = "1.10"
+bio = "1.6"
