@@ -1,4 +1,4 @@
-use rust_htslib::bam::{Read, Reader, Record};
+use rust_htslib::bam::{Read, Reader, IndexedReader, Record, FetchDefinition};
 use rayon::prelude::*;
 use std::env;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -92,7 +92,7 @@ fn parse_md_tag(md_string: &str) -> (Vec<(usize, char)>, Vec<(usize, usize)>) {
     (mismatches, matches)
 }
 
-fn process_record(record: &Record, mismatch_counts: &Mutex<HashMap<MismatchKey, usize>>, reference: &ReferenceGenome, tid_to_name: &HashMap<i32, String>) {
+fn process_record(record: &Record, local_counts: &mut HashMap<MismatchKey, usize>, reference: &ReferenceGenome, tid_to_name: &HashMap<i32, String>) {
     
     // Skip unmapped, secondary, and supplementary alignments
     if record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
@@ -123,7 +123,6 @@ fn process_record(record: &Record, mismatch_counts: &Mutex<HashMap<MismatchKey, 
     let cigar = record.cigar();
     
     // Walk through CIGAR and compare read to reference
-    let mut local_counts = Vec::new();
     let mut read_pos = 0;
     let mut ref_pos = ref_start;
     
@@ -173,7 +172,7 @@ fn process_record(record: &Record, mismatch_counts: &Mutex<HashMap<MismatchKey, 
                                 read_num,
                             }
                         };
-                        local_counts.push(key);
+                        *local_counts.entry(key).or_insert(0) += 1;
                     }
                 }
                 read_pos += *len as usize;
@@ -188,21 +187,13 @@ fn process_record(record: &Record, mismatch_counts: &Mutex<HashMap<MismatchKey, 
             HardClip(_) | Pad(_) => {}
         }
     }
-    
-    // Update counts (thread-safe)
-    if !local_counts.is_empty() {
-        let mut counts = mismatch_counts.lock().unwrap();
-        for key in local_counts {
-            *counts.entry(key).or_insert(0) += 1;
-        }
-    }
 }
 
 fn main() {
     let args: Vec<String> = env::args().collect();
     
     if args.len() < 3 {
-        eprintln!("Usage: {} <bam_file> <reference_fasta> [--threads N] [--chunk-size N]", args[0]);
+        eprintln!("Usage: {} <bam_file> <reference_fasta> [--threads N] [--region-size N]", args[0]);
         std::process::exit(1);
     }
     
@@ -210,7 +201,7 @@ fn main() {
     let fasta_path = &args[2];
     
     // Parse optional arguments
-    let mut chunk_size: usize = 10000;
+    let mut region_size: usize = 10_000_000; // 10MB regions by default
     let mut num_threads: usize = 0; // 0 means use all available cores
     
     let mut i = 3;
@@ -225,12 +216,12 @@ fn main() {
                     std::process::exit(1);
                 }
             }
-            "--chunk-size" | "-c" => {
+            "--region-size" | "-r" => {
                 if i + 1 < args.len() {
-                    chunk_size = args[i + 1].parse().unwrap_or(10000);
+                    region_size = args[i + 1].parse().unwrap_or(10_000_000);
                     i += 2;
                 } else {
-                    eprintln!("Error: --chunk-size requires a value");
+                    eprintln!("Error: --region-size requires a value");
                     std::process::exit(1);
                 }
             }
@@ -285,11 +276,11 @@ fn main() {
     
     eprintln!("\n{}", "=".repeat(80));
     eprintln!("Reading BAM file: {}", bam_path);
-    eprintln!("Chunk size: {}", chunk_size);
+    eprintln!("Region size: {} bp", region_size);
     eprintln!("Using {} threads", rayon::current_num_threads());
     
-    // Open the BAM file
-    let mut bam = Reader::from_path(bam_path)
+    // Open the BAM file to read header
+    let bam = Reader::from_path(bam_path)
         .expect("Failed to open BAM file");
     
     // Create thread-safe chromosome name mapping
@@ -299,45 +290,67 @@ fn main() {
             .collect()
     );
     
-    let total_count = AtomicUsize::new(0);
-    let mismatch_counts: Mutex<HashMap<MismatchKey, usize>> = Mutex::new(HashMap::new());
-    let mut buffer = Vec::with_capacity(chunk_size);
-    
-    // Read records in chunks and process in parallel
-    for result in bam.records() {
-        let record = result.expect("Failed to read record");
-        buffer.push(record);
+    // Create regions to process in parallel
+    let mut regions = Vec::new();
+    for tid in 0..bam.header().target_count() {
+        let chr_len = bam.header().target_len(tid).unwrap() as i64;
+        let chr_name = String::from_utf8_lossy(bam.header().tid2name(tid)).to_string();
         
-        // When buffer is full, process chunk in parallel
-        if buffer.len() >= chunk_size {
-            let count = buffer.len();
-            let ref_clone = Arc::clone(&reference);
-            let tid_clone = Arc::clone(&tid_to_name);
-            
-            buffer.par_iter().for_each(|record| {
-                process_record(record, &mismatch_counts, &ref_clone, &tid_clone);
-            });            total_count.fetch_add(count, Ordering::Relaxed);
-            
-            if total_count.load(Ordering::Relaxed) % 100000 == 0 {
-                eprintln!("Processed {} records...", total_count.load(Ordering::Relaxed));
-            }
-            
-            buffer.clear();
+        // Split chromosome into regions
+        let mut start = 0i64;
+        while start < chr_len {
+            let end = std::cmp::min(start + region_size as i64, chr_len);
+            regions.push((tid as i32, start, end, chr_name.clone()));
+            start = end;
         }
     }
     
-    // Process remaining records
-    if !buffer.is_empty() {
-        let count = buffer.len();
+    eprintln!("Created {} regions to process", regions.len());
+    drop(bam); // Close the initial BAM reader
+    
+    let total_count = AtomicUsize::new(0);
+    let mismatch_counts: Arc<Mutex<HashMap<MismatchKey, usize>>> = Arc::new(Mutex::new(HashMap::new()));
+    
+    // Process regions in parallel
+    let bam_path_arc = Arc::new(bam_path.to_string());
+    regions.par_iter().for_each(|(tid, start, end, chr_name)| {
+        let mut bam = IndexedReader::from_path(bam_path_arc.as_str())
+            .expect("Failed to open BAM file");
+        
+        // Fetch records in this region
+        if let Err(e) = bam.fetch(FetchDefinition::Region(*tid, *start, *end)) {
+            eprintln!("Warning: Failed to fetch region {}:{}-{}: {}", chr_name, start, end, e);
+            return;
+        }
+        
         let ref_clone = Arc::clone(&reference);
         let tid_clone = Arc::clone(&tid_to_name);
         
-        buffer.par_iter().for_each(|record| {
-            process_record(record, &mismatch_counts, &ref_clone, &tid_clone);
-        });
+        // Local counts for this region (no locking during processing)
+        let mut region_counts = HashMap::new();
+        let mut local_count = 0;
         
-        total_count.fetch_add(count, Ordering::Relaxed);
-    }
+        for result in bam.records() {
+            if let Ok(record) = result {
+                process_record(&record, &mut region_counts, &ref_clone, &tid_clone);
+                local_count += 1;
+            }
+        }
+        
+        // Merge region counts into global counts (single lock per region)
+        if !region_counts.is_empty() {
+            let mut global_counts = mismatch_counts.lock().unwrap();
+            for (key, count) in region_counts {
+                *global_counts.entry(key).or_insert(0) += count;
+            }
+        }
+        
+        let prev_total = total_count.fetch_add(local_count, Ordering::Relaxed);
+        if (prev_total + local_count) / 100000 > prev_total / 100000 {
+            eprintln!("Processed {} records...", prev_total + local_count);
+        }
+    });
+    
     eprintln!("\nTotal records processed: {}", total_count.load(Ordering::Relaxed));
     
     // Restructure data: (read_num, position) -> mismatch_type -> count
