@@ -92,6 +92,56 @@ fn parse_md_tag(md_string: &str) -> (Vec<(usize, char)>, Vec<(usize, usize)>) {
     (mismatches, matches)
 }
 
+fn compare_and_count(
+    seq: &rust_htslib::bam::record::Seq,
+    ref_seq: &[u8],
+    r_pos: usize,
+    genome_pos: usize,
+    is_reverse: bool,
+    read_num: u8,
+    local_counts: &mut HashMap<MismatchKey, usize>
+) {
+    let seq_len = seq.len();
+    let ref_len = ref_seq.len();
+    
+    if r_pos >= seq_len || genome_pos >= ref_len {
+        return;
+    }
+    
+    let read_base = match seq[r_pos] {
+        b'A' => 'A',
+        b'C' => 'C',
+        b'G' => 'G',
+        b'T' => 'T',
+        _ => return,
+    };
+    
+    let ref_base = match ref_seq[genome_pos] {
+        b'A' | b'a' => 'A',
+        b'C' | b'c' => 'C',
+        b'G' | b'g' => 'G',
+        b'T' | b't' => 'T',
+        _ => return,
+    };
+    
+    let key = if is_reverse {
+        let comparison_type = format!("{}>{}", complement(ref_base), complement(read_base));
+        MismatchKey {
+            mismatch_type: comparison_type,
+            read_position: seq_len - r_pos - 1,
+            read_num,
+        }
+    } else {
+        let comparison_type = format!("{}>{}", ref_base, read_base);
+        MismatchKey {
+            mismatch_type: comparison_type,
+            read_position: r_pos,
+            read_num,
+        }
+    };
+    *local_counts.entry(key).or_insert(0) += 1;
+}
+
 fn process_record(record: &Record, local_counts: &mut HashMap<MismatchKey, usize>, reference: &ReferenceGenome, tid_to_name: &HashMap<i32, String>) {
     
     // Skip unmapped, secondary, and supplementary alignments
@@ -131,54 +181,80 @@ fn process_record(record: &Record, local_counts: &mut HashMap<MismatchKey, usize
         match cigar_op {
             Match(len) | Equal(len) | Diff(len) => {
                 // Compare read and reference bases
-                let seq_len = seq.len();
-                let ref_len = ref_seq.len();
-
                 for i in 0..*len {
                     let r_pos = read_pos + i as usize;
                     let genome_pos = ref_pos + i as usize;
-                    
-                    if r_pos < seq_len && genome_pos < ref_len {
-                        let read_base = match seq[r_pos] {
-                            b'A' => 'A',
-                            b'C' => 'C',
-                            b'G' => 'G',
-                            b'T' => 'T',
-                            _ => continue,
-                        };
-                        
-                        let ref_base = match ref_seq[genome_pos] {
-                            b'A' | b'a' => 'A',
-                            b'C' | b'c' => 'C',
-                            b'G' | b'g' => 'G',
-                            b'T' | b't' => 'T',
-                            _ => continue,
-                        };
-                        
-                        let key = if record.is_reverse() {
-                            // If read is reverse complemented: position from end of read
-                            let comparison_type = format!("{}>{}", complement(ref_base), complement(read_base));
-                            MismatchKey {
-                                mismatch_type: comparison_type,
-                                read_position: seq_len - r_pos - 1,
-                                read_num,
-                            }
-                        } else {
-                            // Read is forward
-                            let comparison_type = format!("{}>{}", ref_base, read_base);
-                            MismatchKey {
-                                mismatch_type: comparison_type,
-                                read_position: r_pos,
-                                read_num,
-                            }
-                        };
-                        *local_counts.entry(key).or_insert(0) += 1;
-                    }
+                    compare_and_count(&seq, ref_seq, r_pos, genome_pos, record.is_reverse(), read_num, local_counts);
                 }
                 read_pos += *len as usize;
                 ref_pos += *len as usize;
             }
-            Ins(len) | SoftClip(len) => {
+            Ins(len) => {
+                read_pos += *len as usize;
+            }
+            SoftClip(len) => {
+                // Soft-clipped bases can be compared to reference
+                // But only if at least 66% of bases match the reference
+                
+                // First pass: count matches to determine if we should process this soft clip
+                let mut total_bases = 0;
+                let mut matching_bases = 0;
+                
+                for i in 0..*len {
+                    let r_pos = read_pos + i as usize;
+                    let genome_pos = if read_pos == 0 {
+                        if ref_pos >= (*len - i) as usize {
+                            ref_pos - (*len - i) as usize
+                        } else {
+                            continue;
+                        }
+                    } else {
+                        ref_pos + i as usize
+                    };
+                    
+                    if r_pos >= seq.len() || genome_pos >= ref_seq.len() {
+                        continue;
+                    }
+                    
+                    let read_base = match seq[r_pos] {
+                        b'A' => 'A',
+                        b'C' => 'C',
+                        b'G' => 'G',
+                        b'T' => 'T',
+                        _ => continue,
+                    };
+                    
+                    let ref_base = match ref_seq[genome_pos] {
+                        b'A' | b'a' => 'A',
+                        b'C' | b'c' => 'C',
+                        b'G' | b'g' => 'G',
+                        b'T' | b't' => 'T',
+                        _ => continue,
+                    };
+                    
+                    total_bases += 1;
+                    if read_base == ref_base {
+                        matching_bases += 1;
+                    }
+                }
+                
+                // Only process if at least 66% match
+                if total_bases > 0 && (matching_bases as f64 / total_bases as f64) >= 0.96 {
+                    for i in 0..*len {
+                        let r_pos = read_pos + i as usize;
+                        let genome_pos = if read_pos == 0 {
+                            if ref_pos >= (*len - i) as usize {
+                                ref_pos - (*len - i) as usize
+                            } else {
+                                continue;
+                            }
+                        } else {
+                            ref_pos + i as usize
+                        };
+                        
+                        compare_and_count(&seq, ref_seq, r_pos, genome_pos, record.is_reverse(), read_num, local_counts);
+                    }
+                }
                 read_pos += *len as usize;
             }
             Del(len) | RefSkip(len) => {
