@@ -125,16 +125,14 @@ fn compare_and_count(
     };
     
     let key = if is_reverse {
-        let comparison_type = format!("{}>{}", complement(ref_base), complement(read_base));
         MismatchKey {
-            mismatch_type: comparison_type,
+            mismatch_type: format!("{}>{}", complement(ref_base), complement(read_base)),
             read_position: seq_len - r_pos - 1,
             read_num,
         }
     } else {
-        let comparison_type = format!("{}>{}", ref_base, read_base);
         MismatchKey {
-            mismatch_type: comparison_type,
+            mismatch_type: format!("{}>{}", ref_base, read_base),
             read_position: r_pos,
             read_num,
         }
@@ -146,6 +144,11 @@ fn process_record(record: &Record, local_counts: &mut HashMap<MismatchKey, usize
     
     // Skip unmapped, secondary, and supplementary alignments
     if record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
+        return;
+    }
+    
+    // Skip reads with mapping quality <= 20
+    if record.mapq() <= 20 {
         return;
     }
 
