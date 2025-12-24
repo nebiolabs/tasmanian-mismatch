@@ -104,9 +104,7 @@ fn compare_and_count(
     let seq_len = seq.len();
     let ref_len = ref_seq.len();
     
-    if r_pos >= seq_len || genome_pos >= ref_len {
-        return;
-    }
+    if r_pos >= seq_len || genome_pos >= ref_len { return; }
     
     let read_base = match seq[r_pos] {
         b'A' => 'A',
@@ -117,10 +115,14 @@ fn compare_and_count(
     };
     
     let ref_base = match ref_seq[genome_pos] {
-        b'A' | b'a' => 'A',
-        b'C' | b'c' => 'C',
-        b'G' | b'g' => 'G',
-        b'T' | b't' => 'T',
+        b'A' => 'A',
+        b'C' => 'C',
+        b'G' => 'G',
+        b'T' => 'T',
+        //b'A' | b'a' => 'A',
+        //b'C' | b'c' => 'C',
+        //b'G' | b'g' => 'G',
+        //b'T' | b't' => 'T',
         _ => return,
     };
     
@@ -143,37 +145,22 @@ fn compare_and_count(
 fn process_record(record: &Record, local_counts: &mut HashMap<MismatchKey, usize>, reference: &ReferenceGenome, tid_to_name: &HashMap<i32, String>) {
     
     // Skip unmapped, secondary, and supplementary alignments
-    if record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
-        return;
-    }
+    if record.is_unmapped() || record.is_secondary() || record.is_supplementary() { return; }
     
-    // Skip reads with mapping quality <= 20
-    if record.mapq() <= 20 {
-        return;
-    }
+    // Skip reads with mapping quality <= 0 for now. Add more sophisticated handling later.
+    if record.mapq() <= 20 { return; }
 
-    // Determine if it is read 1 or 2 
-    let read_num = if record.is_first_in_template() { 1 } else if record.is_last_in_template() { 2 } else { 1 };
-    
-    // Get chromosome name and position (target_id)
+
+    // Get chromosome name (target_id - defined from bam header) and other read info
     let tid = record.tid();
-    if tid < 0 { return; } // unmapped
-    
-    let chr_name = match tid_to_name.get(&tid) {
-        Some(name) => name,  // exists
-        None => return,      // does not exist
-    };
-    let ref_start = record.pos() as usize;
-    
-    // Get reference sequence for this chromosome
-    let ref_seq = match reference.get(chr_name.as_str()) {
-        Some(seq) => seq,
-        None => return, // Chromosome not in reference
-    };
-    
-    // Get read sequence
+    if tid < 0 { return; } // unmapped    
+    let Some(chr_name) = tid_to_name.get(&tid) else { return }; // This directly binds chr_name (extract from Option or return)
+
+    let Some(ref_seq) = reference.get(chr_name.as_str()) else { return; };
+    let ref_start = record.pos() as usize; // (0-based)
     let seq = record.seq();
     let cigar = record.cigar();
+    let read_num = if record.is_first_in_template() { 1 } else if record.is_last_in_template() { 2 } else { 1 };
     
     // Walk through CIGAR and compare read to reference
     let mut read_pos = 0;
@@ -242,7 +229,7 @@ fn process_record(record: &Record, local_counts: &mut HashMap<MismatchKey, usize
                 }
                 
                 // Only process if at least 66% match
-                if total_bases > 0 && (matching_bases as f64 / total_bases as f64) >= 0.96 {
+                if total_bases > 0 && (matching_bases as f64 / total_bases as f64) >= 0.66 {
                     for i in 0..*len {
                         let r_pos = read_pos + i as usize;
                         let genome_pos = if read_pos == 0 {
