@@ -92,6 +92,29 @@ fn parse_md_tag(md_string: &str) -> (Vec<(usize, char)>, Vec<(usize, usize)>) {
     (mismatches, matches)
 }
 
+fn create_mismatch_key(
+    read_base: char,
+    ref_base: char,
+    r_pos: usize,
+    seq_len: usize,
+    is_reverse: bool,
+    read_num: u8
+) -> MismatchKey {
+    if is_reverse {
+        MismatchKey {
+            mismatch_type: format!("{}>{}", complement(ref_base), complement(read_base)),
+            read_position: seq_len - r_pos - 1,
+            read_num,
+        }
+    } else {
+        MismatchKey {
+            mismatch_type: format!("{}>{}", ref_base, read_base),
+            read_position: r_pos,
+            read_num,
+        }
+    }
+}
+
 fn compare_and_count(
     seq: &rust_htslib::bam::record::Seq,
     ref_seq: &[u8],
@@ -126,19 +149,8 @@ fn compare_and_count(
         _ => return,
     };
     
-    let key = if is_reverse {
-        MismatchKey {
-            mismatch_type: format!("{}>{}", complement(ref_base), complement(read_base)),
-            read_position: seq_len - r_pos - 1,
-            read_num,
-        }
-    } else {
-        MismatchKey {
-            mismatch_type: format!("{}>{}", ref_base, read_base),
-            read_position: r_pos,
-            read_num,
-        }
-    };
+    // Count both matches and mismatches
+    let key = create_mismatch_key(read_base, ref_base, r_pos, seq_len, is_reverse, read_num);
     *local_counts.entry(key).or_insert(0) += 1;
 }
 
@@ -183,12 +195,11 @@ fn process_record(record: &Record, local_counts: &mut HashMap<MismatchKey, usize
                 read_pos += *len as usize;
             }
             SoftClip(len) => {
-                // Soft-clipped bases can be compared to reference
-                // But only if at least 66% of bases match the reference
-                
-                // First pass: count matches to determine if we should process this soft clip
+                // Soft-clipped bases - only count mismatches if at least 66% of bases match reference
                 let mut total_bases = 0;
                 let mut matching_bases = 0;
+                let mut temp_mismatch_keys = Vec::new();
+                let seq_len = seq.len();
                 
                 for i in 0..*len {
                     let r_pos = read_pos + i as usize;
@@ -202,7 +213,7 @@ fn process_record(record: &Record, local_counts: &mut HashMap<MismatchKey, usize
                         ref_pos + i as usize
                     };
                     
-                    if r_pos >= seq.len() || genome_pos >= ref_seq.len() {
+                    if r_pos >= seq_len || genome_pos >= ref_seq.len() {
                         continue;
                     }
                     
@@ -225,24 +236,17 @@ fn process_record(record: &Record, local_counts: &mut HashMap<MismatchKey, usize
                     total_bases += 1;
                     if read_base == ref_base {
                         matching_bases += 1;
+                    } else {
+                        // Create MismatchKey using helper function
+                        let key = create_mismatch_key(read_base, ref_base, r_pos, seq_len, record.is_reverse(), read_num);
+                        temp_mismatch_keys.push(key);
                     }
                 }
                 
-                // Only process if at least 66% match
+                // Only add mismatches to counts if at least 66% match
                 if total_bases > 0 && (matching_bases as f64 / total_bases as f64) >= 0.66 {
-                    for i in 0..*len {
-                        let r_pos = read_pos + i as usize;
-                        let genome_pos = if read_pos == 0 {
-                            if ref_pos >= (*len - i) as usize {
-                                ref_pos - (*len - i) as usize
-                            } else {
-                                continue;
-                            }
-                        } else {
-                            ref_pos + i as usize
-                        };
-                        
-                        compare_and_count(&seq, ref_seq, r_pos, genome_pos, record.is_reverse(), read_num, local_counts);
+                    for key in temp_mismatch_keys {
+                        *local_counts.entry(key).or_insert(0) += 1;
                     }
                 }
                 read_pos += *len as usize;
