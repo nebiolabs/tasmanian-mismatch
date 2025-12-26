@@ -26,7 +26,7 @@ fn load_reference_genome(fasta_path: &str) -> ReferenceGenome {
     for result in reader.records() {
         let record = result.expect("Failed to read FASTA record");
         let chr_name = record.id().to_string();
-        let sequence = record.seq().to_vec();
+        let sequence = record.seq().to_vec(); //Vec<u8> = byte, not UTF-8 char (overhead) 
         genome.insert(chr_name, sequence);
     }
     
@@ -41,6 +41,16 @@ fn complement(base: char) -> char {
         'C' => 'G',
         'G' => 'C',
         _ => base,
+    }
+}
+
+fn base_to_char(byte: u8) -> Option<char> {
+    match byte {
+        b'A' => Some('A'),
+        b'C' => Some('C'),
+        b'G' => Some('G'),
+        b'T' => Some('T'),
+        _ => None,
     }
 }
 
@@ -129,45 +139,33 @@ fn compare_and_count(
     
     if r_pos >= seq_len || genome_pos >= ref_len { return; }
     
-    let read_base = match seq[r_pos] {
-        b'A' => 'A',
-        b'C' => 'C',
-        b'G' => 'G',
-        b'T' => 'T',
-        _ => return,
-    };
-    
-    let ref_base = match ref_seq[genome_pos] {
-        b'A' => 'A',
-        b'C' => 'C',
-        b'G' => 'G',
-        b'T' => 'T',
-        //b'A' | b'a' => 'A',
-        //b'C' | b'c' => 'C',
-        //b'G' | b'g' => 'G',
-        //b'T' | b't' => 'T',
-        _ => return,
-    };
+    let Some(read_base) = base_to_char(seq[r_pos]) else { return; };    
+    let Some(ref_base) = base_to_char(ref_seq[genome_pos]) else { return; };
     
     // Count both matches and mismatches
     let key = create_mismatch_key(read_base, ref_base, r_pos, seq_len, is_reverse, read_num);
     *local_counts.entry(key).or_insert(0) += 1;
 }
 
-fn process_record(record: &Record, local_counts: &mut HashMap<MismatchKey, usize>, reference: &ReferenceGenome, tid_to_name: &HashMap<i32, String>) {
+fn process_record(
+    record: &Record, 
+    local_counts: &mut HashMap<MismatchKey, usize>, 
+    reference: &ReferenceGenome, 
+    tid_to_name: &HashMap<i32, String>,
+    softclip_threshold: f64
+) {
     
-    // Skip unmapped, secondary, and supplementary alignments
-    if record.is_unmapped() || record.is_secondary() || record.is_supplementary() { return; }
+    // Skip read
+    if record.is_unmapped() 
+        || record.is_secondary() 
+        || record.is_supplementary() 
+        || record.mapq() <= 20 
+    { return; }
     
-    // Skip reads with mapping quality <= 0 for now. Add more sophisticated handling later.
-    if record.mapq() <= 20 { return; }
-
-
     // Get chromosome name (target_id - defined from bam header) and other read info
     let tid = record.tid();
     if tid < 0 { return; } // unmapped    
     let Some(chr_name) = tid_to_name.get(&tid) else { return }; // This directly binds chr_name (extract from Option or return)
-
     let Some(ref_seq) = reference.get(chr_name.as_str()) else { return; };
     let ref_start = record.pos() as usize; // (0-based)
     let seq = record.seq();
@@ -191,25 +189,22 @@ fn process_record(record: &Record, local_counts: &mut HashMap<MismatchKey, usize
                 read_pos += *len as usize;
                 ref_pos += *len as usize;
             }
-            Ins(len) => {
-                read_pos += *len as usize;
-            }
             SoftClip(len) => {
                 // Soft-clipped bases - only count mismatches if at least 66% of bases match reference
                 let mut total_bases = 0;
                 let mut matching_bases = 0;
-                let mut temp_mismatch_keys = Vec::new();
+                let mut temp_mismatch_keys = Vec::<MismatchKey>::new();
                 let seq_len = seq.len();
                 
                 for i in 0..*len {
                     let r_pos = read_pos + i as usize;
-                    let genome_pos = if read_pos == 0 {
+                    let genome_pos = if read_pos == 0 { // beginning of read
                         if ref_pos >= (*len - i) as usize {
                             ref_pos - (*len - i) as usize
                         } else {
                             continue;
                         }
-                    } else {
+                    } else { // end of read
                         ref_pos + i as usize
                     };
                     
@@ -243,17 +238,16 @@ fn process_record(record: &Record, local_counts: &mut HashMap<MismatchKey, usize
                     }
                 }
                 
-                // Only add mismatches to counts if at least 66% match
-                if total_bases > 0 && (matching_bases as f64 / total_bases as f64) >= 0.66 {
+                // Only add mismatches to counts if at least 66% (default) match
+                if total_bases > 0 && (matching_bases as f64 / total_bases as f64) >= softclip_threshold {
                     for key in temp_mismatch_keys {
                         *local_counts.entry(key).or_insert(0) += 1;
                     }
                 }
                 read_pos += *len as usize;
             }
-            Del(len) | RefSkip(len) => {
-                ref_pos += *len as usize;
-            }
+            Ins(len) => { read_pos += *len as usize; }
+            Del(len) | RefSkip(len) => { ref_pos += *len as usize; }
             HardClip(_) | Pad(_) => {}
         }
     }
@@ -263,7 +257,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     
     if args.len() < 3 {
-        eprintln!("Usage: {} <bam_file> <reference_fasta> [--threads N] [--region-size N]", args[0]);
+        eprintln!("Usage: {} <bam_file> <reference_fasta> [--threads N] [--region-size N] [--softclip-threshold F]", args[0]);
         std::process::exit(1);
     }
     
@@ -273,6 +267,7 @@ fn main() {
     // Parse optional arguments
     let mut region_size: usize = 10_000_000; // 10MB regions by default
     let mut num_threads: usize = 0; // 0 means use all available cores
+    let mut softclip_threshold: f64 = 0.66; // 66% threshold for soft-clipped bases
     
     let mut i = 3;
     while i < args.len() {
@@ -293,6 +288,12 @@ fn main() {
                 } else {
                     eprintln!("Error: --region-size requires a value");
                     std::process::exit(1);
+                }
+            }
+            "--softclip-threshold" => {
+                if i + 1 < args.len() {
+                    softclip_threshold = args[i + 1].parse().unwrap_or(0.66);
+                    i += 2;
                 }
             }
             _ => {
@@ -320,29 +321,6 @@ fn main() {
     
     let mut contig_names: Vec<&String> = reference.keys().collect();
     contig_names.sort();
- 
-    /* print first and last 100 characters of each contig 
-       for TESTING ONLY
-    */
-    for chr_name in contig_names {
-        let sequence = reference.get(chr_name).expect("Chromosome not found");
-        eprintln!("\nContig: {}", chr_name);
-        eprintln!("Length: {} bp", sequence.len());
-        
-        if sequence.len() > 0 {
-            let first_100 = std::cmp::min(100, sequence.len());
-            let first_str = String::from_utf8_lossy(&sequence[..first_100]);
-            eprintln!("First {} chars: {}", first_100, first_str);
-            
-            if sequence.len() > 100 {
-                let last_100_start = sequence.len() - 100;
-                let last_str = String::from_utf8_lossy(&sequence[last_100_start..]);
-                eprintln!("Last 100 chars: {}", last_str);
-            } else {
-                eprintln!("(Contig length <= 100, no separate last 100 chars to display)");
-            }
-        }
-    }
     
     eprintln!("\n{}", "=".repeat(80));
     eprintln!("Reading BAM file: {}", bam_path);
@@ -405,7 +383,7 @@ fn main() {
                 // Only process reads that START in this region to avoid duplicates
                 let read_start = record.pos();
                 if read_start >= *start && read_start < *end {
-                    process_record(&record, &mut region_counts, &ref_clone, &tid_clone);
+                    process_record(&record, &mut region_counts, &ref_clone, &tid_clone, softclip_threshold);
                     local_count += 1;
                 }
             }
@@ -459,14 +437,6 @@ fn main() {
         print!(",{}", mismatch_type);
     }
     println!();
-    
-    // Print separator
-    //print!("{:-<10} {:-<10}", "", "");
-
-    // for _ in &all_mismatch_types {
-    //     print!(" {:-<10}", "");
-    // }
-    // println!();
     
     // Print data rows
     for &(read_num, pos) in positions.iter() {
