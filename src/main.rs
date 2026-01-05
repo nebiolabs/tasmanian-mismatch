@@ -342,7 +342,7 @@ fn process_overlap_region(
     let mut read2_map: HashMap<usize, (usize, u8, u8)> = HashMap::new();
     
     for (record, map) in [(record1, &mut read1_map), (record2, &mut read2_map)] {
-        if record.is_unmapped() || record.mapq() <= 20 {
+        if record.is_unmapped() || record.mapq() <= min_map_quality {
             continue;
         }
         
@@ -400,7 +400,7 @@ fn process_overlap_region(
     
     // Process mismatch counts for both reads
     for record in [record1, record2] {
-        if record.is_unmapped() || record.mapq() <= 20 {
+        if record.is_unmapped() || record.mapq() <= min_map_quality {
             continue;
         }
         
@@ -461,7 +461,7 @@ fn process_record(
     if record.is_unmapped() 
         || record.is_secondary() 
         || record.is_supplementary() 
-        || record.mapq() <= 20 
+        || record.mapq() <= min_map_quality
     { return; }
     
     // Get chromosome name (target_id - defined from bam header) and other read info
@@ -577,6 +577,7 @@ fn main() {
     let mut num_threads: usize = 0; // 0 means use all available cores
     let mut softclip_threshold: f64 = 0.66; // 66% threshold for soft-clipped bases
     let mut min_base_quality: u8 = 20; // Minimum phred quality score
+    let mut min_map_quality: u8 = 20; // Minimum mapping quality
     let mut is_methylation: bool = false; // Methylation-aware mode (for bisulfite/EM-seq)
     let mut cpg_only: bool = false; // Only apply methylation conversion in CpG context
     let mut mode_len = 0;
@@ -611,10 +612,19 @@ fn main() {
             }
             "--min-base-quality" | "-q" => {
                 if i + 1 < args.len() {
-                    min_base_quality = args[i + 1].parse().unwrap_or(20);
+                    min_base_quality = args[i + 1].parse().unwrap_or(min_base_quality);
                     i += 2;
                 } else {
                     eprintln!("Error: --min-base-quality requires a value");
+                    std::process::exit(1);
+                }
+            }
+            "--min-map-quality" => {
+                if i + 1 < args.len() {
+                    min_map_quality = args[i + 1].parse().unwrap_or(min_map_quality);
+                    i += 2;
+                } else {
+                    eprintln!("Error: --min-map-quality requires a value");
                     std::process::exit(1);
                 }
             }
