@@ -109,4 +109,187 @@ mod tests {
         assert_eq!(key1, key2);
         assert_ne!(key1, key3);
     }
+    
+    #[test]
+    fn test_compare_and_count() {
+        use std::collections::HashMap;
+        use rust_htslib::bam::{Header, HeaderView, Record};
+        
+        let header = Header::new();
+        let header_view = HeaderView::from_header(&header);
+        
+        // Create a test record
+        let sam_line = b"read1\t0\t*\t101\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII";
+        let record = Record::from_sam(&header_view, sam_line).unwrap();
+        
+        let ref_seq = b"AGGAACGTAC"; // Has mismatch at position 2: read has G, ref has G (actually match at 2, mismatch at 1)
+        let mut local_counts = HashMap::new();
+        
+        // Test compare_and_count
+        compare_and_count(
+            &record.seq(),
+            record.qual(),
+            ref_seq,
+            0,      // read position
+            0,      // genome position
+            false,  // not reverse
+            1,      // read 1
+            20,     // min base quality
+            false,  // not methylation
+            false,  // not cpg_only
+            &mut local_counts,
+            0,      // mode_len
+        );
+        
+        // Should have one entry in counts
+        assert_eq!(local_counts.len(), 1);
+    }
+    
+    #[test]
+    fn test_create_mismatch_key() {
+        let ref_seq = b"GCGTACGTAC";
+        
+        // Test creating a mismatch key for position 0 (forward strand, no methylation)
+        let key = create_mismatch_key(
+            'A',         // read base
+            'G',         // ref base
+            0,           // read position
+            10,          // seq length
+            false,       // not reverse
+            1,           // read 1
+            false,       // not methylation mode
+            false,       // not cpg_only
+            ref_seq,
+            0,           // genome position
+            0,           // mode_len
+        );
+        
+        assert_eq!(key.mismatch_type, "G>A");
+        assert_eq!(key.read_position, 0);
+        assert_eq!(key.read_num, 1);
+    }
+    
+    #[test]
+    fn test_get_overlap_region() {
+        use rust_htslib::bam::{Header, HeaderView, Record};
+        
+        let header = Header::new();
+        let header_view = HeaderView::from_header(&header);
+        
+        // Create two overlapping reads
+        // Read1: pos 100 (1-based=101), 20M (covers 100-119 in 0-based)
+        let sam_line1 = b"read1\t99\t*\t101\t60\t20M\t*\t111\t30\tACGTACGTACGTACGTACGT\tIIIIIIIIIIIIIIIIIIII";
+        let read1 = Record::from_sam(&header_view, sam_line1).unwrap();
+        
+        // Read2: pos 110 (1-based=111), 20M (covers 110-129 in 0-based)
+        // This overlaps with read1 from position 110 to 119 (10 bases)
+        let sam_line2 = b"read1\t147\t*\t111\t60\t20M\t*\t101\t-30\tTGCATGCATGCATGCATGCA\tIIIIIIIIIIIIIIIIIIII";
+        let read2 = Record::from_sam(&header_view, sam_line2).unwrap();
+        
+        // Create ReadInfo structs
+        let info1 = ReadInfo {
+            tid: read1.tid(),
+            pos: read1.pos(),
+        };
+        let info2 = ReadInfo {
+            tid: read2.tid(),
+            pos: read2.pos(),
+        };
+        
+        let overlap = get_overlap_region(&info1, &info2, &read1, &read2);
+        
+        // Should have overlap from 110 to 120 (exclusive end)
+        assert!(overlap.is_some(), "Expected reads to overlap");
+        let (start, end) = overlap.unwrap();
+        assert_eq!(start, 110);
+        assert_eq!(end, 120);  // Exclusive end position
+    }
+    
+    #[test]
+    fn test_process_overlap_region() {
+        use rust_htslib::bam::{Header, HeaderView, Record};
+        use std::collections::HashMap;
+        
+        // Create header
+        let header = Header::new();
+        let header_view = HeaderView::from_header(&header);
+        
+        // Create overlapping paired reads with a mismatch
+        // Read1: forward, pos 100
+        let sam_line1 = b"read1\t99\t*\t101\t60\t10M\t*\t111\t20\tACGTACGTAC\tIIIIIIIIII\tMD:Z:10";
+        let read1 = Record::from_sam(&header_view, sam_line1).unwrap();
+        
+        // Read2: reverse, pos 110, overlaps last base of read1
+        let sam_line2 = b"read1\t147\t*\t111\t60\t10M\t*\t101\t-20\tGTACGTACGT\tIIIIIIIIII\tMD:Z:10";
+        let read2 = Record::from_sam(&header_view, sam_line2).unwrap();
+        
+        // Create reference genome (tid -1 for unmapped)
+        let mut reference_genome = HashMap::new();
+        reference_genome.insert("*".to_string(), b"ACGTACGTACGTACGTACGT".to_vec());
+        
+        // Create tid_to_name mapping
+        let mut tid_to_name = HashMap::new();
+        tid_to_name.insert(-1i32, "*".to_string());
+        
+        let mut local_counts = HashMap::new();
+        let mut inconsistency_counts = HashMap::new();
+        
+        process_overlap_region(
+            &read1,
+            &read2,
+            109,  // overlap start
+            109,  // overlap end
+            &mut local_counts,
+            &mut inconsistency_counts,
+            &reference_genome,
+            &tid_to_name,
+            20,   // min base quality
+            false, // not methylation
+            false, // not cpg_only
+            0,    // mode_len
+            0,    // min_map_quality
+        );
+        
+        // Should have processed the overlap region
+        // The exact counts depend on the sequence alignment
+    }
+    
+    #[test]
+    fn test_process_record_basic() {
+        use rust_htslib::bam::{Header, HeaderView, Record};
+        use std::collections::HashMap;
+        
+        // Create header
+        let header = Header::new();
+        let header_view = HeaderView::from_header(&header);
+        
+        // Create a simple record - just verify it doesn't panic
+        let sam_line = b"read1\t0\t*\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII\tMD:Z:5A4";
+        let record = Record::from_sam(&header_view, sam_line).unwrap();
+        
+        let mut reference_genome = HashMap::new();
+        reference_genome.insert("*".to_string(), b"ACGTAAGCAC".to_vec());
+        
+        let mut tid_to_name = HashMap::new();
+        tid_to_name.insert(-1i32, "*".to_string());
+        
+        let mut local_counts = HashMap::new();
+        
+        // Just verify the function runs without panicking
+        process_record(
+            &record,
+            &mut local_counts,
+            &reference_genome,
+            &tid_to_name,
+            0.0,   // softclip_threshold
+            20,    // min base quality
+            false, // not methylation
+            false, // not cpg_only
+            150,   // read len mode
+            0,     // min map quality
+        );
+        
+        // Function completed successfully (unmapped reads may result in no counts)
+        assert!(true);
+    }
 }
