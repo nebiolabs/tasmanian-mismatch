@@ -5,7 +5,9 @@ use rustmanian_mismatch::*;
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+    use rust_htslib::bam::{Header, HeaderView, Record, Read, Reader, Writer, Format};
+    use std::collections::HashMap;
+
     #[test]
     fn test_complement() {
         assert_eq!(complement('A'), 'T');
@@ -39,7 +41,6 @@ mod tests {
     
     #[test]
     fn test_calculate_end_pos() {
-        use rust_htslib::bam::{Header, HeaderView, Record};
         
         let header = Header::new();
         let header_view = HeaderView::from_header(&header);
@@ -53,6 +54,44 @@ mod tests {
 
         // Expected end pos = 100 (0-based) + 10 + 2 + 5 + 4 = 121
         assert_eq!(end_pos, 121);
+    }
+
+    #[test]
+    fn test_compute_read_len_mode_from_sample_bam() {
+        // Create a temporary BAM file with known read lengths
+        let bam_path = "test_sample.bam";
+        let header = Header::new();
+        let header_view = HeaderView::from_header(&header);
+        
+        {
+            let mut bam_writer = Writer::from_path(
+                bam_path,
+                &header,
+                Format::Bam,
+            ).unwrap();
+            
+            let sam_lines: Vec<&[u8]> = vec![
+                b"read1\t0\t*\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII",
+                b"read2\t0\t*\t1\t60\t15M\t*\t0\t0\tACGTACGTACGTACG\tIIIIIIIIIIIIIII",
+                b"read3\t0\t*\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII",
+                b"read4\t0\t*\t1\t60\t20M\t*\t0\t0\tACGTACGTACGTACGTACGT\tIIIIIIIIIIIIIIIIIIII",
+                b"read5\t0\t*\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII",
+            ];
+            
+            for sam_line in sam_lines {
+                let record = Record::from_sam(&header_view, sam_line).unwrap();
+                bam_writer.write(&record).unwrap();
+            }
+        }
+        
+        // Compute mode read length from sample BAM
+        let mode_len = compute_read_len_mode_from_sample_bam(bam_path, 10);
+        
+        // Clean up temporary BAM file
+        std::fs::remove_file(bam_path).unwrap();
+        
+        // The mode read length should be 10 (appears 3 times)
+        assert_eq!(mode_len, 10);
     }
 
 
@@ -112,8 +151,6 @@ mod tests {
     
     #[test]
     fn test_compare_and_count() {
-        use std::collections::HashMap;
-        use rust_htslib::bam::{Header, HeaderView, Record};
         
         let header = Header::new();
         let header_view = HeaderView::from_header(&header);
@@ -171,7 +208,6 @@ mod tests {
     
     #[test]
     fn test_get_overlap_region() {
-        use rust_htslib::bam::{Header, HeaderView, Record};
         
         let header = Header::new();
         let header_view = HeaderView::from_header(&header);
@@ -207,8 +243,6 @@ mod tests {
     
     #[test]
     fn test_process_overlap_region() {
-        use rust_htslib::bam::{Header, HeaderView, Record};
-        use std::collections::HashMap;
         
         // Create header
         let header = Header::new();
@@ -256,8 +290,6 @@ mod tests {
     
     #[test]
     fn test_process_record_basic() {
-        use rust_htslib::bam::{Header, HeaderView, Record};
-        use std::collections::HashMap;
         
         // Create header
         let header = Header::new();
