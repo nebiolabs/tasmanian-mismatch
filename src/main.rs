@@ -158,7 +158,8 @@ fn main() {
     let overlap_mismatch_counts: Arc<Mutex<HashMap<MismatchKey, usize>>> = Arc::new(Mutex::new(HashMap::new()));
     let overlap_pairs_count = AtomicUsize::new(0);
     let inconsistency_counts: Arc<Mutex<HashMap<InconsistencyKey, usize>>> = Arc::new(Mutex::new(HashMap::new()));
-    
+    //let genomic_mismatch_counts: Arc<Mutex<HashMap<GenomicMismatchKey, usize>>> = Arc::new(Mutex::new(HashMap::new()));
+
     // Process regions in parallel
     let bam_path_arc = Arc::new(bam_path.to_string());
     regions.par_iter().for_each(|(tid, start, end, chr_name)| {
@@ -174,14 +175,18 @@ fn main() {
         let ref_clone = Arc::clone(&reference);
         let tid_clone = Arc::clone(&tid_to_name); // This because in some cases tid could be different within chunck (e.g. chimera)
         let overlap_counts_clone = Arc::clone(&overlap_mismatch_counts);
-        let inconsistency_clone = Arc::clone(&inconsistency_counts);
-        
+        let inconsistency_clone = Arc::clone(&inconsistency_counts); 
+
         // Local counts for this region (no locking during processing)
         let mut region_counts = HashMap::new();
         let mut overlap_region_counts = HashMap::new();
         let mut inconsistency_region_counts = HashMap::new();
         let mut local_count = 0;
         let mut local_overlap_count = 0;
+
+        // for variant "cheap" identification
+        //let mut genomic_region_counts = HashMap::new();
+        //let mut local_genomic_count = 0;
         
         // Cache for read pairs
         let mut read_cache: HashMap<Vec<u8>, (ReadInfo, Record)> = HashMap::new();
@@ -198,6 +203,14 @@ fn main() {
                     );
                     local_count += 1;
                     
+        /*            // Process for genomic variant identification
+                    process_genomic_record(
+                        &record, &mut genomic_region_counts, &ref_clone, &tid_clone,
+                        min_base_quality, is_methylation, cpg_only, mode_len, min_map_quality
+                    );
+                    local_genomic_count += 1;
+        */
+
                     // Cache for overlap detection if paired
                     if record.is_paired() && !record.is_unmapped() && !record.is_mate_unmapped() {
                         let qname = record.qname().to_vec();

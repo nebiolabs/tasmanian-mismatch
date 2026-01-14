@@ -25,3 +25,11 @@ pub struct ReadInfo {
 
 /// Store reference sequences in memory
 pub type ReferenceGenome = HashMap<String, Vec<u8>>;
+
+/// Key for tracking genomic mismatches
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub struct GenomicMismatchKey {
+    pub mismatch_type: String,  // e.g., "A>G", "C>T"
+    pub genomic_position: i64,  // (1-based)
+    pub chromosome: String,
+}
