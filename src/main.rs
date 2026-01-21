@@ -5,7 +5,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
-
+use std::fs::File;
+use std::io::{Write, BufWriter};
 // Import from library
 use rustmanian_mismatch::*;
 
@@ -30,6 +31,7 @@ fn main() {
     let mut cpg_only: bool = false; // Only apply methylation conversion in CpG context
     let mut mode_len = 0;
     let mut _insert_position_mode = false; // Not implemented yet (Not sure about it yet...)
+    let mut genomic_threshold: usize = 3; 
 
     let mut i = 3;
     while i < args.len() {
@@ -93,6 +95,15 @@ fn main() {
                 eprintln!("Using --insert-position-mode. Not read position");
                 _insert_position_mode = true;
                 i += 1;
+            }
+            "--genomic-threshold" => {
+                if i + 1 < args.len() {
+                    genomic_threshold = args[i + 1].parse().unwrap_or(3);
+                    i += 2;
+                } else {
+                    eprintln!("Error: --genomic-threshold requires a value");
+                    std::process::exit(1);
+                }
             }
             _ => {
                 eprintln!("Unknown argument: {}", args[i]);
@@ -158,7 +169,7 @@ fn main() {
     let overlap_mismatch_counts: Arc<Mutex<HashMap<MismatchKey, usize>>> = Arc::new(Mutex::new(HashMap::new()));
     let overlap_pairs_count = AtomicUsize::new(0);
     let inconsistency_counts: Arc<Mutex<HashMap<InconsistencyKey, usize>>> = Arc::new(Mutex::new(HashMap::new()));
-    //let genomic_mismatch_counts: Arc<Mutex<HashMap<GenomicMismatchKey, usize>>> = Arc::new(Mutex::new(HashMap::new()));
+    let genomic_mismatch_counts: Arc<Mutex<HashMap<GenomicMismatchKey, usize>>> = Arc::new(Mutex::new(HashMap::new()));
 
     // Process regions in parallel
     let bam_path_arc = Arc::new(bam_path.to_string());
@@ -185,8 +196,7 @@ fn main() {
         let mut local_overlap_count = 0;
 
         // for variant "cheap" identification
-        //let mut genomic_region_counts = HashMap::new();
-        //let mut local_genomic_count = 0;
+        let mut genomic_region_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> = HashMap::new();
         
         // Cache for read pairs
         let mut read_cache: HashMap<Vec<u8>, (ReadInfo, Record)> = HashMap::new();
@@ -196,20 +206,13 @@ fn main() {
                 // Only process reads that START in this region to avoid duplicates
                 let read_start = record.pos();
                 if read_start >= *start && read_start < *end {
-                    // Process normally
+                    // Process normally - update both region_counts and genomic_region_counts
                     process_record(
-                        &record, &mut region_counts, &ref_clone, &tid_clone, softclip_threshold, 
+                        &record, &mut region_counts, Some(&mut genomic_region_counts), &ref_clone, &tid_clone, softclip_threshold, 
                         min_base_quality, is_methylation, cpg_only, mode_len, min_map_quality
                     );
                     local_count += 1;
-                    
-        /*            // Process for genomic variant identification
-                    process_genomic_record(
-                        &record, &mut genomic_region_counts, &ref_clone, &tid_clone,
-                        min_base_quality, is_methylation, cpg_only, mode_len, min_map_quality
-                    );
-                    local_genomic_count += 1;
-        */
+        
 
                     // Cache for overlap detection if paired
                     if record.is_paired() && !record.is_unmapped() && !record.is_mate_unmapped() {
@@ -241,6 +244,28 @@ fn main() {
             }
         }
         
+        // Filter region_counts based on genomic_region_counts threshold 
+        // and merge values to global genomic counts (only if >= threshold).
+        if !genomic_region_counts.is_empty() {
+            let mut global_genomic_counts = genomic_mismatch_counts.lock().unwrap();
+
+            for (genomic_key, genomic_value) in genomic_region_counts.iter() {
+                if genomic_value.count >= genomic_threshold {
+                    // Update global genomic counts only for positions above threshold
+                    *global_genomic_counts.entry(genomic_key.clone()).or_insert(0) += genomic_value.count;
+                    
+                    // Decrement count for each mismatch_key that contributed to this genomic position
+                    for mismatch_key in &genomic_value.mismatch_keys {
+                        match region_counts.get_mut(mismatch_key) {
+                            Some(count) => *count -= 1,  // Will underflow/panic in debug if count is 0
+                            None => panic!("MismatchKey {:?} not found in region_counts", mismatch_key),
+                        }
+                    }
+                }
+            }
+        }
+
+
         // Merge region counts into global counts (single lock per region)
         // global_counts: MutexGuard<HashMap<MismatchKey, usize>> 
         // *global_counts: HashMap<MismatchKey, usize> 
@@ -266,7 +291,7 @@ fn main() {
                 *global_inconsistency_counts.entry(key).or_insert(0) += count;
             }
         }
-        
+
         if local_overlap_count > 0 {
             overlap_pairs_count.fetch_add(local_overlap_count, Ordering::Relaxed);
         }
@@ -280,6 +305,39 @@ fn main() {
     eprintln!("\nTotal records processed: {}", total_count.load(Ordering::Relaxed));
     let overlap_pairs = overlap_pairs_count.load(Ordering::Relaxed);
     eprintln!("Read pairs with overlaps: {}", overlap_pairs);
+    
+    // Write genomic mismatches to potential_variants.tsv and report statistics
+    {
+        let genomic_counts = genomic_mismatch_counts.lock().unwrap();
+        eprintln!("Genomic positions with {} or more mismatches: {}", genomic_threshold, genomic_counts.len());
+        
+        // Write to file
+        let file = File::create("potential_variants.tsv").expect("Failed to create potential_variants.tsv");
+        let mut writer = BufWriter::new(file);
+
+        writeln!(writer, "chromosome\tposition\treference_base\tmismatch_base\tcount").expect("Failed to write header");
+        
+        let mut sorted_keys: Vec<_> = genomic_counts.iter().collect();
+        // sorted_keys.sort_by_key(|(k, _)| (&k.chromosome, k.genomic_position)); // This takes forever for large datasets
+        
+        for (key, count) in sorted_keys {
+            // Parse mismatch_type "REF>ALT" to extract ref and alt bases
+            let parts: Vec<&str> = key.mismatch_type.split('>').collect();
+            if parts.len() == 2 {
+                writeln!(
+                    writer,
+                    "{}\t{}\t{}\t{}\t{}",
+                    key.chromosome,
+                    key.genomic_position,
+                    parts[0],  // reference base
+                    parts[1],  // mismatch base
+                    count
+                ).expect("Failed to write to file");
+            }
+        }
+        
+        eprintln!("Wrote {} genomic positions to potential_variants.tsv", genomic_counts.len());
+    }
     
     // Restructure data: (read_num, position) -> mismatch_type -> count
     let counts = mismatch_counts.lock().unwrap();
