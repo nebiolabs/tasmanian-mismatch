@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Key for tracking mismatches at specific read positions
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
@@ -26,10 +26,24 @@ pub struct ReadInfo {
 /// Store reference sequences in memory
 pub type ReferenceGenome = HashMap<String, Vec<u8>>;
 
-/// Key for tracking genomic mismatches
+/// Key for tracking genomic mismatches (simplified - just mismatch type and position)
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct GenomicMismatchKey {
+    pub chromosome: String,     // Chromosome/contig name
     pub mismatch_type: String,  // e.g., "A>G", "C>T"
     pub genomic_position: i64,  // (1-based)
-    pub chromosome: String,
+}
+
+/// Value for tracking genomic mismatches with detailed MismatchKey info
+#[derive(Debug, Clone)]
+pub struct GenomicMismatchValue {
+    pub mismatch_keys: HashSet<MismatchKey>,  // Set of all MismatchKey combinations that contributed
+    pub count: usize,                         // Total count (should match mismatch_keys.len())
+}
+
+// Needed to compute relative counts of potential variants  
+#[derive(Debug, Clone)]
+pub struct GenomicPositionCounts {
+    pub genomic_position: i64,
+    pub count: usize,
 }
