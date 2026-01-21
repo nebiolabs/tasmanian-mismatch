@@ -1,6 +1,6 @@
 use rust_htslib::bam::Record;
-use std::collections::HashMap;
-use crate::types::{MismatchKey, InconsistencyKey, ReferenceGenome, ReadInfo};
+use std::collections::{HashMap, HashSet};
+use crate::types::{MismatchKey, InconsistencyKey, ReferenceGenome, ReadInfo, GenomicMismatchKey, GenomicMismatchValue};
 use crate::utils::{base_to_char, calculate_end_pos, complement, correct_read_len_with_mode};
 use crate::methylation::adjust_methylation_base;
 
@@ -55,6 +55,8 @@ pub fn compare_and_count(
     is_methylation: bool,
     cpg_only: bool,
     local_counts: &mut HashMap<MismatchKey, usize>,
+    genomic_counts: Option<&mut HashMap<GenomicMismatchKey, GenomicMismatchValue>>,
+    chromosome: &str,
     mode_len: usize
 ) {
     let seq_len = seq.len();
@@ -70,7 +72,32 @@ pub fn compare_and_count(
     
     // Count both matches and mismatches
     let key = create_mismatch_key(read_base, ref_base, r_pos, seq_len, is_reverse, read_num, is_methylation, cpg_only, ref_seq, genome_pos, mode_len);
-    *local_counts.entry(key).or_insert(0) += 1;
+    *local_counts.entry(key.clone()).or_insert(0) += 1;
+    
+    // Track genomic position for mismatches only (if genomic_counts is provided)
+    if let Some(genomic_counts) = genomic_counts {
+        if read_base != ref_base {
+            let strand_adjusted_read_base = if is_reverse { complement(read_base) } else { read_base };
+            let strand_adjusted_ref_base = if is_reverse { complement(ref_base) } else { ref_base };
+            let meth_adjusted_read_base = adjust_methylation_base(
+                strand_adjusted_read_base, strand_adjusted_ref_base, read_num,
+                is_methylation, cpg_only, ref_seq, genome_pos
+            );
+            
+            let genomic_key = GenomicMismatchKey {
+                chromosome: chromosome.to_string(),
+                mismatch_type: format!("{}>{}", strand_adjusted_ref_base, meth_adjusted_read_base),
+                genomic_position: genome_pos as i64,
+            };
+            
+            let genomic_values = genomic_counts.entry(genomic_key).or_insert_with(|| GenomicMismatchValue {
+                mismatch_keys: HashSet::new(),
+                count: 0,
+            });
+            genomic_values.mismatch_keys.insert(key);
+            genomic_values.count = genomic_values.mismatch_keys.len();
+        }
+    }
 }
 
 /// Check if two reads overlap genomically
@@ -201,7 +228,7 @@ pub fn process_overlap_region(
                             compare_and_count(
                                 &seq, &qual, ref_seq, r_pos, genome_pos,
                                 record.is_reverse(), read_num, min_base_quality,
-                                is_methylation, cpg_only, local_counts, mode_len
+                                is_methylation, cpg_only, local_counts, None, chr_name, mode_len
                             );
                         }
                     }
@@ -219,7 +246,8 @@ pub fn process_overlap_region(
 /// Process a single BAM record and update mismatch counts
 pub fn process_record(
     record: &Record, 
-    local_counts: &mut HashMap<MismatchKey, usize>, 
+    local_counts: &mut HashMap<MismatchKey, usize>,
+    mut genomic_counts: Option<&mut HashMap<GenomicMismatchKey, GenomicMismatchValue>>,
     reference: &ReferenceGenome, 
     tid_to_name: &HashMap<i32, String>,
     softclip_threshold: f64,
@@ -260,7 +288,7 @@ pub fn process_record(
                 for i in 0..*len {
                     let r_pos = read_pos + i as usize;
                     let genome_pos = ref_pos + i as usize;
-                    compare_and_count(&seq, &qual, ref_seq, r_pos, genome_pos, record.is_reverse(), read_num, min_base_quality, is_methylation, cpg_only, local_counts, mode_len);
+                    compare_and_count(&seq, &qual, ref_seq, r_pos, genome_pos, record.is_reverse(), read_num, min_base_quality, is_methylation, cpg_only, local_counts, genomic_counts.as_deref_mut(), chr_name, mode_len);
                 }
                 read_pos += *len as usize;
                 ref_pos += *len as usize;
