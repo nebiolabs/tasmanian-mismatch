@@ -5,7 +5,7 @@ use rustmanian_mismatch::*;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust_htslib::bam::{Header, HeaderView, Record, Read, Reader, Writer, Format};
+    use rust_htslib::bam::{Header, HeaderView, Record, Writer, Format};
     use std::collections::HashMap;
 
     #[test]
@@ -161,7 +161,9 @@ mod tests {
         
         let ref_seq = b"AGGAACGTAC"; // Has mismatch at position 2: read has G, ref has G (actually match at 2, mismatch at 1)
         let mut local_counts = HashMap::new();
-        
+        let mut genomic_region_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> = HashMap::new();
+
+
         // Test compare_and_count
         compare_and_count(
             &record.seq(),
@@ -175,9 +177,11 @@ mod tests {
             false,  // not methylation
             false,  // not cpg_only
             &mut local_counts,
+            Some(&mut genomic_region_counts),
+            "chr1",
             0,      // mode_len
         );
-        
+
         // Should have one entry in counts
         assert_eq!(local_counts.len(), 1);
     }
@@ -282,6 +286,9 @@ mod tests {
             false, // not cpg_only
             0,    // mode_len
             0,    // min_map_quality
+            0,    // required_flags
+            0,    // filter_flags
+            0,    // excl_flags
         );
         
         // Should have processed the overlap region
@@ -311,6 +318,7 @@ mod tests {
         process_record(
             &record,
             &mut local_counts,
+            None,  // no genomic counts
             &reference_genome,
             &tid_to_name,
             0.0,   // softclip_threshold
@@ -319,6 +327,10 @@ mod tests {
             false, // not cpg_only
             150,   // read len mode
             0,     // min map quality
+            None,  // no genomic depth
+            0,     // required_flags
+            0,     // filter_flags
+            0,     // excl_flags
         );
         
         // Function completed successfully (unmapped reads may result in no counts)
