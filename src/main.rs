@@ -1,115 +1,101 @@
 use rust_htslib::bam::{Read, Reader, IndexedReader, Record, FetchDefinition};
 use rayon::prelude::*;
-use std::env;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::fs::File;
 use std::io::{Write, BufWriter};
+use clap::Parser;
 // Import from library
 use rustmanian_mismatch::*;
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
+/// Tasmanian Mismatch - A tool for analyzing mismatches in BAM files
+#[derive(Parser, Debug)]
+#[command(name = "rustmanian-mismatch")]
+#[command(version, about, long_about = None)]
+struct Args {
+    bam_file: String, //path::PathBuf
+    reference_fasta: String, //path::PathBuf
     
-    if args.len() < 3 {
-        eprintln!("Usage: {} <bam_file> <reference_fasta> [--threads N] [--region-size N] [--softclip-threshold F] [--min-base-quality Q] [--methylation] [--cpg-only] [----use-read-len-mode] [--insert-position-mode]", args[0]);
-        std::process::exit(1);
-    }
+    /// Number of threads to use (0 = all available cores)
+    #[arg(short = 't', long, default_value_t = 0)]
+    threads: usize,
     
-    let bam_path = &args[1];
-    let fasta_path = &args[2];
+    /// Region size in base pairs for parallel processing
+    #[arg(short = 'r', long, default_value_t = 10_000_000)]
+    region_size: usize,
     
-    // Parse optional arguments
-    let mut region_size: usize = 10_000_000; // 10MB regions by default
-    let mut num_threads: usize = 0; // 0 means use all available cores
-    let mut softclip_threshold: f64 = 0.66; // 66% threshold for soft-clipped bases
-    let mut min_base_quality: u8 = 20; // Minimum phred quality score
-    let mut min_map_quality: u8 = 20; // Minimum mapping quality
-    let mut is_methylation: bool = false; // Methylation-aware mode (for bisulfite/EM-seq)
-    let mut cpg_only: bool = false; // Only apply methylation conversion in CpG context
-    let mut mode_len = 0;
-    let mut _insert_position_mode = false; // Not implemented yet (Not sure about it yet...)
-    let mut genomic_threshold: usize = 3; 
+    /// At least that fraction of bases in softclip correspond to reference to be considered mapped
+    #[arg(long, default_value_t = 0.66)]
+    softclip_threshold: f64,
+    
+    #[arg(short = 'q', long, default_value_t = 20)]
+    min_base_quality: u8,
+    
+    #[arg(long, default_value_t = 10)]
+    min_map_quality: u8,
+    
+    /// All C/T in read 1 are converted back to C (for bisulfite/EM-seq)
+    #[arg(short = 'm', long)]
+    methylation: bool,
+    
+    /// C/T in CpG context in read1 are converted back to C
+    #[arg(long)]
+    cpg_only: bool,
+    
+    /// Use read length mode to renumber read positions (can stack start and end of reads)
+    #[arg(long)]
+    use_read_len_mode: bool,
+    
+    /// Use insert position mode (not read position)
+    #[arg(long)]
+    insert_position_mode: bool,
+    
+    /// Genomic thresholds for calling a potential variant
+    #[arg(long, default_value_t = 7)]
+    genomic_threshold: usize,
+    #[arg(long, default_value_t = 10)]
+    genomic_depth_threshold: usize,
+    
+    /// Next 3 are SAM flag filters (same as samtools)
+    #[arg(short = 'f', default_value_t = 0)]
+    required_flags: u16,
+    #[arg(short = 'F', default_value_t = 0)]
+    filter_flags: u16,
+    #[arg(short = 'G', default_value_t = 0)]
+    excl_flags: u16,
+}
 
-    let mut i = 3;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--threads" | "-t" => {
-                if i + 1 < args.len() {
-                    num_threads = args[i + 1].parse().unwrap_or(0);
-                    i += 2;
-                } else {
-                    eprintln!("Error: --threads requires a value");
-                    std::process::exit(1);
-                }
-            }
-            "--region-size" | "-r" => {
-                if i + 1 < args.len() {
-                    region_size = args[i + 1].parse().unwrap_or(10_000_000);
-                    i += 2;
-                } else {
-                    eprintln!("Error: --region-size requires a value");
-                    std::process::exit(1);
-                }
-            }
-            "--softclip-threshold" => {
-                if i + 1 < args.len() {
-                    softclip_threshold = args[i + 1].parse().unwrap_or(0.66);
-                    i += 2;
-                }
-            }
-            "--min-base-quality" | "-q" => {
-                if i + 1 < args.len() {
-                    min_base_quality = args[i + 1].parse().unwrap_or(min_base_quality);
-                    i += 2;
-                } else {
-                    eprintln!("Error: --min-base-quality requires a value");
-                    std::process::exit(1);
-                }
-            }
-            "--min-map-quality" => {
-                if i + 1 < args.len() {
-                    min_map_quality = args[i + 1].parse().unwrap_or(min_map_quality);
-                    i += 2;
-                } else {
-                    eprintln!("Error: --min-map-quality requires a value");
-                    std::process::exit(1);
-                }
-            }
-            "--methylation" | "-m" => {
-                is_methylation = true;
-                i += 1;
-            }
-            "--cpg-only" => {
-                cpg_only = true;
-                i += 1;
-            }
-            "--use-read-len-mode" => {
-                mode_len = compute_read_len_mode_from_sample_bam(bam_path, 100000);
-                eprintln!("Using mode read length: {} to renumber read positions", mode_len);
-                i += 1;
-            }
-            "--insert-position-mode" => {
-                eprintln!("Using --insert-position-mode. Not read position");
-                _insert_position_mode = true;
-                i += 1;
-            }
-            "--genomic-threshold" => {
-                if i + 1 < args.len() {
-                    genomic_threshold = args[i + 1].parse().unwrap_or(3);
-                    i += 2;
-                } else {
-                    eprintln!("Error: --genomic-threshold requires a value");
-                    std::process::exit(1);
-                }
-            }
-            _ => {
-                eprintln!("Unknown argument: {}", args[i]);
-                std::process::exit(1);
-            }
-        }
+
+fn main() {
+    let args = Args::parse();
+    
+    let bam_path = &args.bam_file;
+    let fasta_path = &args.reference_fasta;
+    let region_size = args.region_size;
+    let num_threads = args.threads;
+    let softclip_threshold = args.softclip_threshold;
+    let min_base_quality = args.min_base_quality;
+    let min_map_quality = args.min_map_quality;
+    let is_methylation = args.methylation;
+    let cpg_only = args.cpg_only;
+    let genomic_threshold = args.genomic_threshold;
+    let required_flags = args.required_flags;
+    let filter_flags = args.filter_flags;
+    let excl_flags = args.excl_flags;
+    let _insert_position_mode = args.insert_position_mode;
+    let genomic_depth_threshold = args.genomic_depth_threshold;
+    let mode_len = if args.use_read_len_mode {
+        let mode = compute_read_len_mode_from_sample_bam(bam_path, 100000);
+        eprintln!("Using mode read length: {} to renumber read positions", mode);
+        mode
+    } else {
+        0
+    };
+    
+    if _insert_position_mode {
+        eprintln!("Using --insert-position-mode. Not read position");
     }
     
     // Set thread pool size
@@ -169,7 +155,7 @@ fn main() {
     let overlap_mismatch_counts: Arc<Mutex<HashMap<MismatchKey, usize>>> = Arc::new(Mutex::new(HashMap::new()));
     let overlap_pairs_count = AtomicUsize::new(0);
     let inconsistency_counts: Arc<Mutex<HashMap<InconsistencyKey, usize>>> = Arc::new(Mutex::new(HashMap::new()));
-    let genomic_mismatch_counts: Arc<Mutex<HashMap<GenomicMismatchKey, usize>>> = Arc::new(Mutex::new(HashMap::new()));
+    let genomic_mismatch_counts: Arc<Mutex<HashMap<GenomicMismatchKey, (usize, usize)>>> = Arc::new(Mutex::new(HashMap::new()));
 
     // Process regions in parallel
     let bam_path_arc = Arc::new(bam_path.to_string());
@@ -197,7 +183,8 @@ fn main() {
 
         // for variant "cheap" identification
         let mut genomic_region_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> = HashMap::new();
-        
+        let mut genomic_position_depth: HashMap<i64, usize> = HashMap::new(); // genomic_position -> total count of reads covering position (i64 not u64 for compatibility later. same usize)
+
         // Cache for read pairs
         let mut read_cache: HashMap<Vec<u8>, (ReadInfo, Record)> = HashMap::new();
         
@@ -209,7 +196,8 @@ fn main() {
                     // Process normally - update both region_counts and genomic_region_counts
                     process_record(
                         &record, &mut region_counts, Some(&mut genomic_region_counts), &ref_clone, &tid_clone, softclip_threshold, 
-                        min_base_quality, is_methylation, cpg_only, mode_len, min_map_quality
+                        min_base_quality, is_methylation, cpg_only, mode_len, min_map_quality, Some(&mut genomic_position_depth),
+                        required_flags, filter_flags, excl_flags
                     );
                     local_count += 1;
         
@@ -232,7 +220,8 @@ fn main() {
                                     &record, &mate_record, overlap_start, overlap_end,
                                     &mut overlap_region_counts, &mut inconsistency_region_counts,
                                     &ref_clone, &tid_clone,
-                                    min_base_quality, is_methylation, cpg_only, mode_len, min_map_quality
+                                    min_base_quality, is_methylation, cpg_only, mode_len, min_map_quality,
+                                    required_flags, filter_flags, excl_flags
                                 );
                             }
                         } else {
@@ -249,10 +238,15 @@ fn main() {
         if !genomic_region_counts.is_empty() {
             let mut global_genomic_counts = genomic_mismatch_counts.lock().unwrap();
 
-            for (genomic_key, genomic_value) in genomic_region_counts.iter() {
-                if genomic_value.count >= genomic_threshold {
+            for (genomic_key, genomic_value) in genomic_region_counts.iter_mut() {
+                let genomic_depth = genomic_position_depth.get(&genomic_key.genomic_position).cloned().unwrap_or(0);
+
+                if genomic_value.count >= genomic_threshold && genomic_depth >= genomic_depth_threshold{
                     // Update global genomic counts only for positions above threshold
-                    *global_genomic_counts.entry(genomic_key.clone()).or_insert(0) += genomic_value.count;
+                    *global_genomic_counts.entry(genomic_key.clone()).or_insert((0, 0))  = (
+                        genomic_value.count, 
+                        genomic_depth // single thread -> single contig.
+                    );
                     
                     // Decrement count for each mismatch_key that contributed to this genomic position
                     for mismatch_key in &genomic_value.mismatch_keys {
@@ -315,23 +309,25 @@ fn main() {
         let file = File::create("potential_variants.tsv").expect("Failed to create potential_variants.tsv");
         let mut writer = BufWriter::new(file);
 
-        writeln!(writer, "chromosome\tposition\treference_base\tmismatch_base\tcount").expect("Failed to write header");
+        writeln!(writer, "chromosome\tposition\treference_base\tmismatch_base\tcount\tdepth").expect("Failed to write header");
         
-        let mut sorted_keys: Vec<_> = genomic_counts.iter().collect();
+        //let mut sorted_keys: Vec<_> = genomic_counts.iter().collect();
         // sorted_keys.sort_by_key(|(k, _)| (&k.chromosome, k.genomic_position)); // This takes forever for large datasets
-        
+        let sorted_keys: Vec<_> = genomic_counts.iter().collect(); // unsorted for speed -> can change later to the above lines.
+
         for (key, count) in sorted_keys {
             // Parse mismatch_type "REF>ALT" to extract ref and alt bases
             let parts: Vec<&str> = key.mismatch_type.split('>').collect();
             if parts.len() == 2 {
                 writeln!(
                     writer,
-                    "{}\t{}\t{}\t{}\t{}",
+                    "{}\t{}\t{}\t{}\t{}\t{}",
                     key.chromosome,
                     key.genomic_position,
                     parts[0],  // reference base
                     parts[1],  // mismatch base
-                    count
+                    count.0,
+                    count.1
                 ).expect("Failed to write to file");
             }
         }

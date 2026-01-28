@@ -20,7 +20,7 @@ pub fn base_to_char(byte: u8) -> Option<char> {
     }
 }
 
-/// Adjust read position based on mode length for normalization
+/// Adjust read position based on mode length for normalization --> INSTEAD OF THIS, USE THE START OF THE READ + TLEN. CALL IT REFERENCE_SPAN
 pub fn correct_read_len_with_mode(
     read_pos: usize,
     seq_len: usize,
