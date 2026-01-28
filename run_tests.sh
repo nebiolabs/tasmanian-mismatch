@@ -42,7 +42,7 @@ FIRST_VALUE=$(echo $FIRST_ROW | cut -d',' -f3)  # A>A column
 echo "  First A>A value: $FIRST_VALUE (expected: 1)"
 
 SECOND_ROW=$(sed -n '3p' test_output_basic.csv)
-SECOND_VALUE=$(echo $SECOND_ROW | cut -d',' -f6)  # C>C column
+SECOND_VALUE=$(echo $SECOND_ROW | cut -d',' -f7)  # C>C column
 echo "  Second C>C value: $SECOND_VALUE (expected: 1)"
 
 if [ "$FIRST_VALUE" != "1" ]; then
@@ -50,7 +50,7 @@ if [ "$FIRST_VALUE" != "1" ]; then
     exit 1
 fi
 
-if [ "$SECOND_VALUE" != "0" ]; then
+if [ "$SECOND_VALUE" != "1" ]; then
     echo "ERROR: Second C>C value mismatch. Expected 1, got $SECOND_VALUE"
     exit 1
 fi
