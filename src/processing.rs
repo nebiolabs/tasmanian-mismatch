@@ -84,7 +84,7 @@ pub fn compare_and_count(
                 is_methylation, cpg_only, ref_seq, genome_pos
             );
             
-            let genomic_key = GenomicMismatchKey {
+            let genomic_key = GenomicMismatchKey {  // e.g. key:value = {"chr1", "C>T", 123456}:  {{"C>T", 5, 1}, 23} vals=(_, read_position, counts)
                 chromosome: chromosome.to_string(),
                 mismatch_type: format!("{}>{}", strand_adjusted_ref_base, meth_adjusted_read_base),
                 genomic_position: genome_pos as i64,
@@ -92,7 +92,7 @@ pub fn compare_and_count(
             
             let genomic_values = genomic_counts.entry(genomic_key).or_insert_with(|| GenomicMismatchValue {
                 mismatch_keys: HashSet::new(),
-                count: 0,
+                count: 0
             });
             genomic_values.mismatch_keys.insert(key);
             genomic_values.count = genomic_values.mismatch_keys.len();
@@ -134,13 +134,28 @@ pub fn process_overlap_region(
     is_methylation: bool,
     cpg_only: bool,
     mode_len: usize,
-    min_map_quality: u8
+    min_map_quality: u8,
+    required_flags: u16,
+    filter_flags: u16,
+    excl_flags: u16
 ) {
     // Build genome_pos -> (read_pos, base, qual) mapping for both reads
     let mut read1_map: HashMap<usize, (usize, u8, u8)> = HashMap::new();
     let mut read2_map: HashMap<usize, (usize, u8, u8)> = HashMap::new();
     
     for (record, map) in [(record1, &mut read1_map), (record2, &mut read2_map)] {
+        // Apply flag filtering
+        let flags = record.flags();
+        if required_flags != 0 && (flags & required_flags) != required_flags {
+            continue;
+        }
+        if filter_flags != 0 && (flags & filter_flags) != 0 {
+            continue;
+        }
+        if excl_flags != 0 && (flags & excl_flags) == excl_flags {
+            continue;
+        }
+        
         if record.is_unmapped() || record.mapq() <= min_map_quality {
             continue;
         }
@@ -255,10 +270,32 @@ pub fn process_record(
     is_methylation: bool,
     cpg_only: bool,
     mode_len: usize,
-    min_map_quality: u8
+    min_map_quality: u8,
+    mut genomic_depth: Option<&mut HashMap<i64, usize>>,
+    required_flags: u16,
+    filter_flags: u16,
+    excl_flags: u16
 ) {
+    // Get the record flags
+    let flags = record.flags();
     
-    // Skip read
+    // Skip read based on flag filtering (samtools -f, -F, -G logic)
+    // -f: required_flags - skip if not all required flags are set
+    if required_flags != 0 && (flags & required_flags) != required_flags {
+        return;
+    }
+    
+    // -F: filter_flags - skip if any filter flags are set
+    if filter_flags != 0 && (flags & filter_flags) != 0 {
+        return;
+    }
+    
+    // -G: excl_flags - skip if all exclude flags are set
+    if excl_flags != 0 && (flags & excl_flags) == excl_flags {
+        return;
+    }
+    
+    // Skip read based on standard filters --> do it as default and include this default in the call to the function.
     if record.is_unmapped() 
         || record.is_secondary() 
         || record.is_supplementary() 
@@ -289,6 +326,10 @@ pub fn process_record(
                     let r_pos = read_pos + i as usize;
                     let genome_pos = ref_pos + i as usize;
                     compare_and_count(&seq, &qual, ref_seq, r_pos, genome_pos, record.is_reverse(), read_num, min_base_quality, is_methylation, cpg_only, local_counts, genomic_counts.as_deref_mut(), chr_name, mode_len);
+                    // Update genomic depth counts
+                    if let Some(genomic_depth) = genomic_depth.as_mut() {
+                        *genomic_depth.entry(genome_pos as i64).or_insert(0) += 1;
+                    }
                 }
                 read_pos += *len as usize;
                 ref_pos += *len as usize;
@@ -358,6 +399,56 @@ pub fn process_record(
             Ins(len) => { read_pos += *len as usize; }
             Del(len) | RefSkip(len) => { ref_pos += *len as usize; }
             HardClip(_) | Pad(_) => {}
+        }
+    }
+}
+
+pub fn rescale_phred_scores(
+    record: &mut Record,
+    reference: &ReferenceGenome,
+    tid_to_name: &HashMap<i32, String>,
+    rescaling_matrix: &HashMap<(u8,u16,char,char), f32>
+) {
+ 
+    tid = record.tid();
+    let Some(chr_name) = tid_to_name.get(&tid) else { return; };
+    let Some(ref_seq) = record.get(chr_name.as_str()) else { return; };
+    let ref_start = record.pos() as usize;
+    let seq = record.seq();
+    let read_num = if record.is_first_in_template() { 1 } else if record.is_last_in_template() { 2 } else { 1 };
+    let cigar = record.cigar(); // There could be INDELS...
+    let qual = record.qual();
+
+    for cigar_op in cigar.iter() {
+        use rust_htslib::bam::record::Cigar::*;
+        match cigar_op {
+            Match(len) | Equal(len) | Diff(len) => {
+                for i in 0..*len {
+                    let r_pos = read_pos + i as usize;
+                    let genome_pos = ref_pos + i as usize;
+                    
+                    let Some(read_base) = base_to_char(seq[r_pos]) else { continue; };    
+                    let Some(ref_base) = base_to_char(ref_seq[genome_pos]) else { continue; };
+                    
+                    let phred_score = qual[r_pos];
+                    
+                     if read_base != ref_base {
+                        let strand_adjusted_read_base = if is_reverse { complement(read_base) } else { read_base };
+                        let strand_adjusted_ref_base = if is_reverse { complement(ref_base) } else { ref_base };
+
+                        let key = (read_num, r_pos as u16, strand_adjusted_ref_base, strand_adjusted_read_base);
+
+                        if let Some(&scaling_factor) = rescaling_matrix.get(&key) {
+                            let new_phred = (phred_score as f32 * scaling_factor).round() as u8;
+                            record.qual_mut()[r_pos] = new_phred.min(40); // Cap at max Phred score of 40
+                        }
+                    }
+                read_pos += *len as usize;
+                ref_pos += *len as usize;
+            }
+            Ins(len) => { read_pos += *len as usize; }
+            Del(len) | RefSkip(len) => { ref_pos += *len as usize; }
+            _ => {}
         }
     }
 }
