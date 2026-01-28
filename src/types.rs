@@ -40,10 +40,3 @@ pub struct GenomicMismatchValue {
     pub mismatch_keys: HashSet<MismatchKey>,  // Set of all MismatchKey combinations that contributed
     pub count: usize,                         // Total count (should match mismatch_keys.len())
 }
-
-// Needed to compute relative counts of potential variants  
-#[derive(Debug, Clone)]
-pub struct GenomicPositionCounts {
-    pub genomic_position: i64,
-    pub count: usize,
-}
