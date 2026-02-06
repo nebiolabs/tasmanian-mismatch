@@ -289,6 +289,7 @@ mod tests {
             0,    // required_flags
             0,    // filter_flags
             0,    // excl_flags
+            &[],  // no bed intervals
         );
         
         // Should have processed the overlap region
@@ -331,6 +332,7 @@ mod tests {
             0,     // required_flags
             0,     // filter_flags
             0,     // excl_flags
+            &[],   // no bed intervals
         );
         
         // Function completed successfully (unmapped reads may result in no counts)
