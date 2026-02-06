@@ -65,6 +65,14 @@ struct Args {
     filter_flags: u16,
     #[arg(short = 'G', default_value_t = 0)]
     excl_flags: u16,
+    
+    /// BED file with regions to filter/mask (optional)
+    #[arg(short = 'b', long)]
+    bed_file: Option<String>,
+    
+    /// Filter mode: 'mask' (skip individual bases in BED regions) or 'filter' (skip whole reads overlapping BED regions)
+    #[arg(long, default_value = "mask")]
+    bed_filter_mode: String,
 }
 
 
@@ -86,6 +94,8 @@ fn main() {
     let excl_flags = args.excl_flags;
     let _insert_position_mode = args.insert_position_mode;
     let genomic_depth_threshold = args.genomic_depth_threshold;
+    let bed_filter_whole_reads = args.bed_filter_mode == "filter";
+    
     let mode_len = if args.use_read_len_mode {
         let mode = compute_read_len_mode_from_sample_bam(bam_path, 100000);
         eprintln!("Using mode read length: {} to renumber read positions", mode);
@@ -107,7 +117,31 @@ fn main() {
     }
     
     // Load reference genome
-    let reference = Arc::new(load_reference_genome(fasta_path));
+    let mut reference = load_reference_genome(fasta_path);
+    
+    // Load BED file and mask reference if provided
+    let bed_for_filtering = if let Some(ref bed_path) = args.bed_file {
+        eprintln!("Loading BED file: {}", bed_path);
+        let regions = parse_bed_file(bed_path)
+            .expect("Failed to load BED file. Please check the file path and format.");
+        eprintln!("BED filter mode: {}", args.bed_filter_mode);
+        
+        if bed_filter_whole_reads {
+            // Filter mode: keep BED regions for whole-read filtering
+            Some(Arc::new(regions))
+        } else {
+            // Mask mode: modify reference genome and don't need BED regions later
+            eprintln!("Masking reference genome at BED regions...");
+            let masked_bases = mask_reference_with_bed(&mut reference, &regions);
+            eprintln!("Masked {} bases in reference genome", masked_bases);
+            None  // Don't need BED regions anymore
+        }
+    } else {
+        None
+    };
+    
+    // Now wrap reference in Arc for thread safety
+    let reference = Arc::new(reference);
     
     // Print first and last 100 characters of each contig for verification
     eprintln!("\n{}", "=".repeat(80));
@@ -172,7 +206,14 @@ fn main() {
         let ref_clone = Arc::clone(&reference);
         let tid_clone = Arc::clone(&tid_to_name); // This because in some cases tid could be different within chunck (e.g. chimera)
         let overlap_counts_clone = Arc::clone(&overlap_mismatch_counts);
-        let inconsistency_clone = Arc::clone(&inconsistency_counts); 
+        let inconsistency_clone = Arc::clone(&inconsistency_counts);
+        
+        // Pre-filter BED intervals for this chunk - MUCH faster than checking all intervals!
+        let chunk_bed_intervals = if let Some(bed) = bed_for_filtering.as_ref() {
+            filter_bed_for_region(bed, chr_name, *start, *end)
+        } else {
+            Vec::new()
+        }; 
 
         // Local counts for this region (no locking during processing)
         let mut region_counts = HashMap::new();
@@ -193,12 +234,24 @@ fn main() {
                 // Only process reads that START in this region to avoid duplicates
                 let read_start = record.pos();
                 if read_start >= *start && read_start < *end {
-                    // Process normally - update both region_counts and genomic_region_counts
-                    process_record(
-                        &record, &mut region_counts, Some(&mut genomic_region_counts), &ref_clone, &tid_clone, softclip_threshold, 
-                        min_base_quality, is_methylation, cpg_only, mode_len, min_map_quality, Some(&mut genomic_position_depth),
-                        required_flags, filter_flags, excl_flags
-                    );
+                    // Check BED filtering if enabled (filter mode: skip entire reads)
+                    let should_skip = if bed_filter_whole_reads && !chunk_bed_intervals.is_empty() {
+                        // Skip entire read if it overlaps any BED interval
+                        let read_end = calculate_end_pos(record.pos(), &record.cigar());
+                        chunk_bed_intervals.iter().any(|interval| {
+                            record.pos() < interval.end && read_end > interval.start
+                        })
+                    } else {
+                        false // Mask mode: individual bases masked inside process_record
+                    };
+                    
+                    if !should_skip {
+                        // Process normally - pass pre-filtered intervals for efficient masking
+                        process_record(
+                            &record, &mut region_counts, Some(&mut genomic_region_counts), &ref_clone, &tid_clone, softclip_threshold, 
+                            min_base_quality, is_methylation, cpg_only, mode_len, min_map_quality, Some(&mut genomic_position_depth),
+                            required_flags, filter_flags, excl_flags, &chunk_bed_intervals
+                        );
                     local_count += 1;
         
 
@@ -221,13 +274,14 @@ fn main() {
                                     &mut overlap_region_counts, &mut inconsistency_region_counts,
                                     &ref_clone, &tid_clone,
                                     min_base_quality, is_methylation, cpg_only, mode_len, min_map_quality,
-                                    required_flags, filter_flags, excl_flags
+                                    required_flags, filter_flags, excl_flags, &chunk_bed_intervals
                                 );
                             }
                         } else {
                             // Store for when mate arrives
                             read_cache.insert(qname, (read_info, record.clone()));
                         }
+                    }
                     }
                 }
             }
