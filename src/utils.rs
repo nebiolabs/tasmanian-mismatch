@@ -21,12 +21,8 @@ pub fn base_to_char(byte: u8) -> Option<char> {
 }
 
 /// Adjust read position based on mode length for normalization --> INSTEAD OF THIS, USE THE START OF THE READ + TLEN. CALL IT REFERENCE_SPAN
-pub fn correct_read_len_with_mode(
-    read_pos: usize,
-    seq_len: usize,
-    mode_len: usize
-) -> usize {
-    if mode_len > 0 && read_pos > seq_len/2 {  
+pub fn correct_read_len_with_mode(read_pos: usize, seq_len: usize, mode_len: usize) -> usize {
+    if mode_len > 0 && read_pos > seq_len / 2 {
         read_pos + (mode_len - seq_len)
     } else {
         read_pos
@@ -58,7 +54,7 @@ pub fn parse_md_tag(md_string: &str) -> (Vec<(usize, char)>, Vec<(usize, usize)>
     let mut matches = Vec::new();
     let mut pos = 0;
     let mut num_str = String::new();
-    
+
     for ch in md_string.chars() {
         if ch.is_numeric() {
             num_str.push(ch);
@@ -86,7 +82,7 @@ pub fn parse_md_tag(md_string: &str) -> (Vec<(usize, char)>, Vec<(usize, usize)>
             pos += 1;
         }
     }
-    
+
     // Handle trailing matches
     if !num_str.is_empty() {
         let match_len = num_str.parse::<usize>().unwrap_or(0);
@@ -94,6 +90,6 @@ pub fn parse_md_tag(md_string: &str) -> (Vec<(usize, char)>, Vec<(usize, usize)>
             matches.push((pos, match_len));
         }
     }
-    
+
     (mismatches, matches)
 }
