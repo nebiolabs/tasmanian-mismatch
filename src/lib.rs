@@ -5,17 +5,28 @@
 // analysis and paired-end read overlap detection.
 
 // Module declarations
-pub mod types;
-pub mod utils;
+pub mod bed;
 pub mod io;
 pub mod methylation;
 pub mod processing;
-pub mod bed;
+pub mod types;
+pub mod utils;
 
 // Re-export commonly used items
-pub use types::{MismatchKey, InconsistencyKey, ReadInfo, ReferenceGenome, GenomicMismatchKey, GenomicMismatchValue};
-pub use utils::{complement, base_to_char, correct_read_len_with_mode, calculate_end_pos, parse_md_tag};
-pub use io::{load_reference_genome, compute_read_len_mode_from_sample_bam};
+pub use bed::{
+    filter_bed_for_region, mask_reference_with_bed, parse_bed_file, position_overlaps_intervals,
+    BedInterval, BedRegions,
+};
+pub use io::{compute_read_len_mode_from_sample_bam, load_reference_genome};
 pub use methylation::adjust_methylation_base;
-pub use processing::{create_mismatch_key, compare_and_count, get_overlap_region, process_overlap_region, process_record};
-pub use bed::{parse_bed_file, filter_bed_for_region, position_overlaps_intervals, mask_reference_with_bed, BedRegions, BedInterval};
+pub use processing::{
+    compare_and_count, create_mismatch_key, get_overlap_region, process_overlap_region,
+    process_paired_reads_with_overlap, process_record,
+};
+pub use types::{
+    GenomicMismatchKey, GenomicMismatchValue, InconsistencyKey, MismatchKey, ReadInfo,
+    ReferenceGenome,
+};
+pub use utils::{
+    base_to_char, calculate_end_pos, complement, correct_read_len_with_mode, parse_md_tag,
+};

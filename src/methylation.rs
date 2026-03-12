@@ -7,12 +7,12 @@ pub fn adjust_methylation_base(
     is_methylation: bool,
     cpg_only: bool,
     ref_seq: &[u8],
-    genome_pos: usize
+    genome_pos: usize,
 ) -> char {
     if !is_methylation {
         return read_base;
     }
-    
+
     if cpg_only {
         // Only convert in CpG context
         match (read_num, ref_base, read_base) {
