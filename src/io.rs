@@ -3,7 +3,17 @@ use bio::io::fasta;
 use rust_htslib::bam::{Read, Reader};
 use std::collections::HashMap;
 
-/// Load reference genome from FASTA file into memory
+/// Load a reference genome from a FASTA file.
+///
+/// # Arguments
+/// * `fasta_path` - Path to the reference FASTA file.
+///
+/// # Returns
+/// * A [`ReferenceGenome`] mapping chromosome names to base sequences.
+///
+/// # Panics
+/// * If the FASTA file cannot be opened.
+/// * If any FASTA record cannot be read.
 pub fn load_reference_genome(fasta_path: &str) -> ReferenceGenome {
     eprintln!("Loading reference genome from: {}", fasta_path);
     let reader = fasta::Reader::from_file(fasta_path).expect("Failed to open reference FASTA file");
@@ -20,7 +30,18 @@ pub fn load_reference_genome(fasta_path: &str) -> ReferenceGenome {
     genome
 }
 
-/// Compute mode (most common) read length from sample of BAM file
+/// Compute the mode (most common) read length from a sample of a BAM file.
+///
+/// # Arguments
+/// * `bam_path` - Path to the input BAM file.
+/// * `sample_size` - Number of records to sample from the start of the BAM stream.
+///
+/// # Returns
+/// * The most frequent read length in the sampled records.
+/// * Returns `0` if no valid records are observed in the sample.
+///
+/// # Panics
+/// * If the BAM file cannot be opened.
 pub fn compute_read_len_mode_from_sample_bam(bam_path: &str, sample_size: usize) -> usize {
     let mut bam =
         Reader::from_path(bam_path).expect("Failed to open BAM file for read length sampling");
