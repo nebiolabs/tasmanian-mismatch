@@ -21,7 +21,8 @@ pub use io::{compute_read_len_mode_from_sample_bam, load_reference_genome};
 pub use methylation::adjust_methylation_base;
 pub use processing::{
     compare_and_count, create_mismatch_key, get_overlap_region, process_overlap_region,
-    process_paired_reads_with_overlap, process_record,
+    process_paired_reads_with_overlap, process_record, process_single_record,
+    ProcessingConfig, ProcessingContext,
 };
 pub use types::{
     GenomicMismatchKey, GenomicMismatchValue, InconsistencyKey, MismatchKey, ReadInfo,
@@ -29,4 +30,5 @@ pub use types::{
 };
 pub use utils::{
     base_to_char, calculate_end_pos, complement, correct_read_len_with_mode, parse_md_tag,
+    print_main_output, print_position_table,
 };

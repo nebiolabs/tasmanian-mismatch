@@ -23,7 +23,6 @@ pub struct ReadInfo {
     pub pos: i64,
 }
 
-/// Store reference sequences in memory
 pub type ReferenceGenome = HashMap<String, Vec<u8>>;
 
 /// Key for tracking genomic mismatches (simplified - just mismatch type and position)

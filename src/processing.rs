@@ -8,6 +8,25 @@ use crate::utils::{base_to_char, calculate_end_pos, complement, correct_read_len
 use rust_htslib::bam::Record;
 use std::collections::{HashMap, HashSet};
 
+#[derive(Debug, Clone, Copy)]
+pub struct ProcessingConfig {
+    pub softclip_threshold: f64,
+    pub min_base_quality: u8,
+    pub is_methylation: bool,
+    pub cpg_only: bool,
+    pub mode_len: usize,
+    pub min_map_quality: u8,
+    pub required_flags: u16,
+    pub filter_flags: u16,
+    pub excl_flags: u16,
+}
+
+pub struct ProcessingContext<'a> {
+    pub reference: &'a ReferenceGenome,
+    pub tid_to_name: &'a HashMap<i32, String>,
+    pub bed_intervals: &'a [crate::bed::BedInterval],
+}
+
 /// Create a MismatchKey with strand and methylation adjustments
 pub fn create_mismatch_key(
     read_base: char,
@@ -597,6 +616,36 @@ pub fn process_record(
     }
 }
 
+/// Wrapper for processing a single record with standard parameters
+#[inline]
+pub fn process_single_record(
+    record: &Record,
+    region_counts: &mut HashMap<MismatchKey, usize>,
+    genomic_region_counts: &mut HashMap<GenomicMismatchKey, GenomicMismatchValue>,
+    genomic_position_depth: &mut HashMap<i64, usize>,
+    context: &ProcessingContext,
+    config: ProcessingConfig,
+) {
+    process_record(
+        record,
+        region_counts,
+        Some(genomic_region_counts),
+        context.reference,
+        context.tid_to_name,
+        config.softclip_threshold,
+        config.min_base_quality,
+        config.is_methylation,
+        config.cpg_only,
+        config.mode_len,
+        config.min_map_quality,
+        Some(genomic_position_depth),
+        config.required_flags,
+        config.filter_flags,
+        config.excl_flags,
+        context.bed_intervals,
+    );
+}
+
 /// Efficiently process a pair of overlapping reads in a single pass
 /// Avoids redundant CIGAR walking for overlap positions
 pub fn process_paired_reads_with_overlap(
@@ -609,18 +658,8 @@ pub fn process_paired_reads_with_overlap(
     inconsistency_counts: &mut HashMap<InconsistencyKey, usize>,
     mut genomic_counts: Option<&mut HashMap<GenomicMismatchKey, GenomicMismatchValue>>,
     mut genomic_depth: Option<&mut HashMap<i64, usize>>,
-    reference: &ReferenceGenome,
-    tid_to_name: &HashMap<i32, String>,
-    softclip_threshold: f64,
-    min_base_quality: u8,
-    is_methylation: bool,
-    cpg_only: bool,
-    mode_len: usize,
-    min_map_quality: u8,
-    required_flags: u16,
-    filter_flags: u16,
-    excl_flags: u16,
-    bed_intervals: &[crate::bed::BedInterval],
+    context: &ProcessingContext,
+    config: ProcessingConfig,
 ) {
     // Build genome_pos -> (read_pos, base, qual) mapping for overlap detection
     let mut read1_overlap_map: HashMap<usize, (usize, u8, u8)> = HashMap::new();
@@ -633,10 +672,10 @@ pub fn process_paired_reads_with_overlap(
     ] {
         if should_skip_record(
             record,
-            min_map_quality,
-            required_flags,
-            filter_flags,
-            excl_flags,
+            config.min_map_quality,
+            config.required_flags,
+            config.filter_flags,
+            config.excl_flags,
             true,
         ) {
             continue;
@@ -646,10 +685,10 @@ pub fn process_paired_reads_with_overlap(
         if tid < 0 {
             continue;
         }
-        let Some(chr_name) = tid_to_name.get(&tid) else {
+        let Some(chr_name) = context.tid_to_name.get(&tid) else {
             continue;
         };
-        let Some(ref_seq) = reference.get(chr_name.as_str()) else {
+        let Some(ref_seq) = context.reference.get(chr_name.as_str()) else {
             continue;
         };
 
@@ -678,7 +717,7 @@ pub fn process_paired_reads_with_overlap(
                         let genome_pos = ref_pos + i as usize;
 
                         // Skip if position overlaps BED region (mask mode)
-                        if is_bed_masked(bed_intervals, genome_pos) {
+                        if is_bed_masked(context.bed_intervals, genome_pos) {
                             continue;
                         }
 
@@ -701,13 +740,13 @@ pub fn process_paired_reads_with_overlap(
                                     genome_pos,
                                     record.is_reverse(),
                                     read_num,
-                                    min_base_quality,
-                                    is_methylation,
-                                    cpg_only,
+                                    config.min_base_quality,
+                                    config.is_methylation,
+                                    config.cpg_only,
                                     overlap_counts,
                                     None, // Don't track genomic counts in overlap
                                     chr_name,
-                                    mode_len,
+                                    config.mode_len,
                                 );
 
                                 // Update genomic depth for overlap positions
@@ -729,9 +768,9 @@ pub fn process_paired_reads_with_overlap(
                                 genome_pos,
                                 record.is_reverse(),
                                 read_num,
-                                min_base_quality,
-                                is_methylation,
-                                cpg_only,
+                                config.min_base_quality,
+                                config.is_methylation,
+                                config.cpg_only,
                                 local_counts,
                                 if is_first_read {
                                     genomic_counts.as_deref_mut()
@@ -739,7 +778,7 @@ pub fn process_paired_reads_with_overlap(
                                     None
                                 }, // Only track genomic counts once
                                 chr_name,
-                                mode_len,
+                                config.mode_len,
                             );
 
                             // Update genomic depth
@@ -770,7 +809,7 @@ pub fn process_paired_reads_with_overlap(
     // Detect inconsistencies in the overlap region
     for (genome_pos, (r1_pos, r1_base, r1_qual)) in read1_overlap_map.iter() {
         if let Some((r2_pos, r2_base, r2_qual)) = read2_overlap_map.get(genome_pos) {
-            if r1_qual >= &min_base_quality && r2_qual >= &min_base_quality {
+            if r1_qual >= &config.min_base_quality && r2_qual >= &config.min_base_quality {
                 if r1_base != r2_base {
                     let r1_char = base_to_char(*r1_base).unwrap_or('N');
                     let r2_char = base_to_char(*r2_base).unwrap_or('N');
