@@ -1,30 +1,40 @@
-// BED file handling for filtering/masking genomic regions
-//
-// This module provides functionality to parse BED files and check for
-// overlaps between reads and BED regions.
+//! BED file handling for filtering and masking genomic regions.
+//!
+//! This module provides helpers to parse sorted BED files, query interval
+//! overlaps, and mask reference bases that fall inside the supplied regions.
 
 use crate::types::ReferenceGenome;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
-/// Represents a single interval in a BED file
+/// Represents a single interval in a BED file.
 #[derive(Debug, Clone)]
 pub struct BedInterval {
+    /// Inclusive 0-based interval start.
     pub start: i64,
+    /// Exclusive 0-based interval end.
     pub end: i64,
 }
 
-/// Container for BED intervals organized by chromosome
+/// BED intervals grouped by chromosome or contig name.
 pub type BedRegions = HashMap<String, Vec<BedInterval>>;
 
-/// Parse a BED file and return intervals organized by chromosome
+/// Parse a BED file into chromosome-indexed intervals.
 ///
 /// # Arguments
-/// * `bed_path` - Path to the BED file
+/// * `bed_path` - Path to the BED file.
 ///
 /// # Returns
-/// * A HashMap where keys are chromosome names and values are vectors of intervals
+/// * A [`BedRegions`] map where each key is a chromosome name and each value is
+///   the corresponding list of intervals.
+///
+/// # Errors
+/// * If the BED file cannot be opened.
+/// * If a start or end coordinate cannot be parsed.
+///
+/// # Panics
+/// * If intervals for a chromosome are not sorted by start position.
 pub fn parse_bed_file(bed_path: &str) -> Result<BedRegions, Box<dyn std::error::Error>> {
     let file = File::open(bed_path)?;
     let reader = BufReader::new(file);
@@ -99,14 +109,15 @@ pub fn parse_bed_file(bed_path: &str) -> Result<BedRegions, Box<dyn std::error::
     Ok(regions)
 }
 
-/// Fast position check using a pre-filtered list of intervals
+/// Check whether a genomic position overlaps any interval in a sorted slice.
 ///
 /// # Arguments
-/// * `intervals` - Pre-filtered intervals for the current genomic region
-/// * `pos` - Genomic position (0-based)
+/// * `intervals` - Pre-filtered intervals for the current genomic region.
+/// * `pos` - Genomic position in 0-based coordinates.
 ///
 /// # Returns
-/// * `true` if the position overlaps with any interval, `false` otherwise
+/// * `true` if the position overlaps an interval.
+/// * `false` otherwise.
 #[inline]
 pub fn position_overlaps_intervals(intervals: &[BedInterval], pos: i64) -> bool {
     for interval in intervals {
@@ -120,16 +131,16 @@ pub fn position_overlaps_intervals(intervals: &[BedInterval], pos: i64) -> bool 
     false
 }
 
-/// Filter BED intervals to only those overlapping a specific genomic region
+/// Return BED intervals that overlap a genomic region.
 ///
 /// # Arguments
-/// * `bed_regions` - The BED regions to filter
-/// * `chrom` - Chromosome name
-/// * `region_start` - Start position of the region (0-based, inclusive)
-/// * `region_end` - End position of the region (0-based, exclusive)
+/// * `bed_regions` - BED intervals grouped by chromosome.
+/// * `chrom` - Chromosome or contig name.
+/// * `region_start` - Region start in 0-based inclusive coordinates.
+/// * `region_end` - Region end in 0-based exclusive coordinates.
 ///
 /// # Returns
-/// * A vector of BED intervals that overlap with the specified region
+/// * A vector of [`BedInterval`] values that overlap the requested region.
 pub fn filter_bed_for_region(
     bed_regions: &BedRegions,
     chrom: &str,
@@ -150,15 +161,16 @@ pub fn filter_bed_for_region(
     }
 }
 
-/// Mask regions in the reference genome by converting bases to 'N'
-/// This is much more efficient than checking BED overlap for every read position
+/// Mask BED-covered bases in the reference genome with `N`.
+///
+/// This is more efficient than checking BED overlap for every aligned base.
 ///
 /// # Arguments
-/// * `reference` - Mutable reference to the reference genome
-/// * `bed_regions` - BED regions to mask
+/// * `reference` - Mutable reference genome to update in place.
+/// * `bed_regions` - BED intervals that should be masked.
 ///
 /// # Returns
-/// * Number of bases masked
+/// * The number of reference bases replaced with `N`.
 pub fn mask_reference_with_bed(reference: &mut ReferenceGenome, bed_regions: &BedRegions) -> usize {
     let mut total_masked = 0;
 

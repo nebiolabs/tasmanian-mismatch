@@ -1,3 +1,5 @@
+//! Input helpers for reference FASTA and BAM-derived metadata.
+
 use crate::types::ReferenceGenome;
 use bio::io::fasta;
 use rust_htslib::bam::{Read, Reader};

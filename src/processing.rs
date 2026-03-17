@@ -1,3 +1,8 @@
+//! Core mismatch-processing routines.
+//!
+//! This module contains the main logic for turning aligned BAM records into
+//! mismatch, overlap, inconsistency, and genomic summary counts.
+
 use crate::bed::position_overlaps_intervals;
 use crate::methylation::adjust_methylation_base;
 use crate::types::{
@@ -8,26 +13,56 @@ use crate::utils::{base_to_char, calculate_end_pos, complement, correct_read_len
 use rust_htslib::bam::Record;
 use std::collections::{HashMap, HashSet};
 
+/// Configuration values shared across record-processing entry points.
 #[derive(Debug, Clone, Copy)]
 pub struct ProcessingConfig {
+    /// Minimum soft-clipped match fraction required before counting soft-clip mismatches.
     pub softclip_threshold: f64,
+    /// Minimum base quality required for a base to be counted.
     pub min_base_quality: u8,
+    /// Whether methylation-aware mismatch normalization is enabled.
     pub is_methylation: bool,
+    /// Whether methylation normalization should be limited to CpG context.
     pub cpg_only: bool,
+    /// Modal read length used for optional read-position normalization.
     pub mode_len: usize,
+    /// Minimum mapping quality required for a record to be processed.
     pub min_map_quality: u8,
+    /// SAM flags that must all be present.
     pub required_flags: u16,
+    /// SAM flags that cause a record to be skipped if any are present.
     pub filter_flags: u16,
+    /// SAM flags that cause a record to be skipped if all are present.
     pub excl_flags: u16,
 }
 
+/// Shared references needed while processing records within a region.
 pub struct ProcessingContext<'a> {
+    /// Reference genome sequences keyed by contig name.
     pub reference: &'a ReferenceGenome,
+    /// Mapping from BAM target ID to chromosome or contig name.
     pub tid_to_name: &'a HashMap<i32, String>,
+    /// BED intervals relevant to the current processing region.
     pub bed_intervals: &'a [crate::bed::BedInterval],
 }
 
-/// Create a MismatchKey with strand and methylation adjustments
+/// Build a [`MismatchKey`] after strand and methylation normalization.
+///
+/// # Arguments
+/// * `read_base` - Observed base in the read.
+/// * `ref_base` - Reference base at the aligned position.
+/// * `r_pos` - Position within the read.
+/// * `seq_len` - Total read length.
+/// * `is_reverse` - Whether the read aligns to the reverse strand.
+/// * `read_num` - Read number within the pair.
+/// * `is_methylation` - Whether methylation-aware normalization is enabled.
+/// * `cpg_only` - Whether normalization should be restricted to CpG context.
+/// * `ref_seq` - Reference sequence for the current contig.
+/// * `genome_pos` - Genomic position within `ref_seq`.
+/// * `mode_len` - Modal read length for optional position normalization.
+///
+/// # Returns
+/// * A normalized [`MismatchKey`] suitable for counting.
 pub fn create_mismatch_key(
     read_base: char,
     ref_base: char,
@@ -80,7 +115,27 @@ pub fn create_mismatch_key(
     }
 }
 
-/// Compare read base to reference and update mismatch counts
+/// Compare a read base to the reference and update mismatch aggregates.
+///
+/// # Arguments
+/// * `seq` - Encoded read sequence.
+/// * `qual` - Base quality scores aligned to `seq`.
+/// * `ref_seq` - Reference sequence for the current contig.
+/// * `r_pos` - Position within the read.
+/// * `genome_pos` - Position within the reference sequence.
+/// * `is_reverse` - Whether the read aligns to the reverse strand.
+/// * `read_num` - Read number within the pair.
+/// * `min_base_quality` - Minimum quality threshold for counting a base.
+/// * `is_methylation` - Whether methylation-aware normalization is enabled.
+/// * `cpg_only` - Whether methylation normalization is limited to CpG context.
+/// * `local_counts` - Per-region mismatch counts to update.
+/// * `genomic_counts` - Optional genomic mismatch summary to update.
+/// * `chromosome` - Chromosome or contig name, used for genomic summaries.
+/// * `mode_len` - Modal read length for optional position normalization.
+///
+/// # Panics
+/// * This function does not panic intentionally, but it emits errors to stderr
+///   and returns early when coordinates fall outside the supplied sequence data.
 pub fn compare_and_count(
     seq: &rust_htslib::bam::record::Seq,
     qual: &[u8],
@@ -187,7 +242,17 @@ pub fn compare_and_count(
     }
 }
 
-/// Check if two reads overlap genomically
+/// Determine the genomic overlap between two reads.
+///
+/// # Arguments
+/// * `read1` - Placement summary for the first read.
+/// * `read2` - Placement summary for the second read.
+/// * `record1` - Full BAM record for the first read.
+/// * `record2` - Full BAM record for the second read.
+///
+/// # Returns
+/// * `Some((start, end))` when the reads overlap on the same contig.
+/// * `None` when they are on different contigs or do not overlap.
 pub fn get_overlap_region(
     read1: &ReadInfo,
     read2: &ReadInfo,
@@ -293,9 +358,29 @@ fn should_skip_record(
     false
 }
 
-/// Process overlap region between two reads
-/// Detects both mismatches and inconsistencies between read pairs
-/// If bed_intervals is provided, bases overlapping those intervals will be masked (skipped)
+/// Process the overlapping segment of a read pair.
+///
+/// This counts overlap mismatches and read-pair inconsistencies while honoring
+/// mapping-quality, flag, methylation, and BED-masking settings.
+///
+/// # Arguments
+/// * `record1` - First BAM record in the pair.
+/// * `record2` - Second BAM record in the pair.
+/// * `overlap_start` - Inclusive overlap start position.
+/// * `overlap_end` - Exclusive overlap end position.
+/// * `local_counts` - Mismatch counts to update.
+/// * `inconsistency_counts` - Overlap inconsistency counts to update.
+/// * `reference` - Reference genome sequences.
+/// * `tid_to_name` - BAM target ID to contig-name mapping.
+/// * `min_base_quality` - Minimum base quality threshold.
+/// * `is_methylation` - Whether methylation-aware normalization is enabled.
+/// * `cpg_only` - Whether methylation normalization is limited to CpG context.
+/// * `mode_len` - Modal read length for optional position normalization.
+/// * `min_map_quality` - Minimum mapping quality threshold.
+/// * `required_flags` - SAM flags that must all be present.
+/// * `filter_flags` - SAM flags that cause an immediate skip if any are present.
+/// * `excl_flags` - SAM flags that cause a skip if all are present.
+/// * `bed_intervals` - BED intervals to mask within the overlap.
 pub fn process_overlap_region(
     record1: &Record,
     record2: &Record,
@@ -426,8 +511,28 @@ pub fn process_overlap_region(
     }
 }
 
-/// Process a single BAM record and update mismatch counts
-/// If bed_intervals is provided, bases overlapping those intervals will be masked (skipped)
+/// Process a single BAM record and update mismatch-related counts.
+///
+/// This handles aligned positions and eligible soft clips, optionally updating
+/// both per-position mismatch counts and per-genomic-site summaries.
+///
+/// # Arguments
+/// * `record` - BAM record to process.
+/// * `local_counts` - Mismatch counts to update.
+/// * `genomic_counts` - Optional genomic mismatch summary to update.
+/// * `reference` - Reference genome sequences.
+/// * `tid_to_name` - BAM target ID to contig-name mapping.
+/// * `softclip_threshold` - Required soft-clip match fraction.
+/// * `min_base_quality` - Minimum base quality threshold.
+/// * `is_methylation` - Whether methylation-aware normalization is enabled.
+/// * `cpg_only` - Whether methylation normalization is limited to CpG context.
+/// * `mode_len` - Modal read length for optional position normalization.
+/// * `min_map_quality` - Minimum mapping quality threshold.
+/// * `genomic_depth` - Optional per-position depth counter.
+/// * `required_flags` - SAM flags that must all be present.
+/// * `filter_flags` - SAM flags that cause an immediate skip if any are present.
+/// * `excl_flags` - SAM flags that cause a skip if all are present.
+/// * `bed_intervals` - BED intervals to mask during processing.
 pub fn process_record(
     record: &Record,
     local_counts: &mut HashMap<MismatchKey, usize>,
@@ -616,7 +721,7 @@ pub fn process_record(
     }
 }
 
-/// Wrapper for processing a single record with standard parameters
+/// Process a single record using a shared [`ProcessingContext`] and [`ProcessingConfig`].
 #[inline]
 pub fn process_single_record(
     record: &Record,
@@ -646,8 +751,24 @@ pub fn process_single_record(
     );
 }
 
-/// Efficiently process a pair of overlapping reads in a single pass
-/// Avoids redundant CIGAR walking for overlap positions
+/// Process an overlapping read pair in a single pass.
+///
+/// This avoids redundant CIGAR traversal in the shared region while updating
+/// standard mismatch counts, overlap-specific counts, inconsistencies, genomic
+/// summaries, and optional depth information.
+///
+/// # Arguments
+/// * `record1` - First BAM record in the pair.
+/// * `record2` - Second BAM record in the pair.
+/// * `overlap_start` - Inclusive overlap start position.
+/// * `overlap_end` - Exclusive overlap end position.
+/// * `local_counts` - Non-overlap mismatch counts to update.
+/// * `overlap_counts` - Overlap-only mismatch counts to update.
+/// * `inconsistency_counts` - Overlap inconsistency counts to update.
+/// * `genomic_counts` - Optional genomic mismatch summary to update.
+/// * `genomic_depth` - Optional per-position depth counter.
+/// * `context` - Shared reference, target-name, and BED context.
+/// * `config` - Shared processing configuration.
 pub fn process_paired_reads_with_overlap(
     record1: &Record,
     record2: &Record,
@@ -826,6 +947,17 @@ pub fn process_paired_reads_with_overlap(
     }
 }
 
+/// Collect quality-score rescaling adjustments for mismatch positions.
+///
+/// # Arguments
+/// * `record` - BAM record whose quality scores should be examined.
+/// * `reference` - Reference genome sequences.
+/// * `tid_to_name` - BAM target ID to contig-name mapping.
+/// * `rescaling_matrix` - Per-read-position mismatch scaling factors.
+///
+/// # Notes
+/// The current implementation computes quality-score modifications but does not
+/// write them back into the record.
 pub fn rescale_phred_scores(
     record: &mut Record,
     reference: &ReferenceGenome,
