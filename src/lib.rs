@@ -1,15 +1,20 @@
-// Tasmanian Mismatch - BAM file mismatch analysis tool
-//
-// This library provides functionality for analyzing mismatches between
-// sequencing reads and a reference genome, with support for methylation-aware
-// analysis and paired-end read overlap detection.
+//! Tasmanian Mismatch library crate.
+//!
+//! This crate provides reusable building blocks for mismatch analysis on BAM
+//! files, including reference loading, BED masking/filtering, methylation-aware
+//! base normalization, and paired-read overlap handling.
 
-// Module declarations
+/// BED parsing and region masking/filtering utilities.
 pub mod bed;
+/// FASTA and BAM input helpers.
 pub mod io;
+/// Methylation-aware base adjustment logic.
 pub mod methylation;
+/// Core record-processing and mismatch-counting routines.
 pub mod processing;
+/// Shared types used throughout the library API.
 pub mod types;
+/// General helper functions for sequence and output handling.
 pub mod utils;
 
 // Re-export commonly used items

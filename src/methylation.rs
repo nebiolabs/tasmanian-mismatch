@@ -1,5 +1,22 @@
-/// Adjust base calling for methylation-aware analysis
-/// Converts C>T (read1) and G>A (read2) in appropriate contexts
+//! Methylation-aware base normalization.
+
+/// Adjust a read base for methylation-aware mismatch analysis.
+///
+/// Depending on configuration, this converts bisulfite-style `C>T` events in
+/// read 1 and `G>A` events in read 2 back to the corresponding reference base,
+/// optionally restricting that conversion to CpG context.
+///
+/// # Arguments
+/// * `read_base` - Read base after any strand normalization.
+/// * `ref_base` - Reference base after any strand normalization.
+/// * `read_num` - Read number within the pair, usually `1` or `2`.
+/// * `is_methylation` - Whether methylation-aware conversion is enabled.
+/// * `cpg_only` - Whether conversion should be restricted to CpG context.
+/// * `ref_seq` - Reference sequence for the current chromosome.
+/// * `genome_pos` - Genomic position within `ref_seq`.
+///
+/// # Returns
+/// * The base to use for mismatch accounting.
 pub fn adjust_methylation_base(
     read_base: char,
     ref_base: char,

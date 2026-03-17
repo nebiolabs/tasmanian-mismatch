@@ -1,6 +1,15 @@
+//! General sequence, coordinate, and output helpers.
+
 use std::collections::HashMap;
 
-/// Return the DNA complement of a base
+/// Return the DNA complement of a nucleotide base.
+///
+/// # Arguments
+/// * `base` - DNA base to complement.
+///
+/// # Returns
+/// * The complemented base for `A`, `C`, `G`, or `T`.
+/// * The original input for any other character.
 pub fn complement(base: char) -> char {
     match base {
         'A' => 'T',
@@ -11,7 +20,14 @@ pub fn complement(base: char) -> char {
     }
 }
 
-/// Convert a byte to a DNA base character
+/// Convert an encoded base byte to an uppercase DNA character.
+///
+/// # Arguments
+/// * `byte` - Base byte to decode.
+///
+/// # Returns
+/// * `Some(char)` for canonical `A`, `C`, `G`, or `T` bases.
+/// * `None` for any other byte.
 pub fn base_to_char(byte: u8) -> Option<char> {
     match byte {
         b'A' => Some('A'),
@@ -22,7 +38,17 @@ pub fn base_to_char(byte: u8) -> Option<char> {
     }
 }
 
-/// Adjust read position based on mode length for normalization --> INSTEAD OF THIS, USE THE START OF THE READ + TLEN. CALL IT REFERENCE_SPAN
+/// Normalize a read position using the modal read length.
+///
+/// # Arguments
+/// * `read_pos` - Position within the read.
+/// * `seq_len` - Observed read length.
+/// * `mode_len` - Modal read length used for right-half adjustment.
+///
+/// # Returns
+/// * The original position when no adjustment is needed.
+/// * A mode-adjusted position for bases in the right half of shorter reads.
+// instead of this we can use start of read + tlen and call it reference_span
 pub fn correct_read_len_with_mode(read_pos: usize, seq_len: usize, mode_len: usize) -> usize {
     if mode_len > 0 && read_pos > seq_len / 2 {
         read_pos + (mode_len - seq_len)
@@ -31,7 +57,14 @@ pub fn correct_read_len_with_mode(read_pos: usize, seq_len: usize, mode_len: usi
     }
 }
 
-/// Calculate genomic end position from CIGAR string
+/// Calculate the reference end position implied by a CIGAR string.
+///
+/// # Arguments
+/// * `start_pos` - Alignment start position in 0-based coordinates.
+/// * `cigar` - CIGAR string for the alignment.
+///
+/// # Returns
+/// * The exclusive genomic end position after consuming reference bases.
 pub fn calculate_end_pos(start_pos: i64, cigar: &rust_htslib::bam::record::CigarStringView) -> i64 {
     use rust_htslib::bam::record::Cigar::*;
     let mut end = start_pos;
@@ -46,7 +79,13 @@ pub fn calculate_end_pos(start_pos: i64, cigar: &rust_htslib::bam::record::Cigar
     end
 }
 
-/// Parse MD tag (currently unused but kept for potential future use)
+/// Parse an MD tag into mismatch and match spans.
+///
+/// # Arguments
+/// * `md_string` - MD tag string from a SAM/BAM alignment record.
+///
+/// # Returns
+/// * A tuple containing mismatch positions and match spans.
 #[allow(dead_code)]
 pub fn parse_md_tag(md_string: &str) -> (Vec<(usize, char)>, Vec<(usize, usize)>) {
     // Parse MD tag and return:
@@ -97,6 +136,9 @@ pub fn parse_md_tag(md_string: &str) -> (Vec<(usize, char)>, Vec<(usize, usize)>
 }
 
 /// Print the position-based mismatch table as CSV.
+///
+/// # Arguments
+/// * `position_map` - Nested mismatch counts keyed by read number and position.
 pub fn print_position_table(position_map: &HashMap<(u8, usize), HashMap<String, usize>>) {
     let mut all_mismatch_types: Vec<String> = position_map
         .values()
@@ -128,7 +170,10 @@ pub fn print_position_table(position_map: &HashMap<(u8, usize), HashMap<String, 
     }
 }
 
-/// Print the main output table with summary stats.
+/// Print the main mismatch table followed by summary statistics.
+///
+/// # Arguments
+/// * `position_map` - Nested mismatch counts keyed by read number and position.
 pub fn print_main_output(position_map: &HashMap<(u8, usize), HashMap<String, usize>>) {
     print_position_table(position_map);
     eprintln!(
