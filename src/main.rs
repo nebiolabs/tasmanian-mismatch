@@ -91,7 +91,7 @@ fn main() {
     let required_flags = args.required_flags;
     let filter_flags = args.filter_flags;
     let excl_flags = args.excl_flags;
-    let _insert_position_mode = args.insert_position_mode;
+    let insert_position_mode = args.insert_position_mode;
     let genomic_depth_threshold = args.genomic_depth_threshold;
     let bed_filter_whole_reads = args.bed_filter_mode == "filter";
 
@@ -106,11 +106,10 @@ fn main() {
         0
     };
 
-    if _insert_position_mode {
+    if insert_position_mode {
         eprintln!("Using --insert-position-mode. Not read position");
     }
 
-    // Set thread pool size
     if num_threads > 0 {
         rayon::ThreadPoolBuilder::new()
             .num_threads(num_threads)
@@ -118,13 +117,11 @@ fn main() {
             .expect("Failed to set thread pool size");
     }
 
-    // Load reference genome
     let mut reference = load_reference_genome(fasta_path);
 
-    // Load BED file and either:
-    // - mask reference bases in BED intervals (mask mode), or
-    // - keep BED intervals to exclude full reads that overlap them (filter mode).
-    let bed_for_filtering = if let Some(ref bed_path) = args.bed_file {
+    // - mask mode   = mask reference bases in reference genome
+    // - filter mode = keep BED intervals to exclude full reads that overlap them
+    let bed_for_filtering = if let Some(bed_path) = args.bed_file.as_ref() {
         eprintln!("Loading BED file: {}", bed_path);
         let regions = parse_bed_file(bed_path)
             .expect("Failed to load BED file. Please check the file path and format.");
@@ -211,6 +208,17 @@ fn main() {
         Arc::new(Mutex::new(HashMap::new()));
     let genomic_mismatch_counts: Arc<Mutex<HashMap<GenomicMismatchKey, (usize, usize)>>> =
         Arc::new(Mutex::new(HashMap::new()));
+    let processing_config = ProcessingConfig {
+        softclip_threshold,
+        min_base_quality,
+        is_methylation,
+        cpg_only,
+        mode_len,
+        min_map_quality,
+        required_flags,
+        filter_flags,
+        excl_flags,
+    };
 
     // Process regions in parallel
     let bam_path_arc = Arc::new(bam_path.to_string());
@@ -238,6 +246,11 @@ fn main() {
         } else {
             Vec::new()
         };
+        let processing_context = ProcessingContext {
+            reference: &ref_clone,
+            tid_to_name: &tid_clone,
+            bed_intervals: &chunk_bed_intervals,
+        };
 
         // Local counts for this region (no locking during processing)
         let mut region_counts = HashMap::new();
@@ -257,55 +270,53 @@ fn main() {
 
         // First pass: collect all reads in this region
         for result in bam.records() {
-            if let Ok(record) = result {
-                // Only process reads that START in this region to avoid duplicates
-                let read_start = record.pos();
-                if read_start >= *start && read_start < *end {
-                    // Check BED filtering if enabled (filter mode: skip entire reads)
-                    let should_skip = if bed_filter_whole_reads && !chunk_bed_intervals.is_empty() {
-                        // Skip entire read if it overlaps any BED interval
-                        let read_end = calculate_end_pos(record.pos(), &record.cigar());
-                        chunk_bed_intervals.iter().any(|interval| {
-                            record.pos() <= interval.end && read_end >= interval.start
-                        })
-                    } else {
-                        false // Mask mode: individual bases masked inside process_record
-                    };
+            let Ok(record) = result else {
+                continue;
+            };
 
-                    if !should_skip {
-                        if record.is_paired() && !record.is_unmapped() && !record.is_mate_unmapped() {
-                            // Group by qname for paired reads
-                            let qname = record.qname().to_vec();
-                            read_groups.entry(qname).or_insert_with(Vec::new).push(record);
-                        } else {
-                            // Process unpaired/unmapped reads immediately
-                            process_record(
-                                &record,
-                                &mut region_counts,
-                                Some(&mut genomic_region_counts),
-                                &ref_clone,
-                                &tid_clone,
-                                softclip_threshold,
-                                min_base_quality,
-                                is_methylation,
-                                cpg_only,
-                                mode_len,
-                                min_map_quality,
-                                Some(&mut genomic_position_depth),
-                                required_flags,
-                                filter_flags,
-                                excl_flags,
-                                &chunk_bed_intervals,
-                            );
-                            local_count += 1;
-                        }
-                    }
-                }
+            // Only process reads that START in this region to avoid duplicates.
+            let read_start = record.pos();
+            let starts_in_chunk = read_start >= *start && read_start < *end;
+            if !starts_in_chunk {
+                continue;
             }
+
+            // Filter mode: skip the whole read when it overlaps any BED interval.
+            let should_skip_whole_read = bed_filter_whole_reads
+                && !chunk_bed_intervals.is_empty()
+                && {
+                    let read_end = calculate_end_pos(record.pos(), &record.cigar());
+                    chunk_bed_intervals
+                        .iter()
+                        .any(|interval| record.pos() <= interval.end && read_end >= interval.start)
+                };
+            if should_skip_whole_read {
+                continue;
+            }
+
+            let has_mapped_pair =
+                record.is_paired() && !record.is_unmapped() && !record.is_mate_unmapped();
+            if has_mapped_pair {
+                // Group by qname for paired reads.
+                let qname = record.qname().to_vec();
+                read_groups.entry(qname).or_insert_with(Vec::new).push(record);
+                continue;
+            }
+
+            // Process unpaired reads immediately.
+            process_single_record(
+                &record,
+                &mut region_counts,
+                &mut genomic_region_counts,
+                &mut genomic_position_depth,
+                &processing_context,
+                processing_config,
+            );
+            local_count += 1;
         }
 
         // Second pass: process paired reads efficiently
-        for (_qname, mut records) in read_groups {
+        for (_qname, records) in read_groups {
             if records.len() == 2 {
                 // Both reads in pair found
                 let record1 = &records[0];
@@ -336,40 +347,20 @@ fn main() {
                         &mut inconsistency_region_counts,
                         Some(&mut genomic_region_counts),
                         Some(&mut genomic_position_depth),
-                        &ref_clone,
-                        &tid_clone,
-                        softclip_threshold,
-                        min_base_quality,
-                        is_methylation,
-                        cpg_only,
-                        mode_len,
-                        min_map_quality,
-                        required_flags,
-                        filter_flags,
-                        excl_flags,
-                        &chunk_bed_intervals,
+                        &processing_context,
+                        processing_config,
                     );
                     local_count += 2; // Both reads processed
                 } else {
                     // No overlap - process each read separately
                     for record in &records {
-                        process_record(
+                        process_single_record(
                             record,
                             &mut region_counts,
-                            Some(&mut genomic_region_counts),
-                            &ref_clone,
-                            &tid_clone,
-                            softclip_threshold,
-                            min_base_quality,
-                            is_methylation,
-                            cpg_only,
-                            mode_len,
-                            min_map_quality,
-                            Some(&mut genomic_position_depth),
-                            required_flags,
-                            filter_flags,
-                            excl_flags,
-                            &chunk_bed_intervals,
+                            &mut genomic_region_counts,
+                            &mut genomic_position_depth,
+                            &processing_context,
+                            processing_config,
                         );
                         local_count += 1;
                     }
@@ -377,23 +368,13 @@ fn main() {
             } else {
                 // Only one read in pair found (mate not in this chunk)
                 for record in &records {
-                    process_record(
+                    process_single_record(
                         record,
                         &mut region_counts,
-                        Some(&mut genomic_region_counts),
-                        &ref_clone,
-                        &tid_clone,
-                        softclip_threshold,
-                        min_base_quality,
-                        is_methylation,
-                        cpg_only,
-                        mode_len,
-                        min_map_quality,
-                        Some(&mut genomic_position_depth),
-                        required_flags,
-                        filter_flags,
-                        excl_flags,
-                        &chunk_bed_intervals,
+                        &mut genomic_region_counts,
+                        &mut genomic_position_depth,
+                        &processing_context,
+                        processing_config,
                     );
                     local_count += 1;
                 }
@@ -538,48 +519,15 @@ fn main() {
             .insert(key.mismatch_type.clone(), *count);
     }
 
-    // Get all unique mismatch types and sort them
-    let mut all_mismatch_types: Vec<String> = counts
+    // Get total unique mismatch types for reporting
+    let unique_mismatch_types: usize = counts
         .keys()
-        .map(|k| k.mismatch_type.clone())
+        .map(|k| &k.mismatch_type)
         .collect::<std::collections::HashSet<_>>()
-        .into_iter()
-        .collect();
-    all_mismatch_types.sort();
+        .len();
 
-    // Get all (read_num, position) pairs and sort them
-    let mut positions: Vec<(u8, usize)> = position_map.keys().copied().collect();
-    positions.sort();
-
-    // Print header
-    // print!("{:<10} {:<10}", "Read", "Position");
-    print!("Read,Position");
-    for mismatch_type in &all_mismatch_types {
-        // print!(" {:<10}", mismatch_type);
-        print!(",{}", mismatch_type);
-    }
-    println!();
-
-    // Print data rows
-    for &(read_num, pos) in positions.iter() {
-        // print!("{:<10} {:<10}", read_num, pos);
-        print!("{},{}", read_num, pos);
-
-        if let Some(mismatch_counts) = position_map.get(&(read_num, pos)) {
-            for mismatch_type in &all_mismatch_types {
-                let count = mismatch_counts.get(mismatch_type).unwrap_or(&0);
-                // print!(" {:<10}", count);
-                print!(",{}", count);
-            }
-        }
-        println!();
-    }
-
-    eprintln!(
-        "\nTotal unique (read, position) combinations: {}",
-        positions.len()
-    );
-    eprintln!("Total unique mismatch types: {}", all_mismatch_types.len());
+    print_main_output(&position_map);
+    eprintln!("Total unique mismatch types: {}", unique_mismatch_types);
 
     // Print overlap table if there are overlaps
     if overlap_pairs > 0 {
@@ -598,39 +546,12 @@ fn main() {
                     .insert(key.mismatch_type.clone(), *count);
             }
 
-            let mut overlap_mismatch_types: Vec<String> = overlap_counts
-                .keys()
-                .map(|k| k.mismatch_type.clone())
-                .collect::<std::collections::HashSet<_>>()
-                .into_iter()
-                .collect();
-            overlap_mismatch_types.sort();
-
-            let mut overlap_positions: Vec<(u8, usize)> =
-                overlap_position_map.keys().copied().collect();
-            overlap_positions.sort();
-
             println!("\n# Overlap Region Data");
-            print!("Read,Position");
-            for mismatch_type in &overlap_mismatch_types {
-                print!(",{}", mismatch_type);
-            }
-            println!();
-
-            for &(read_num, pos) in overlap_positions.iter() {
-                print!("{},{}", read_num, pos);
-                if let Some(mismatch_counts_map) = overlap_position_map.get(&(read_num, pos)) {
-                    for mismatch_type in &overlap_mismatch_types {
-                        let count = mismatch_counts_map.get(mismatch_type).unwrap_or(&0);
-                        print!(",{}", count);
-                    }
-                }
-                println!();
-            }
+            print_position_table(&overlap_position_map);
 
             eprintln!(
                 "\nTotal unique overlap (read, position) combinations: {}",
-                overlap_positions.len()
+                overlap_position_map.len()
             );
             eprintln!("{}", "=".repeat(80));
         }

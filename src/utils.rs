@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 /// Return the DNA complement of a base
 pub fn complement(base: char) -> char {
     match base {
@@ -92,4 +94,45 @@ pub fn parse_md_tag(md_string: &str) -> (Vec<(usize, char)>, Vec<(usize, usize)>
     }
 
     (mismatches, matches)
+}
+
+/// Print the position-based mismatch table as CSV.
+pub fn print_position_table(position_map: &HashMap<(u8, usize), HashMap<String, usize>>) {
+    let mut all_mismatch_types: Vec<String> = position_map
+        .values()
+        .flat_map(|m| m.keys().cloned())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+    all_mismatch_types.sort();
+
+    let mut positions: Vec<(u8, usize)> = position_map.keys().copied().collect();
+    positions.sort();
+
+    print!("Read,Position");
+    for mismatch_type in &all_mismatch_types {
+        print!(",{}", mismatch_type);
+    }
+    println!();
+
+    for &(read_num, pos) in &positions {
+        print!("{},{}", read_num, pos);
+
+        if let Some(mismatch_counts) = position_map.get(&(read_num, pos)) {
+            for mismatch_type in &all_mismatch_types {
+                let count = mismatch_counts.get(mismatch_type).unwrap_or(&0);
+                print!(",{}", count);
+            }
+        }
+        println!();
+    }
+}
+
+/// Print the main output table with summary stats.
+pub fn print_main_output(position_map: &HashMap<(u8, usize), HashMap<String, usize>>) {
+    print_position_table(position_map);
+    eprintln!(
+        "\nTotal unique (read, position) combinations: {}",
+        position_map.len()
+    );
 }
