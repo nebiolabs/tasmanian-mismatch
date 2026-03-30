@@ -9,7 +9,7 @@ A high-performance tool for the analysis of mismatches in high-throughput sequen
 - **Methylation-aware analysis** for bisulfite/EM-seq data
 - **Paired-end overlap detection** and inconsistency analysis
 - **Soft-clip handling** with configurable thresholds
-- **Genomic variant calling** with depth filtering
+- **Genomic variant calling** with depth filtering and no correction. Just raw data.
 - **SAM flag filtering** compatible with samtools
 
 ## Installation
@@ -23,7 +23,9 @@ cd /path/to/tasmanian-mismatch
 # Build release version
 cargo build --release
 
-# Binary will be at: ./target/release/rustmanian-mismatch
+# Binaries will be at:
+# ./target/release/rustmanian-mismatch
+# ./target/release/tasmanian-rescale-quality
 ```
 
 ### Dependencies
@@ -77,7 +79,7 @@ See [BED_FILTERING.md](BED_FILTERING.md) for detailed documentation.
 ### Methylation Analysis
 
 ```bash
-# Basic methylation mode (all C>T in read 1)
+# Basic methylation mode (all C>T in read 1 and G>A in read 2)
 rustmanian-mismatch input.bam reference.fa -m
 
 # CpG-only methylation mode
@@ -114,6 +116,52 @@ rustmanian-mismatch \
   > sample_mismatches.csv
 ```
 
+### Quality Rescaling Utility
+
+`tasmanian-rescale-quality` rewrites BAM base qualities using a tab-delimited rescaling matrix keyed by:
+- read number (1/2)
+- read position
+- reference base
+- observed read base
+
+Basic usage:
+
+```bash
+tasmanian-rescale-quality <BAM_FILE> <REFERENCE_FASTA> <MATRIX_TSV> [OPTIONS]
+```
+
+Options:
+
+```bash
+-t, --threads <N>     Number of threads (0 = all cores)
+-r, --region-size     Region size for parallel processing in bp (default: 10000000)
+-o, --output-file     Output BAM path (default: stdout)
+```
+
+Matrix format (tab-separated, 5 columns):
+
+```text
+read_num    position    ref_base    read_base    scaling_factor
+```
+
+Example:
+
+```bash
+tasmanian-rescale-quality \
+  input.bam \
+  reference.fa \
+  quality_matrix.tsv \
+  -t 8 \
+  -o rescaled.bam
+```
+
+Or run without installing from `cargo`:
+
+```bash
+cargo run --release --bin tasmanian-rescale-quality -- \
+  input.bam reference.fa quality_matrix.tsv -o rescaled.bam
+```
+
 ## Output Files
 
 ### Standard Output (CSV)
@@ -136,7 +184,7 @@ Additional sections in output:
 - Overlap region mismatches
 - Read pair inconsistencies
 
-## Performance
+## Performance --> Make a minimal benchmarking 
 
 - **Speed**: ~10-50x faster than Python version depending on dataset
 - **Memory**: Efficient memory usage with streaming BAM processing
@@ -165,17 +213,6 @@ rustmanian-mismatch input.bam reference.fa \
 # 4. Check potential variants
 cat potential_variants.tsv
 ```
-
-## Comparison with Python Version
-
-| Feature | Rust Version | Python Version |
-|---------|-------------|----------------|
-| Speed | ✓✓✓ | ✓ |
-| Memory | ✓✓✓ | ✓✓ |
-| Parallelization | Native | Limited |
-| BED filtering | ✓ (built-in) | ✓ (external) |
-| Methylation | ✓ | ✓ |
-| Dependencies | Minimal | Many |
 
 ## License
 

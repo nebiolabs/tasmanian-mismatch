@@ -95,9 +95,13 @@ pub fn parse_md_tag(md_string: &str) -> (Vec<(usize, char)>, Vec<(usize, usize)>
     let mut matches = Vec::new();
     let mut pos = 0;
     let mut num_str = String::new();
+    let mut in_deletion = false;
 
     for ch in md_string.chars() {
         if ch.is_numeric() {
+            if in_deletion {
+                in_deletion = false;
+            }
             num_str.push(ch);
         } else if ch == '^' {
             // Deletion - skip the deleted bases
@@ -109,7 +113,12 @@ pub fn parse_md_tag(md_string: &str) -> (Vec<(usize, char)>, Vec<(usize, usize)>
                 }
                 num_str.clear();
             }
+            in_deletion = true;
         } else if ch.is_alphabetic() {
+            if in_deletion {
+                // Deletion bases are present in reference only and should not affect read position.
+                continue;
+            }
             // This is a reference base at a mismatch position
             if !num_str.is_empty() {
                 let match_len = num_str.parse::<usize>().unwrap_or(0);
