@@ -8,3 +8,12 @@ rust-htslib = "0.47"
 rayon = "1.10"
 bio = "1.6"
 clap = { version = "4.5", features = ["derive"] }
+num_cpus = "1.16"
+
+[[bin]]
+name = "tasmanian-rescale-quality"
+path = "src/tasmanian-rescale-quality.rs"
+
+[[bin]]
+name = "rustmanian-mismatch"
+path = "src/main.rs"

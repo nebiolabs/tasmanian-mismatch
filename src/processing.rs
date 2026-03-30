@@ -223,7 +223,7 @@ pub fn compare_and_count(
             );
 
             let genomic_key = GenomicMismatchKey {
-                // e.g. key:value = {"chr1", "C>T", 123456}:  {{"C>T", 5, 1}, 23} vals=(_, read_position, counts)
+                // e.g. key:value = {"chr1", "C>T", 123456}:  {{"C>T", 5, 1}, 23} vals=(_, read_position, readnum), counts
                 chromosome: chromosome.to_string(),
                 mismatch_type: format!("{}>{}", strand_adjusted_ref_base, meth_adjusted_read_base),
                 genomic_position: genome_pos as i64,
@@ -1045,14 +1045,17 @@ pub fn rescale_phred_scores(
         }
     }
 
-    // Apply quality score modifications
+    // Rebuild variable-length record data with the rescaled quality values.
     if !qual_modifications.is_empty() {
         let mut new_qual = qual.to_vec();
         for (pos, new_score) in qual_modifications {
             new_qual[pos] = new_score;
         }
-        // Note: rust-htslib may not support modifying quality scores in-place
-        // This would require reconstructing the record with modified quality scores
-        // For now, we collect the modifications but cannot apply them without record.set()
+
+        let qname = record.qname().to_vec();
+        let cigar = record.cigar().take();
+        let seq = record.seq().as_bytes();
+
+        record.set(&qname, Some(&cigar), &seq, &new_qual);
     }
 }

@@ -27,6 +27,7 @@ pub use methylation::adjust_methylation_base;
 pub use processing::{
     compare_and_count, create_mismatch_key, get_overlap_region, process_overlap_region,
     process_paired_reads_with_overlap, process_record, process_single_record,
+    rescale_phred_scores,
     ProcessingConfig, ProcessingContext,
 };
 pub use types::{

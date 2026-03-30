@@ -150,18 +150,13 @@ fn main() {
         None
     };
 
-    // Now wrap reference in Arc for thread safety
+    // Wrap reference in Arc for thread safety
     let reference = Arc::new(reference);
-
-    // Print first and last 100 characters of each contig for verification
     eprintln!("\n{}", "=".repeat(80));
-    eprintln!("Checking contig sequences:");
-    eprintln!("{}", "=".repeat(80));
-
+    eprintln!("Checking contig sequences...");
     let mut contig_names: Vec<&String> = reference.keys().collect();
     contig_names.sort();
 
-    eprintln!("\n{}", "=".repeat(80));
     eprintln!("Reading BAM file: {}", bam_path);
     eprintln!("Region size: {} bp", region_size);
     eprintln!("Using {} threads", rayon::current_num_threads());
@@ -196,7 +191,7 @@ fn main() {
     }
 
     eprintln!("Created {} regions to process", regions.len());
-    drop(bam); // Close the initial BAM reader
+    drop(bam); // Close the initial BAM reader. Preparing now for parallel processing.
 
     let total_count = AtomicUsize::new(0);
     let mismatch_counts: Arc<Mutex<HashMap<MismatchKey, usize>>> =
@@ -208,6 +203,8 @@ fn main() {
         Arc::new(Mutex::new(HashMap::new()));
     let genomic_mismatch_counts: Arc<Mutex<HashMap<GenomicMismatchKey, (usize, usize)>>> =
         Arc::new(Mutex::new(HashMap::new()));
+
+    // DRY. Avoid repeating long argument lists in processing functions.
     let processing_config = ProcessingConfig {
         softclip_threshold,
         min_base_quality,
@@ -282,6 +279,9 @@ fn main() {
             }
 
             // Filter mode: skip the whole read when it overlaps any BED interval.
+            // If >100s bed intervals or too many reads per region, instead of O(n)
+            // I can make a 0 and 1 array for the region and check overlap in O(1)
+            // at the cost of memory.
             let should_skip_whole_read = bed_filter_whole_reads
                 && !chunk_bed_intervals.is_empty()
                 && {
