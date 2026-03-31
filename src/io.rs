@@ -39,31 +39,33 @@ pub fn load_reference_genome(fasta_path: &str) -> ReferenceGenome {
 /// * `sample_size` - Number of records to sample from the start of the BAM stream.
 ///
 /// # Returns
-/// * The most frequent read length in the sampled records.
-/// * Returns `0` if no valid records are observed in the sample.
+/// * The maximum read length (ideally the most common) in the sampled records.
+/// * Returns a `default_len` if no valid records are observed in the sample.
 ///
 /// # Panics
 /// * If the BAM file cannot be opened.
-pub fn compute_read_len_mode_from_sample_bam(bam_path: &str, sample_size: usize) -> usize {
+pub fn compute_read_len_max_from_sample_bam(bam_path: &str, sample_size: usize, default_len: usize) -> usize {
     let mut bam =
         Reader::from_path(bam_path).expect("Failed to open BAM file for read length sampling");
 
-    let mut length_counts: HashMap<usize, usize> = HashMap::new();
+    let mut max_length: usize = 0;
 
-    for (_i, result) in bam.records().enumerate().take(sample_size) {
-        if let Ok(record) = result {
-            let read_len = record.seq().len();
-            *length_counts.entry(read_len).or_insert(0) += 1;
+    for result in bam.records().take(sample_size) {
+        match result {
+            Err(_) => {
+                eprintln!("We couldn't sample the Bam file for read length estimation. Defaulting to {}bp", default_len);
+                return default_len;
+            }
+            Ok(record) => {
+                let read_len = record.seq().len();
+                if read_len > max_length {
+                    max_length = read_len;
+                }
+            }
         }
     }
 
-    // Find mode of read lengths
-    let mode_length = length_counts
-        .iter()
-        .max_by_key(|&(_, count)| count)
-        .map(|(&key, _)| key)
-        .unwrap_or(0);
-
-    eprintln!("Computed mode read length from sample: {}", mode_length);
-    mode_length
+    let result_len = if max_length == 0 { default_len } else { max_length };
+    eprintln!("Computed max read length from sample: {}", result_len);
+    result_len
 }

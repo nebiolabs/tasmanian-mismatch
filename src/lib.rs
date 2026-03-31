@@ -22,7 +22,7 @@ pub use bed::{
     filter_bed_for_region, mask_reference_with_bed, parse_bed_file, position_overlaps_intervals,
     BedInterval, BedRegions,
 };
-pub use io::{compute_read_len_mode_from_sample_bam, load_reference_genome};
+pub use io::{compute_read_len_max_from_sample_bam, load_reference_genome};
 pub use methylation::adjust_methylation_base;
 pub use processing::{
     compare_and_count, create_mismatch_key, get_overlap_region, process_overlap_region,
