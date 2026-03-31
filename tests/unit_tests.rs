@@ -44,7 +44,7 @@ mod tests {
         let header = Header::new();
         let header_view = HeaderView::from_header(&header);
 
-        let sam_line = b"read1\t0\t*\t101\t60\t10M2D5M3I4N\t*\t0\t0\tACGTACGTACGTACGTAC\t*";
+        let sam_line: &[u8] = b"read1\t0\t*\t101\t60\t10M2D5M3I4N\t*\t0\t0\tACGTACGTACGTACGTAC\t*";
         let record = Record::from_sam(&header_view, sam_line).unwrap();
         let start_pos = record.pos();
         let cigar_view = record.cigar();
@@ -56,7 +56,7 @@ mod tests {
     }
 
     #[test]
-    fn test_compute_read_len_mode_from_sample_bam() {
+    fn test_compute_read_len_max_from_sample_bam() {
         // Create a temporary BAM file with known read lengths
         let bam_path = "test_sample.bam";
         let header = Header::new();
@@ -80,13 +80,13 @@ mod tests {
         }
 
         // Compute mode read length from sample BAM
-        let mode_len = compute_read_len_mode_from_sample_bam(bam_path, 10);
+        let mode_len = compute_read_len_max_from_sample_bam(bam_path, 10, 300);
 
         // Clean up temporary BAM file
         std::fs::remove_file(bam_path).unwrap();
 
-        // The mode read length should be 10 (appears 3 times)
-        assert_eq!(mode_len, 10);
+        // The max read length should be 20
+        assert_eq!(mode_len, 20);
     }
 
     #[test]
@@ -148,10 +148,10 @@ mod tests {
         let header_view = HeaderView::from_header(&header);
 
         // Create a test record
-        let sam_line = b"read1\t0\t*\t101\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII";
+        let sam_line: &[u8] = b"read1\t0\t*\t101\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII";
         let record = Record::from_sam(&header_view, sam_line).unwrap();
 
-        let ref_seq = b"AGGAACGTAC"; // Has mismatch at position 2: read has G, ref has G (actually match at 2, mismatch at 1)
+        let ref_seq: &[u8] = b"AGGAACGTAC"; // Has mismatch at position 2: read has G, ref has G (actually match at 2, mismatch at 1)
         let mut local_counts = HashMap::new();
         let mut genomic_region_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> =
             HashMap::new();
@@ -180,7 +180,7 @@ mod tests {
 
     #[test]
     fn test_create_mismatch_key() {
-        let ref_seq = b"GCGTACGTAC";
+        let ref_seq: &[u8] = b"GCGTACGTAC";
 
         // Test creating a mismatch key for position 0 (forward strand, no methylation)
         let key = create_mismatch_key(
@@ -208,13 +208,13 @@ mod tests {
 
         // Create two overlapping reads
         // Read1: pos 100 (1-based=101), 20M (covers 100-119 in 0-based)
-        let sam_line1 =
+        let sam_line1: &[u8] =
             b"read1\t99\t*\t101\t60\t20M\t*\t111\t30\tACGTACGTACGTACGTACGT\tIIIIIIIIIIIIIIIIIIII";
         let read1 = Record::from_sam(&header_view, sam_line1).unwrap();
 
         // Read2: pos 110 (1-based=111), 20M (covers 110-129 in 0-based)
         // This overlaps with read1 from position 110 to 119 (10 bases)
-        let sam_line2 =
+        let sam_line2: &[u8] =
             b"read1\t147\t*\t111\t60\t20M\t*\t101\t-30\tTGCATGCATGCATGCATGCA\tIIIIIIIIIIIIIIIIIIII";
         let read2 = Record::from_sam(&header_view, sam_line2).unwrap();
 
@@ -245,11 +245,11 @@ mod tests {
 
         // Create overlapping paired reads with a mismatch
         // Read1: forward, pos 100
-        let sam_line1 = b"read1\t99\t*\t101\t60\t10M\t*\t111\t20\tACGTACGTAC\tIIIIIIIIII\tMD:Z:10";
+        let sam_line1: &[u8] = b"read1\t99\t*\t101\t60\t10M\t*\t111\t20\tACGTACGTAC\tIIIIIIIIII\tMD:Z:10";
         let read1 = Record::from_sam(&header_view, sam_line1).unwrap();
 
         // Read2: reverse, pos 110, overlaps last base of read1
-        let sam_line2 =
+        let sam_line2: &[u8] =
             b"read1\t147\t*\t111\t60\t10M\t*\t101\t-20\tGTACGTACGT\tIIIIIIIIII\tMD:Z:10";
         let read2 = Record::from_sam(&header_view, sam_line2).unwrap();
 
@@ -281,7 +281,7 @@ mod tests {
             0,     // required_flags
             0,     // filter_flags
             0,     // excl_flags
-            &[],   // no bed intervals
+            &[] as &[BedInterval],   // no bed intervals
         );
 
         // Should have processed the overlap region
@@ -295,7 +295,7 @@ mod tests {
         let header_view = HeaderView::from_header(&header);
 
         // Create a simple record - just verify it doesn't panic
-        let sam_line = b"read1\t0\t*\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII\tMD:Z:5A4";
+        let sam_line: &[u8] = b"read1\t0\t*\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII\tMD:Z:5A4";
         let record = Record::from_sam(&header_view, sam_line).unwrap();
 
         let mut reference_genome = HashMap::new();
@@ -323,7 +323,7 @@ mod tests {
             0,     // required_flags
             0,     // filter_flags
             0,     // excl_flags
-            &[],   // no bed intervals
+            &[] as &[BedInterval],   // no bed intervals
         );
 
         // Function completed successfully (unmapped reads may result in no counts)
@@ -512,7 +512,7 @@ mod tests {
         let header = Header::new();
         let header_view = HeaderView::from_header(&header);
 
-        let sam_line = b"read1\t0\t*\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII";
+        let sam_line: &[u8] = b"read1\t0\t*\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII";
         let record = Record::from_sam(&header_view, sam_line).unwrap();
 
         let mut reference_genome = HashMap::new();
@@ -528,7 +528,7 @@ mod tests {
         let context = ProcessingContext {
             reference: &reference_genome,
             tid_to_name: &tid_to_name,
-            bed_intervals: &[],
+            bed_intervals: &[] as &[BedInterval],
         };
 
         let config = ProcessingConfig {
@@ -563,11 +563,11 @@ mod tests {
         let header_view = HeaderView::from_header(&header);
 
         // Read1: pos 100, 20M
-        let sam_line1 = b"read1\t99\t*\t101\t60\t20M\t*\t111\t30\tACGTACGTACGTACGTACGT\tIIIIIIIIIIIIIIIIIIII";
+        let sam_line1: &[u8] = b"read1\t99\t*\t101\t60\t20M\t*\t111\t30\tACGTACGTACGTACGTACGT\tIIIIIIIIIIIIIIIIIIII";
         let read1 = Record::from_sam(&header_view, sam_line1).unwrap();
 
         // Read2: pos 110, 20M (overlaps with read1)
-        let sam_line2 = b"read1\t147\t*\t111\t60\t20M\t*\t101\t-30\tTGCATGCATGCATGCATGCA\tIIIIIIIIIIIIIIIIIIII";
+        let sam_line2: &[u8] = b"read1\t147\t*\t111\t60\t20M\t*\t101\t-30\tTGCATGCATGCATGCATGCA\tIIIIIIIIIIIIIIIIIIII";
         let read2 = Record::from_sam(&header_view, sam_line2).unwrap();
 
         let mut reference_genome = HashMap::new();
@@ -623,7 +623,7 @@ mod tests {
         let header = Header::new();
         let header_view = HeaderView::from_header(&header);
 
-        let sam_line = b"read1\t0\t*\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII";
+        let sam_line: &[u8] = b"read1\t0\t*\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII";
         let mut record = Record::from_sam(&header_view, sam_line).unwrap();
 
         let mut reference_genome = HashMap::new();
@@ -645,7 +645,7 @@ mod tests {
         let header = Header::new();
         let header_view = HeaderView::from_header(&header);
 
-        let sam_line = b"read1\t0\t*\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII";
+        let sam_line: &[u8] = b"read1\t0\t*\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII";
         let mut record = Record::from_sam(&header_view, sam_line).unwrap();
 
         let mut reference_genome = HashMap::new();

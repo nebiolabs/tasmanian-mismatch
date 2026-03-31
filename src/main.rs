@@ -44,9 +44,9 @@ struct Args {
     #[arg(long)]
     cpg_only: bool,
 
-    /// Use read length mode to renumber read positions (can stack start and end of reads)
+    /// Use read length max to renumber read positions (can stack start and end of reads)
     #[arg(long)]
-    use_read_len_mode: bool,
+    use_read_len_max: bool,
 
     /// Use insert position mode (not read position)
     #[arg(long)]
@@ -95,13 +95,13 @@ fn main() {
     let genomic_depth_threshold = args.genomic_depth_threshold;
     let bed_filter_whole_reads = args.bed_filter_mode == "filter";
 
-    let mode_len = if args.use_read_len_mode {
-        let mode = compute_read_len_mode_from_sample_bam(bam_path, 100000);
+    let max_len = if args.use_read_len_max {
+        let max_l = compute_read_len_max_from_sample_bam(bam_path, 100000, 300);
         eprintln!(
-            "Using mode read length: {} to renumber read positions",
-            mode
+            "Using max read length: {} to renumber read positions",
+            max_l
         );
-        mode
+        max_l
     } else {
         0
     };
@@ -210,7 +210,7 @@ fn main() {
         min_base_quality,
         is_methylation,
         cpg_only,
-        mode_len,
+        mode_len: max_len,
         min_map_quality,
         required_flags,
         filter_flags,
