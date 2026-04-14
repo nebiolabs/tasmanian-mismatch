@@ -1,6 +1,8 @@
 //! General sequence, coordinate, and output helpers.
 
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufWriter, Write};
 
 /// Return the DNA complement of a nucleotide base.
 ///
@@ -49,11 +51,21 @@ pub fn base_to_char(byte: u8) -> Option<char> {
 /// * The original position when no adjustment is needed.
 /// * A mode-adjusted position for bases in the right half of shorter reads.
 // instead of this we can use start of read + tlen and call it reference_span
-pub fn correct_read_len_with_mode(read_pos: usize, seq_len: usize, mode_len: usize) -> usize {
-    if mode_len > 0 && read_pos > seq_len / 2 {
-        read_pos + (mode_len - seq_len)
-    } else {
-        read_pos
+pub fn correct_read_len_with_mode(read_pos: usize, seq_len: usize, mode_len: usize, correction_type: &str, read_num: u8) -> usize {
+    match correction_type {
+        "split_read" => {
+            if mode_len > 0 && read_pos > seq_len / 2 {
+                read_pos + (mode_len - seq_len)
+            } else {
+                read_pos
+            }
+        },
+        "insert_mode" => match read_num {
+            1 => read_pos, // No adjustment for read 1 in insert mode
+            2 => (2 * mode_len + 10) - (seq_len - read_pos), // count from end.
+            _ => read_pos, // Default to no adjustment for unrecognized read numbers
+        },
+        _ => read_pos, // Default to no adjustment for unrecognized correction types
     }
 }
 
@@ -148,45 +160,74 @@ pub fn parse_md_tag(md_string: &str) -> (Vec<(usize, char)>, Vec<(usize, usize)>
 ///
 /// # Arguments
 /// * `position_map` - Nested mismatch counts keyed by read number and position.
-pub fn print_position_table(position_map: &HashMap<(u8, usize), HashMap<String, usize>>) {
-    let mut all_mismatch_types: Vec<String> = position_map
-        .values()
-        .flat_map(|m| m.keys().cloned())
-        .collect::<std::collections::HashSet<_>>()
-        .into_iter()
-        .collect();
-    all_mismatch_types.sort();
+/// * `output_path` - Optional output path. When `None`, writes to stdout.
+pub fn print_position_table(
+    position_map: &HashMap<(u8, usize), HashMap<String, usize>>,
+    output_path: Option<&str>,
+) -> std::io::Result<()> {
+    fn write_position_table<W: Write>(
+        writer: &mut W,
+        position_map: &HashMap<(u8, usize), HashMap<String, usize>>,
+    ) -> std::io::Result<()> {
+        let mut all_mismatch_types: Vec<String> = position_map
+            .values()
+            .flat_map(|m| m.keys().cloned())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+        all_mismatch_types.sort();
 
-    let mut positions: Vec<(u8, usize)> = position_map.keys().copied().collect();
-    positions.sort();
+        let mut positions: Vec<(u8, usize)> = position_map.keys().copied().collect();
+        positions.sort();
 
-    print!("Read,Position");
-    for mismatch_type in &all_mismatch_types {
-        print!(",{}", mismatch_type);
-    }
-    println!();
-
-    for &(read_num, pos) in &positions {
-        print!("{},{}", read_num, pos);
-
-        if let Some(mismatch_counts) = position_map.get(&(read_num, pos)) {
-            for mismatch_type in &all_mismatch_types {
-                let count = mismatch_counts.get(mismatch_type).unwrap_or(&0);
-                print!(",{}", count);
-            }
+        write!(writer, "Read,Position")?;
+        for mismatch_type in &all_mismatch_types {
+            write!(writer, ",{}", mismatch_type)?;
         }
-        println!();
+        writeln!(writer)?;
+
+        for &(read_num, pos) in &positions {
+            write!(writer, "{},{}", read_num, pos)?;
+
+            if let Some(mismatch_counts) = position_map.get(&(read_num, pos)) {
+                for mismatch_type in &all_mismatch_types {
+                    let count = mismatch_counts.get(mismatch_type).unwrap_or(&0);
+                    write!(writer, ",{}", count)?;
+                }
+            }
+            writeln!(writer)?;
+        }
+
+        Ok(())
     }
+
+    if let Some(path) = output_path {
+        let file = File::create(path)?;
+        let mut writer = BufWriter::new(file);
+        write_position_table(&mut writer, position_map)?;
+    } else {
+        let stdout = std::io::stdout();
+        let mut writer = stdout.lock();
+        write_position_table(&mut writer, position_map)?;
+    }
+
+    Ok(())
 }
 
 /// Print the main mismatch table followed by summary statistics.
 ///
 /// # Arguments
 /// * `position_map` - Nested mismatch counts keyed by read number and position.
-pub fn print_main_output(position_map: &HashMap<(u8, usize), HashMap<String, usize>>) {
-    print_position_table(position_map);
+/// * `output_path` - Optional output path. When `None`, writes to stdout.
+pub fn print_main_output(
+    position_map: &HashMap<(u8, usize), HashMap<String, usize>>,
+    output_path: Option<&str>,
+) -> std::io::Result<()> {
+    print_position_table(position_map, output_path)?;
     eprintln!(
         "\nTotal unique (read, position) combinations: {}",
         position_map.len()
     );
+
+    Ok(())
 }

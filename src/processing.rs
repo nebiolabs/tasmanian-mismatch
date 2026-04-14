@@ -34,6 +34,8 @@ pub struct ProcessingConfig {
     pub filter_flags: u16,
     /// SAM flags that cause a record to be skipped if all are present.
     pub excl_flags: u16,
+    /// Whether to use insert position mode (fragment-level instead of read-level).
+    pub use_insert_mode: bool,
 }
 
 /// Shared references needed while processing records within a region.
@@ -44,6 +46,29 @@ pub struct ProcessingContext<'a> {
     pub tid_to_name: &'a HashMap<i32, String>,
     /// BED intervals relevant to the current processing region.
     pub bed_intervals: &'a [crate::bed::BedInterval],
+}
+
+/// Canonicalize a mismatch by ensuring the reference base is earlier in the A<C<G<T order.
+///
+/// This ensures complement pairs like C>T and G>A both report as C>T.
+/// Returns the canonical mismatch in ref>alt form.
+fn canonicalize_mismatch(ref_base: char, read_base: char) -> String {
+    let complement_ref = complement(ref_base);
+    let complement_read = complement(read_base);
+
+    let base_order = |b: char| match b {
+        'A' => 0,
+        'C' => 1,
+        'G' => 2,
+        'T' => 3,
+        _ => 4,
+    };
+
+    if base_order(ref_base) <= base_order(complement_ref) {
+        format!("{}>{}", ref_base, read_base)
+    } else {
+        format!("{}>{}", complement_ref, complement_read)
+    }
 }
 
 /// Build a [`MismatchKey`] after strand and methylation normalization.
@@ -60,6 +85,7 @@ pub struct ProcessingContext<'a> {
 /// * `ref_seq` - Reference sequence for the current contig.
 /// * `genome_pos` - Genomic position within `ref_seq`.
 /// * `mode_len` - Modal read length for optional position normalization.
+/// * `use_insert_mode` - Whether to use insert position mode (fragment-level) instead of split read mode.
 ///
 /// # Returns
 /// * A normalized [`MismatchKey`] suitable for counting.
@@ -75,6 +101,7 @@ pub fn create_mismatch_key(
     ref_seq: &[u8],
     genome_pos: usize,
     mode_len: usize,
+    use_insert_mode: bool,
 ) -> MismatchKey {
     // Apply reverse complement if read is mapped to reverse strand
     let strand_adjusted_read_base = if is_reverse {
@@ -103,7 +130,12 @@ pub fn create_mismatch_key(
     } else {
         r_pos
     };
-    let mode_adjusted_r_pos = correct_read_len_with_mode(adjusted_r_pos, seq_len, mode_len);
+    let correction_type = if use_insert_mode {
+        "insert_mode"
+    } else {
+        "split_read"
+    };
+    let mode_adjusted_r_pos = correct_read_len_with_mode(adjusted_r_pos, seq_len, mode_len, correction_type, read_num);
 
     MismatchKey {
         mismatch_type: format!(
@@ -151,6 +183,7 @@ pub fn compare_and_count(
     genomic_counts: Option<&mut HashMap<GenomicMismatchKey, GenomicMismatchValue>>,
     chromosome: &str,
     mode_len: usize,
+    use_insert_mode: bool,
 ) {
     let seq_len = seq.len();
     let ref_len = ref_seq.len();
@@ -196,6 +229,7 @@ pub fn compare_and_count(
         ref_seq,
         genome_pos,
         mode_len,
+        use_insert_mode,
     );
     *local_counts.entry(key.clone()).or_insert(0) += 1;
 
@@ -323,6 +357,104 @@ fn is_bed_masked(bed_intervals: &[crate::bed::BedInterval], genome_pos: usize) -
     !bed_intervals.is_empty() && position_overlaps_intervals(bed_intervals, genome_pos as i64)
 }
 
+/// Count eligible soft-clip mismatches for a single soft-clip CIGAR operation.
+///
+/// Mismatches are only added when the soft-clipped segment meets `softclip_threshold`
+/// match rate against the reference.
+fn count_softclip_mismatches(
+    seq: &rust_htslib::bam::record::Seq,
+    qual: &[u8],
+    ref_seq: &[u8],
+    read_pos: usize,
+    ref_pos: usize,
+    softclip_len: u32,
+    is_reverse: bool,
+    read_num: u8,
+    min_base_quality: u8,
+    softclip_threshold: f64,
+    is_methylation: bool,
+    cpg_only: bool,
+    mode_len: usize,
+    bed_intervals: &[crate::bed::BedInterval],
+    local_counts: &mut HashMap<MismatchKey, usize>,
+    use_insert_mode: bool,
+) {
+    let mut total_bases = 0usize;
+    let mut matching_bases = 0usize;
+    let mut temp_mismatch_keys = Vec::<MismatchKey>::new();
+    let seq_len = seq.len();
+
+    for i in 0..softclip_len {
+        let r_pos = read_pos + i as usize;
+        let genome_pos = if read_pos == 0 {
+            // Soft-clip at beginning of read.
+            if ref_pos >= (softclip_len - i) as usize {
+                ref_pos - (softclip_len - i) as usize
+            } else {
+                continue;
+            }
+        } else {
+            // Soft-clip at end of read.
+            ref_pos + i as usize
+        };
+
+        if r_pos >= seq_len || genome_pos >= ref_seq.len() {
+            continue;
+        }
+
+        if is_bed_masked(bed_intervals, genome_pos) {
+            continue;
+        }
+
+        if r_pos >= qual.len() || qual[r_pos] < min_base_quality {
+            continue;
+        }
+
+        let read_base = match seq[r_pos] {
+            b'A' => 'A',
+            b'C' => 'C',
+            b'G' => 'G',
+            b'T' => 'T',
+            _ => continue,
+        };
+
+        let ref_base = match ref_seq[genome_pos] {
+            b'A' | b'a' => 'A',
+            b'C' | b'c' => 'C',
+            b'G' | b'g' => 'G',
+            b'T' | b't' => 'T',
+            _ => continue,
+        };
+
+        total_bases += 1;
+        if read_base == ref_base {
+            matching_bases += 1;
+        } else {
+            let key = create_mismatch_key(
+                read_base,
+                ref_base,
+                r_pos,
+                seq_len,
+                is_reverse,
+                read_num,
+                is_methylation,
+                cpg_only,
+                ref_seq,
+                genome_pos,
+                mode_len,
+                use_insert_mode,
+            );
+            temp_mismatch_keys.push(key);
+        }
+    }
+
+    if total_bases > 0 && (matching_bases as f64 / total_bases as f64) >= softclip_threshold {
+        for key in temp_mismatch_keys {
+            *local_counts.entry(key).or_insert(0) += 1;
+        }
+    }
+}
+
 #[inline]
 fn should_skip_record(
     record: &Record,
@@ -399,6 +531,7 @@ pub fn process_overlap_region(
     filter_flags: u16,
     excl_flags: u16,
     bed_intervals: &[crate::bed::BedInterval],
+    use_insert_mode: bool,
 ) {
     // Build genome_pos -> (read_pos, base, qual) mapping for both reads
     let mut read1_map: HashMap<usize, (usize, u8, u8)> = HashMap::new();
@@ -505,6 +638,7 @@ pub fn process_overlap_region(
                     None,
                     chr_name,
                     mode_len,
+                    use_insert_mode,
                 );
             },
         );
@@ -550,6 +684,7 @@ pub fn process_record(
     filter_flags: u16,
     excl_flags: u16,
     bed_intervals: &[crate::bed::BedInterval],
+    use_insert_mode: bool,
 ) {
     if should_skip_record(
         record,
@@ -616,6 +751,7 @@ pub fn process_record(
                         genomic_counts.as_deref_mut(),
                         chr_name,
                         mode_len,
+                        use_insert_mode,
                     );
 
                     // Update genomic depth counts.
@@ -628,86 +764,24 @@ pub fn process_record(
                 ref_pos += *len as usize;
             }
             SoftClip(len) => {
-                // Soft-clipped bases - only count mismatches if at least 66% of bases match reference
-                let mut total_bases = 0;
-                let mut matching_bases = 0;
-                let mut temp_mismatch_keys = Vec::<MismatchKey>::new();
-                let seq_len = seq.len();
-
-                for i in 0..*len {
-                    let r_pos = read_pos + i as usize;
-                    let genome_pos = if read_pos == 0 {
-                        // beginning of read
-                        if ref_pos >= (*len - i) as usize {
-                            ref_pos - (*len - i) as usize
-                        } else {
-                            continue;
-                        }
-                    } else {
-                        // end of read
-                        ref_pos + i as usize
-                    };
-
-                    if r_pos >= seq_len || genome_pos >= ref_seq.len() {
-                        continue;
-                    }
-
-                    // Skip if position overlaps BED region (mask mode)
-                    if is_bed_masked(bed_intervals, genome_pos) {
-                        continue;
-                    }
-
-                    // Skip bases with low quality
-                    if r_pos >= qual.len() || qual[r_pos] < min_base_quality {
-                        continue;
-                    }
-
-                    let read_base = match seq[r_pos] {
-                        b'A' => 'A',
-                        b'C' => 'C',
-                        b'G' => 'G',
-                        b'T' => 'T',
-                        _ => continue,
-                    };
-
-                    let ref_base = match ref_seq[genome_pos] {
-                        b'A' | b'a' => 'A',
-                        b'C' | b'c' => 'C',
-                        b'G' | b'g' => 'G',
-                        b'T' | b't' => 'T',
-                        _ => continue,
-                    };
-
-                    total_bases += 1;
-                    if read_base == ref_base {
-                        matching_bases += 1;
-                    } else {
-                        // Create MismatchKey using helper function
-                        let key = create_mismatch_key(
-                            read_base,
-                            ref_base,
-                            r_pos,
-                            seq_len,
-                            record.is_reverse(),
-                            read_num,
-                            is_methylation,
-                            cpg_only,
-                            ref_seq,
-                            genome_pos,
-                            mode_len,
-                        );
-                        temp_mismatch_keys.push(key);
-                    }
-                }
-
-                // Only add mismatches to counts if at least 66% (default) match
-                if total_bases > 0
-                    && (matching_bases as f64 / total_bases as f64) >= softclip_threshold
-                {
-                    for key in temp_mismatch_keys {
-                        *local_counts.entry(key).or_insert(0) += 1;
-                    }
-                }
+                count_softclip_mismatches(
+                    &seq,
+                    &qual,
+                    ref_seq,
+                    read_pos,
+                    ref_pos,
+                    *len,
+                    record.is_reverse(),
+                    read_num,
+                    min_base_quality,
+                    softclip_threshold,
+                    is_methylation,
+                    cpg_only,
+                    mode_len,
+                    bed_intervals,
+                    local_counts,
+                    use_insert_mode,
+                );
                 read_pos += *len as usize;
             }
             Ins(len) => {
@@ -748,6 +822,7 @@ pub fn process_single_record(
         config.filter_flags,
         config.excl_flags,
         context.bed_intervals,
+        config.use_insert_mode,
     );
 }
 
@@ -868,6 +943,7 @@ pub fn process_paired_reads_with_overlap(
                                     None, // Don't track genomic counts in overlap
                                     chr_name,
                                     config.mode_len,
+                                    config.use_insert_mode,
                                 );
 
                                 // Update genomic depth for overlap positions
@@ -900,6 +976,7 @@ pub fn process_paired_reads_with_overlap(
                                 }, // Only track genomic counts once
                                 chr_name,
                                 config.mode_len,
+                                config.use_insert_mode,
                             );
 
                             // Update genomic depth
@@ -912,8 +989,24 @@ pub fn process_paired_reads_with_overlap(
                     ref_pos += *len as usize;
                 }
                 SoftClip(len) => {
-                    // Handle softclips (simplified - not processing to avoid complexity)
-                    // In overlap regions, softclips are unlikely to be reliable anyway
+                    count_softclip_mismatches(
+                        &seq,
+                        &qual,
+                        ref_seq,
+                        read_pos,
+                        ref_pos,
+                        *len,
+                        record.is_reverse(),
+                        read_num,
+                        config.min_base_quality,
+                        config.softclip_threshold,
+                        config.is_methylation,
+                        config.cpg_only,
+                        config.mode_len,
+                        context.bed_intervals,
+                        local_counts,
+                        config.use_insert_mode,
+                    );
                     read_pos += *len as usize;
                 }
                 Ins(len) => {
@@ -1058,4 +1151,34 @@ pub fn rescale_phred_scores(
 
         record.set(&qname, Some(&cigar), &seq, &new_qual);
     }
+}
+
+pub fn merge_reads_into_insert_position_mode(
+    region_counts: &HashMap<MismatchKey, usize>,
+    max_len: usize // read_max_len
+) -> HashMap<(String, usize), usize>{
+    let mut insert_position_counts: HashMap<(String, usize), usize> = HashMap::new();
+
+    // example key:val = MismatchKey { mismatch_type: "C>T", read_position: 12, read_num: 1 }: 21
+    for (key, count) in region_counts.iter() {
+        let insert_pos = if key.read_num == 1 {
+            key.read_position
+        } else {
+            max_len * 2 + 10 - key.read_position  // 10 is arbitrary separation between reads
+        };
+
+        eprintln!("Processing key: {:?}, count: {}, insert_pos: {}", key, count, insert_pos);
+
+        // Canonicalize the mismatch type (e.g., both "C>T" and "G>A" become "C>T")
+        let canonical_mismatch = if key.mismatch_type.len() == 3 && key.mismatch_type.chars().nth(1) == Some('>') {
+            let chars: Vec<char> = key.mismatch_type.chars().collect();
+            canonicalize_mismatch(chars[0], chars[2])
+        } else {
+            key.mismatch_type.clone()
+        };
+
+        let insert_key = (canonical_mismatch, insert_pos as usize);
+        *insert_position_counts.entry(insert_key).or_insert(0) += count;
+    }
+    insert_position_counts
 }

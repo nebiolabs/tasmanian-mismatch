@@ -30,13 +30,13 @@ mod tests {
     #[test]
     fn test_correct_read_len_with_mode() {
         // No mode correction
-        assert_eq!(correct_read_len_with_mode(10, 100, 0), 10);
+        assert_eq!(correct_read_len_with_mode(10, 100, 0, "split_read", 1), 10);
 
         // With mode correction for second half of read
-        assert_eq!(correct_read_len_with_mode(60, 100, 150), 110);
+        assert_eq!(correct_read_len_with_mode(60, 100, 150, "split_read", 1), 110);
 
         // No correction for first half even with mode
-        assert_eq!(correct_read_len_with_mode(40, 100, 150), 40);
+        assert_eq!(correct_read_len_with_mode(40, 100, 150, "split_read", 1), 40);
     }
 
     #[test]
@@ -80,7 +80,7 @@ mod tests {
         }
 
         // Compute mode read length from sample BAM
-        let mode_len = compute_read_len_max_from_sample_bam(bam_path, 10, 300);
+        let mode_len = compute_read_len_max_from_sample_bam(bam_path, 10);
 
         // Clean up temporary BAM file
         std::fs::remove_file(bam_path).unwrap();
@@ -172,6 +172,7 @@ mod tests {
             Some(&mut genomic_region_counts),
             "chr1",
             0, // mode_len
+            false, // use_insert_mode
         );
 
         // Should have one entry in counts
@@ -194,6 +195,7 @@ mod tests {
             false, // not cpg_only
             ref_seq, 0, // genome position
             0, // mode_len
+            false, // use_insert_mode
         );
 
         assert_eq!(key.mismatch_type, "G>A");
@@ -282,6 +284,7 @@ mod tests {
             0,     // filter_flags
             0,     // excl_flags
             &[] as &[BedInterval],   // no bed intervals
+            false, // use_insert_mode
         );
 
         // Should have processed the overlap region
@@ -324,6 +327,7 @@ mod tests {
             0,     // filter_flags
             0,     // excl_flags
             &[] as &[BedInterval],   // no bed intervals
+            false, // use_insert_mode
         );
 
         // Function completed successfully (unmapped reads may result in no counts)
@@ -541,6 +545,7 @@ mod tests {
             required_flags: 0,
             filter_flags: 0,
             excl_flags: 0,
+            use_insert_mode: false,
         };
 
         // Should not panic
@@ -598,6 +603,7 @@ mod tests {
             required_flags: 0,
             filter_flags: 0,
             excl_flags: 0,
+            use_insert_mode: false,
         };
 
         // Should not panic
