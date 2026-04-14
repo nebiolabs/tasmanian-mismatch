@@ -22,12 +22,15 @@ pub use bed::{
     filter_bed_for_region, mask_reference_with_bed, parse_bed_file, position_overlaps_intervals,
     BedInterval, BedRegions,
 };
-pub use io::{compute_read_len_max_from_sample_bam, load_reference_genome};
+pub use io::{
+    compute_read_len_max_from_sample_bam, load_reference_genome,
+    print_read_pair_inconsistency_table, write_potential_variants_tsv,
+};
 pub use methylation::adjust_methylation_base;
 pub use processing::{
     compare_and_count, create_mismatch_key, get_overlap_region, process_overlap_region,
     process_paired_reads_with_overlap, process_record, process_single_record,
-    rescale_phred_scores,
+    rescale_phred_scores, merge_reads_into_insert_position_mode,
     ProcessingConfig, ProcessingContext,
 };
 pub use types::{

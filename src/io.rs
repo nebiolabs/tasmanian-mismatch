@@ -1,9 +1,13 @@
 //! Input helpers for reference FASTA and BAM-derived metadata.
 
+use crate::types::GenomicMismatchKey;
 use crate::types::ReferenceGenome;
 use bio::io::fasta;
 use rust_htslib::bam::{Read, Reader};
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufWriter, Write};
+use std::process;
 
 /// Load a reference genome from a FASTA file.
 ///
@@ -44,7 +48,7 @@ pub fn load_reference_genome(fasta_path: &str) -> ReferenceGenome {
 ///
 /// # Panics
 /// * If the BAM file cannot be opened.
-pub fn compute_read_len_max_from_sample_bam(bam_path: &str, sample_size: usize, default_len: usize) -> usize {
+pub fn compute_read_len_max_from_sample_bam(bam_path: &str, sample_size: usize) -> usize {
     let mut bam =
         Reader::from_path(bam_path).expect("Failed to open BAM file for read length sampling");
 
@@ -53,8 +57,10 @@ pub fn compute_read_len_max_from_sample_bam(bam_path: &str, sample_size: usize, 
     for result in bam.records().take(sample_size) {
         match result {
             Err(_) => {
-                eprintln!("We couldn't sample the Bam file for read length estimation. Defaulting to {}bp", default_len);
-                return default_len;
+                eprintln!(
+                    "ERROR: Failed to sample BAM file for read length estimation. Exiting."
+                );
+                process::exit(1);
             }
             Ok(record) => {
                 let read_len = record.seq().len();
@@ -64,8 +70,79 @@ pub fn compute_read_len_max_from_sample_bam(bam_path: &str, sample_size: usize, 
             }
         }
     }
+    
+    eprintln!("Computed max read length from sample: {}", max_length);
+    max_length
+}
 
-    let result_len = if max_length == 0 { default_len } else { max_length };
-    eprintln!("Computed max read length from sample: {}", result_len);
-    result_len
+/// Write genomic mismatch counts to a TSV file for potential variant review.
+///
+/// # Arguments
+/// * `genomic_counts` - Genomic mismatch counts keyed by chromosome/position/mismatch.
+/// * `output_path` - Output TSV path.
+///
+/// # Returns
+/// * `Ok(())` on success.
+/// * Any I/O error encountered while creating or writing the file.
+pub fn write_potential_variants_tsv(
+    genomic_counts: &HashMap<GenomicMismatchKey, (usize, usize)>,
+    output_path: &str,
+) -> std::io::Result<()> {
+    let file = File::create(output_path)?;
+    let mut writer = BufWriter::new(file);
+
+    writeln!(
+        writer,
+        "chromosome\tposition\treference_base\tmismatch_base\tcount\tdepth"
+    )?;
+
+    // Keep unsorted iteration for speed on large datasets.
+    for (key, count) in genomic_counts.iter() {
+        let parts: Vec<&str> = key.mismatch_type.split('>').collect();
+        if parts.len() == 2 {
+            writeln!(
+                writer,
+                "{}\t{}\t{}\t{}\t{}\t{}",
+                key.chromosome, key.genomic_position, parts[0], parts[1], count.0, count.1
+            )?;
+        }
+    }
+
+    eprintln!(
+        "Wrote {} genomic positions to {}",
+        genomic_counts.len(),
+        output_path
+    );
+
+    Ok(())
+}
+
+/// Print read pair inconsistency counts in CSV table format.
+///
+/// # Arguments
+/// * `incons_types` - Sorted discordance type columns.
+/// * `incons_positions` - Sorted `(read1_pos, read2_pos)` rows.
+/// * `incons_position_map` - Mapping from position pairs to discordance counts.
+pub fn print_read_pair_inconsistency_table(
+    incons_types: &[String],
+    incons_positions: &[(usize, usize)],
+    incons_position_map: &HashMap<(usize, usize), HashMap<String, usize>>,
+) {
+    println!("\n# Read Pair Inconsistencies");
+    print!("Read1_Pos,Read2_Pos");
+    for incons_type in incons_types {
+        print!(",{}", incons_type);
+    }
+    println!();
+
+    for &(r1_pos, r2_pos) in incons_positions {
+        print!("{},{}", r1_pos, r2_pos);
+        if let Some(incons_map) = incons_position_map.get(&(r1_pos, r2_pos)) {
+            for incons_type in incons_types {
+                let count = incons_map.get(incons_type).unwrap_or(&0);
+                print!(",{}", count);
+            }
+        }
+        println!();
+    }
 }

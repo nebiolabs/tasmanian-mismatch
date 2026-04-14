@@ -2,8 +2,6 @@ use clap::Parser;
 use rayon::prelude::*;
 use rust_htslib::bam::{FetchDefinition, IndexedReader, Read, Reader, Record};
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{BufWriter, Write};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -45,12 +43,13 @@ struct Args {
     cpg_only: bool,
 
     /// Use read length max to renumber read positions (can stack start and end of reads)
-    #[arg(long)]
-    use_read_len_max: bool,
+    /// Use --use_read_len_max to auto-detect from BAM, or --use_read_len_max <LENGTH> to set explicit value
+    #[arg(long, num_args = 0..=1, value_name = "LENGTH")]
+    use_read_len_max: Option<Option<u32>>,
 
-    /// Use insert position mode (not read position)
-    #[arg(long)]
-    insert_position_mode: bool,
+    /// Instead of split read mode, use insert position mode (count from end of read 2)
+    #[arg(long, default_value_t = false)]
+    use_insert_mode: bool, // if true, use insert position mode instead of split read mode (default false)
 
     /// Genomic thresholds for calling a potential variant
     #[arg(long, default_value_t = 7)]
@@ -73,6 +72,10 @@ struct Args {
     /// Filter mode: 'mask' (skip individual bases in BED regions) or 'filter' (skip whole reads overlapping BED regions)
     #[arg(long, default_value = "mask")]
     bed_filter_mode: String,
+
+    /// Write the main mismatch table to this file instead of stdout.
+    #[arg(short = 'o', long)]
+    output_file: Option<String>,
 }
 
 fn main() {
@@ -91,24 +94,30 @@ fn main() {
     let required_flags = args.required_flags;
     let filter_flags = args.filter_flags;
     let excl_flags = args.excl_flags;
-    let insert_position_mode = args.insert_position_mode;
     let genomic_depth_threshold = args.genomic_depth_threshold;
     let bed_filter_whole_reads = args.bed_filter_mode == "filter";
+    let output_file = args.output_file.as_deref();
 
-    let max_len = if args.use_read_len_max {
-        let max_l = compute_read_len_max_from_sample_bam(bam_path, 100000, 300);
-        eprintln!(
-            "Using max read length: {} to renumber read positions",
+    let max_len = match args.use_read_len_max {
+        None => 0,  // flag not provided
+        Some(None) => {
+            // flag provided without value: auto-detect from BAM
+            let max_l = compute_read_len_max_from_sample_bam(bam_path, 100000);
+            eprintln!(
+                "Using max read length: {} to renumber read positions",
+                max_l
+            );
             max_l
-        );
-        max_l
-    } else {
-        0
+        }
+        Some(Some(val)) => {
+            // explicit value provided
+            eprintln!(
+                "Using max read length: {} to renumber read positions",
+                val
+            );
+            val as usize
+        }
     };
-
-    if insert_position_mode {
-        eprintln!("Using --insert-position-mode. Not read position");
-    }
 
     if num_threads > 0 {
         rayon::ThreadPoolBuilder::new()
@@ -215,6 +224,7 @@ fn main() {
         required_flags,
         filter_flags,
         excl_flags,
+        use_insert_mode: args.use_insert_mode,
     };
 
     // Process regions in parallel
@@ -468,44 +478,8 @@ fn main() {
             genomic_threshold,
             genomic_counts.len()
         );
-
-        // Write to file
-        let file = File::create("potential_variants.tsv")
-            .expect("Failed to create potential_variants.tsv");
-        let mut writer = BufWriter::new(file);
-
-        writeln!(
-            writer,
-            "chromosome\tposition\treference_base\tmismatch_base\tcount\tdepth"
-        )
-        .expect("Failed to write header");
-
-        //let mut sorted_keys: Vec<_> = genomic_counts.iter().collect();
-        // sorted_keys.sort_by_key(|(k, _)| (&k.chromosome, k.genomic_position)); // This takes forever for large datasets
-        let sorted_keys: Vec<_> = genomic_counts.iter().collect(); // unsorted for speed -> can change later to the above lines.
-
-        for (key, count) in sorted_keys {
-            // Parse mismatch_type "REF>ALT" to extract ref and alt bases
-            let parts: Vec<&str> = key.mismatch_type.split('>').collect();
-            if parts.len() == 2 {
-                writeln!(
-                    writer,
-                    "{}\t{}\t{}\t{}\t{}\t{}",
-                    key.chromosome,
-                    key.genomic_position,
-                    parts[0], // reference base
-                    parts[1], // mismatch base
-                    count.0,
-                    count.1
-                )
-                .expect("Failed to write to file");
-            }
-        }
-
-        eprintln!(
-            "Wrote {} genomic positions to potential_variants.tsv",
-            genomic_counts.len()
-        );
+        write_potential_variants_tsv(&genomic_counts, "potential_variants.tsv")
+            .expect("Failed to write potential_variants.tsv");
     }
 
     // Restructure data: (read_num, position) -> mismatch_type -> count
@@ -526,8 +500,26 @@ fn main() {
         .collect::<std::collections::HashSet<_>>()
         .len();
 
-    print_main_output(&position_map);
+//    eprintln!("inspecting counts for main output...");
+//    eprintln!("{}", counts.iter().take(5).map(|(k, v)| format!("{:?}: {}", k, v)).collect::<Vec<_>>().join(", "));
+//    eprintln!("inspecting position_map for main output...");
+//    eprintln!("{}", position_map.iter().take(5).map(|(k, v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>().join(", "));
+//
+//    eprintln!("counts: {}", counts.get(&MismatchKey { mismatch_type: "G>C".to_string(), read_position: 12, read_num: 1 }).unwrap_or(&0));
+//    eprintln!("position_map: {}", position_map.get(&(1, 12)).unwrap().get("G>C").unwrap());
+
+
+    print_main_output(&position_map, output_file)
+        .expect("Failed to write main mismatch output");
     eprintln!("Total unique mismatch types: {}", unique_mismatch_types);
+
+    // Print merged counts in insert position mode
+    println!("\n# Insert Position Mode Counts (mismatch_type:insert_position\tcount)");
+    let insert_position_counts = merge_reads_into_insert_position_mode(&counts, max_len);
+    println!("mismatch_type\tinsert_position\tcount");
+    for ((mismatch_type, insert_pos), count) in insert_position_counts.iter() {
+        println!("{}\t{}\t{}", mismatch_type, insert_pos, count);
+    }
 
     // Print overlap table if there are overlaps
     if overlap_pairs > 0 {
@@ -547,7 +539,8 @@ fn main() {
             }
 
             println!("\n# Overlap Region Data");
-            print_position_table(&overlap_position_map);
+            print_position_table(&overlap_position_map, None)
+                .expect("Failed to write overlap mismatch output");
 
             eprintln!(
                 "\nTotal unique overlap (read, position) combinations: {}",
@@ -585,23 +578,11 @@ fn main() {
                 incons_position_map.keys().copied().collect();
             incons_positions.sort();
 
-            println!("\n# Read Pair Inconsistencies");
-            print!("Read1_Pos,Read2_Pos");
-            for incons_type in &incons_types {
-                print!(",{}", incons_type);
-            }
-            println!();
-
-            for &(r1_pos, r2_pos) in incons_positions.iter() {
-                print!("{},{}", r1_pos, r2_pos);
-                if let Some(incons_map) = incons_position_map.get(&(r1_pos, r2_pos)) {
-                    for incons_type in &incons_types {
-                        let count = incons_map.get(incons_type).unwrap_or(&0);
-                        print!(",{}", count);
-                    }
-                }
-                println!();
-            }
+            print_read_pair_inconsistency_table(
+                &incons_types,
+                &incons_positions,
+                &incons_position_map,
+            );
 
             let total_inconsistencies: usize = incons_counts.values().sum();
             eprintln!("\nTotal inconsistencies: {}", total_inconsistencies);
