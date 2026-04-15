@@ -518,13 +518,6 @@ fn compare_record_to_reference(
 	let is_first_in_reference = read_is_first_in_reference(record);
 	let overlap = overlap_interval(record);
 	let softclip_comparisons = qualifying_softclip_comparisons(record, ref_seq, 0.66);
-	// cut_mid: for Cut mode, the midpoint of the overlap in reference coords.
-	// Read 1 counts [ov_start, mid), read 2 counts [mid, ov_end).
-	let cut_mid = if *overlap_mode == OverlapMode::Cut {
-		overlap.map(|(ov_start, ov_end)| (ov_start + ov_end) / 2)
-	} else {
-		None
-	};
 	let stretch = *overlap_mode == OverlapMode::Stretch;
 
 	let mut read_pos = 0usize;
@@ -547,13 +540,10 @@ fn compare_record_to_reference(
 					let rp = read_pos + i;
 					let gp = ref_pos + i;
 
-					if let (Some(mid), Some((ov_start, ov_end))) = (cut_mid, overlap) {
-						if gp >= ov_start && gp < ov_end {
-							if is_first_in_reference && gp >= mid {
-								continue; // read 1: skip its second half of the overlap
-							}
-							if !is_first_in_reference && gp < mid {
-								continue; // read 2: skip its first half of the overlap
+					if *overlap_mode == OverlapMode::Cut {
+						if let Some((ov_start, ov_end)) = overlap {
+							if gp >= ov_start && gp < ov_end && read_num == 2 {
+								continue; // In overlap, count only read1 and skip read2.
 							}
 						}
 					}
@@ -578,6 +568,7 @@ fn compare_record_to_reference(
 					let ref_base_change = build_base_change(
 						read_num, ref_base, read_base, record.is_reverse(), methylation_mode
 					);
+
 					let base_position = base_position_for_mode(
 						position_mode,
 						rp,
@@ -588,8 +579,7 @@ fn compare_record_to_reference(
 						stretch,
 					);
 
-					
-					//eprintln!("read name: {}, read num: {}, ref_base: {}, read_base: {}, base pos: {}, orig_read_pos: {}, reference order: {}\n{}", String::from_utf8_lossy(record.qname()), read_num, ref_base, read_base, base_position, rp, reference_order, String::from_utf8_lossy(seq_str.as_bytes()));
+					//eprintln!("---> read name: {}, read num: {}, ref_base: {}, read_base: {}, base pos: {}, orig_read_pos: {}, reference order: {}\n{}", String::from_utf8_lossy(record.qname()), read_num, ref_base, read_base, base_position, rp, reference_order, String::from_utf8_lossy(seq_str.as_bytes()));
 					// read based or insert based identities are not the same if read is reverse
 
 					let key = InsertKey {
