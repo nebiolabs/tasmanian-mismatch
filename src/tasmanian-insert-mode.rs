@@ -144,23 +144,30 @@ fn build_tid_map_and_regions(
 	(tid_to_name, regions)
 }
 
-fn estimated_fragment_length(record: &Record) -> Option<usize> {
+/// Parse the MC tag and return the mate's exclusive end position, or `None`
+/// when the MC tag is absent, the record is unpaired / mate-unmapped, or the
+/// reads are on different contigs.
+fn mc_mate_end(record: &Record) -> Option<i64> {
 	if !record.is_paired() || record.is_mate_unmapped() {
 		return None;
 	}
 	if record.tid() < 0 || record.mtid() < 0 || record.tid() != record.mtid() {
 		return None;
 	}
-
-	let read_start = record.pos();
-	let read_end = record.cigar().end_pos();
 	let mate_start = record.mpos();
-
 	let mate_span = match record.aux(b"MC".as_ref()) {
 		Ok(Aux::String(mc)) => i64::try_from(cigar_reference_span(mc)?).ok()?,
 		_ => return None,
 	};
-	let mate_end = mate_start + mate_span;
+	Some(mate_start + mate_span)
+}
+
+fn estimated_fragment_length(record: &Record, mate_end: Option<i64>) -> Option<usize> {
+	let mate_end = mate_end?;
+
+	let read_start = record.pos();
+	let read_end = record.cigar().end_pos();
+	let mate_start = record.mpos();
 
 	let fragment_start = std::cmp::min(read_start, mate_start);
 	let fragment_end = std::cmp::max(read_end, mate_end);
@@ -171,7 +178,7 @@ fn estimated_fragment_length(record: &Record) -> Option<usize> {
 	usize::try_from(fragment_end - fragment_start).ok()
 }
 
-fn should_skip_record(record: &Record, args: &Args) -> bool {
+fn should_skip_record(record: &Record, args: &Args, mate_end: Option<i64>) -> bool {
 	if record.is_unmapped() {
 		return true;
 	}
@@ -191,7 +198,7 @@ fn should_skip_record(record: &Record, args: &Args) -> bool {
 		return true;
 	}
 
-	let fragment_length = estimated_fragment_length(record)
+	let fragment_length = estimated_fragment_length(record, mate_end)
 		.unwrap_or_else(|| record.insert_size().abs() as usize);
 
 //	if fragment_length <= args.min_fragment_length || fragment_length > args.max_fragment_length {
@@ -235,7 +242,11 @@ fn insert_mode_read_position(
 	seq_len: usize,
 	max_read_len: usize,
 	stretch: bool,
+	fragment_len: Option<usize>,
 ) -> usize {
+	let short_fragment = fragment_len.map_or(false, |fl| fl <= max_read_len);
+	let trailing_bases = seq_len - (read_pos + 1);
+
 	if stretch && seq_len > 1 {
 		// Cubic smooth-step: s = t²(3 − 2t), maps [0,1]→[0,1] with zero
 		// derivatives at both ends, stretching each read to fill its half
@@ -251,17 +262,20 @@ fn insert_mode_read_position(
 			2 * max_read_len - (s * (max_read_len - 1) as f64).round() as usize
 		}
 	} else if is_first {
+		if read_pos >= seq_len / 2 && short_fragment {
+			2 * max_read_len - (seq_len - read_pos) + 1
+		} else {
+			read_pos + 1
+		}
+	} else if read_pos < seq_len / 2 && short_fragment {
 		read_pos + 1
 	} else {
-		let trailing_bases = seq_len - (read_pos + 1);
 		2 * max_read_len - trailing_bases
 	}
 }
 
 fn oriented_read_position(pos: usize, seq_len: usize, is_reverse: bool, max_read_len: usize) -> usize {
 	let half = (seq_len + 1) /2;
-
-	//eprintln!("-->{}\t{}\t{}\t{}", is_reverse, pos, seq_len, max_read_len);
 
 	let returnit = match (is_reverse, pos <= half) {
 		(true, true) => max_read_len - pos,
@@ -270,8 +284,6 @@ fn oriented_read_position(pos: usize, seq_len: usize, is_reverse: bool, max_read
 		(false, true) => pos + 1,
 	};
 
-	// eprintln!("--> new position is {}", returnit);
-	
 	returnit
 }
 
@@ -283,11 +295,13 @@ fn base_position_for_mode(
 	is_first_in_reference: bool,
 	max_read_len: usize,
 	stretch: bool,
+	fragment_len: Option<usize>,
 ) -> usize {
+
 	match position_mode {
 		PositionMode::Read => oriented_read_position(read_pos, seq_len, is_reverse, max_read_len),
 		PositionMode::Insert => {
-			insert_mode_read_position(is_first_in_reference, read_pos, seq_len, max_read_len, stretch)
+			insert_mode_read_position(is_first_in_reference, read_pos, seq_len, max_read_len, stretch, fragment_len)
 		}
 	}
 }
@@ -437,25 +451,12 @@ fn softclip_has_reference_identity_at_least_66(
 	softclip_has_min_reference_identity(record, reference, tid_to_name, 0.66)
 }
 
-fn overlap_interval(record: &Record) -> Option<(usize, usize)> {
-	if !record.is_paired() || record.is_mate_unmapped() {
-		return None;
-	}
-	if record.tid() < 0 || record.mtid() < 0 || record.tid() != record.mtid() {
-		return None;
-	}
+fn overlap_interval(record: &Record, mate_end: Option<i64>) -> Option<(usize, usize)> {
+	let mate_end = mate_end?;
 
 	let read_start = record.pos();
 	let read_end = record.cigar().end_pos();
 	let mate_start = record.mpos();
-
-	let mate_end = match record.aux(b"MC".as_ref()) {
-		Ok(Aux::String(mc)) => {
-			let span = i64::try_from(cigar_reference_span(mc)?).ok()?;
-			mate_start + span
-		}
-		_ => return None,
-	};
 
 	let ov_start = std::cmp::max(read_start, mate_start);
 	let ov_end = std::cmp::min(read_end, mate_end);
@@ -497,6 +498,7 @@ fn compare_record_to_reference(
 	position_mode: PositionMode,
 	overlap_mode: &OverlapMode,
 	methylation_mode: bool,
+	mate_end: Option<i64>,
 	local_counts: &mut HashMap<InsertKey, usize>,
 ) {
 	let tid = record.tid();
@@ -516,7 +518,7 @@ fn compare_record_to_reference(
 	let seq_len = seq.len();
 	let read_num = record_read_num(record);
 	let is_first_in_reference = read_is_first_in_reference(record);
-	let overlap = overlap_interval(record);
+	let overlap = overlap_interval(record, mate_end);
 	let softclip_comparisons = qualifying_softclip_comparisons(record, ref_seq, 0.66);
 	let stretch = *overlap_mode == OverlapMode::Stretch;
 
@@ -577,10 +579,8 @@ fn compare_record_to_reference(
 						is_first_in_reference,
 						max_read_len,
 						stretch,
+						estimated_fragment_length(record, mate_end),
 					);
-
-					//eprintln!("---> read name: {}, read num: {}, ref_base: {}, read_base: {}, base pos: {}, orig_read_pos: {}, reference order: {}\n{}", String::from_utf8_lossy(record.qname()), read_num, ref_base, read_base, base_position, rp, reference_order, String::from_utf8_lossy(seq_str.as_bytes()));
-					// read based or insert based identities are not the same if read is reverse
 
 					let key = InsertKey {
 						base_change: ref_base_change,
@@ -625,6 +625,7 @@ fn compare_record_to_reference(
 			is_first_in_reference,
 			max_read_len,
 			stretch,
+			estimated_fragment_length(record, mate_end),
 		);
 		let key = InsertKey {
 			base_change: ref_base_change,
@@ -672,7 +673,9 @@ fn process_region(
 			continue;
 		}
 
-		if should_skip_record(&record, args) {
+		let mate_end = mc_mate_end(&record);
+
+		if should_skip_record(&record, args, mate_end) {
 			continue;
 		}
 
@@ -685,6 +688,7 @@ fn process_region(
 			args.position_mode,
 			&args.overlap_mode,
 			args.methylation_mode,
+			mate_end,
 			&mut local_counts,
 		);
 		local_read_count += 1;
@@ -840,32 +844,32 @@ mod tests {
 
 	#[test]
 	fn insert_mode_read_position_handles_first_and_second_reads_without_stretch() {
-		assert_eq!(insert_mode_read_position(true, 0, 5, 8, false), 1);
-		assert_eq!(insert_mode_read_position(true, 4, 5, 8, false), 5);
-		assert_eq!(insert_mode_read_position(false, 0, 5, 8, false), 12);
-		assert_eq!(insert_mode_read_position(false, 4, 5, 8, false), 16);
+		assert_eq!(insert_mode_read_position(true, 0, 5, 8, false, None), 1);
+		assert_eq!(insert_mode_read_position(true, 4, 5, 8, false, None), 5);
+		assert_eq!(insert_mode_read_position(false, 0, 5, 8, false, None), 12);
+		assert_eq!(insert_mode_read_position(false, 4, 5, 8, false, None), 16);
 	}
 
 	#[test]
 	fn insert_mode_read_position_stretch_hits_expected_endpoints() {
-		assert_eq!(insert_mode_read_position(true, 0, 5, 8, true), 1);
-		assert_eq!(insert_mode_read_position(true, 4, 5, 8, true), 8);
-		assert_eq!(insert_mode_read_position(false, 0, 5, 8, true), 9);
-		assert_eq!(insert_mode_read_position(false, 4, 5, 8, true), 16);
+		assert_eq!(insert_mode_read_position(true, 0, 5, 8, true, None), 1);
+		assert_eq!(insert_mode_read_position(true, 4, 5, 8, true, None), 8);
+		assert_eq!(insert_mode_read_position(false, 0, 5, 8, true, None), 9);
+		assert_eq!(insert_mode_read_position(false, 4, 5, 8, true, None), 16);
 	}
 
 	#[test]
 	fn base_position_for_mode_dispatches_to_read_and_insert_modes() {
 		assert_eq!(
-			base_position_for_mode(PositionMode::Read, 1, 5, false, true, 8, false),
+			base_position_for_mode(PositionMode::Read, 1, 5, false, true, 8, false, None),
 			2
 		);
 		assert_eq!(
-			base_position_for_mode(PositionMode::Insert, 1, 5, false, true, 8, false),
+			base_position_for_mode(PositionMode::Insert, 1, 5, false, true, 8, false, None),
 			2
 		);
 		assert_eq!(
-			base_position_for_mode(PositionMode::Insert, 1, 5, false, false, 8, false),
+			base_position_for_mode(PositionMode::Insert, 1, 5, false, false, 8, false, None),
 			13
 		);
 	}
