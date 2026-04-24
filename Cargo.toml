@@ -15,5 +15,13 @@ name = "tasmanian-rescale-quality"
 path = "src/tasmanian-rescale-quality.rs"
 
 [[bin]]
-name = "rustmanian-mismatch"
+name = "tasmanian-mismatch"
 path = "src/main.rs"
+
+[[bin]]
+name = "tasmanian-insert-mode"
+path = "src/tasmanian-insert-mode.rs"
+
+[[bin]]
+name = "tasmanian-diagnostics"
+path = "src/tasmanian-diagnostics.rs"

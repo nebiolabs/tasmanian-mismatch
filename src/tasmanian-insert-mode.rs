@@ -3,7 +3,7 @@ use rayon::prelude::*;
 use rust_htslib::bam::{record::Aux, FetchDefinition, IndexedReader, Read, Reader, Record};
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{self, BufWriter, Write};
+use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use rustmanian_mismatch::{
@@ -17,6 +17,13 @@ struct InsertKey {
 	base_position: usize,
 	/// 1 = first read in reference coordinates, 2 = second
 	reference_order: u8,
+}
+
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+struct DiscountKey {
+	base_change: String,
+	read_num: u8,
+	base_position: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -91,6 +98,10 @@ struct Args {
 	#[arg(long, default_value_t = false)]
 	methylation_mode: bool,
 
+	/// Restrict methylation collapsing to CpG context only.
+	#[arg(long, default_value_t = false)]
+	cpg_only: bool,
+
 	/// minimum fragment length to be accepted for insert mode counting;
 	#[arg(long, default_value_t = 0)]
 	min_fragment_length: usize,
@@ -102,6 +113,100 @@ struct Args {
 	/// read position or fragment (insert) position mode
 	#[arg(long, value_enum, default_value = "insert")]
 	position_mode: PositionMode,
+
+	/// Optional discount table emitted by tasmanian-diagnostics (variant_discounts.tsv).
+	#[arg(long)]
+	discount_table: Option<String>,
+}
+
+fn load_discount_table(path: &str) -> io::Result<HashMap<DiscountKey, usize>> {
+	let file = File::open(path)?;
+	let reader = BufReader::new(file);
+	let mut discounts: HashMap<DiscountKey, usize> = HashMap::new();
+
+	for (line_idx, line_result) in reader.lines().enumerate() {
+		let line = line_result?;
+		if line_idx == 0 {
+			continue;
+		}
+
+		let fields: Vec<&str> = line.split('\t').collect();
+		if fields.len() != 4 {
+			continue;
+		}
+
+		let read_num = match fields[1].parse::<u8>() {
+			Ok(v) => v,
+			Err(_) => continue,
+		};
+		let base_position = match fields[2].parse::<usize>() {
+			Ok(v) => v,
+			Err(_) => continue,
+		};
+		let discount_count = match fields[3].parse::<usize>() {
+			Ok(v) => v,
+			Err(_) => continue,
+		};
+
+		let key = DiscountKey {
+			base_change: fields[0].to_string(),
+			read_num,
+			base_position,
+		};
+		*discounts.entry(key).or_insert(0) += discount_count;
+	}
+
+	Ok(discounts)
+}
+
+fn apply_external_discounts(
+	counts: &mut HashMap<InsertKey, usize>,
+	discounts: HashMap<DiscountKey, usize>,
+) -> usize {
+	let mut touched = 0usize;
+
+	for (discount_key, mut remaining) in discounts {
+		let k1 = InsertKey {
+			base_change: discount_key.base_change.clone(),
+			read_num: discount_key.read_num,
+			base_position: discount_key.base_position,
+			reference_order: 1,
+		};
+		let k2 = InsertKey {
+			base_change: discount_key.base_change,
+			read_num: discount_key.read_num,
+			base_position: discount_key.base_position,
+			reference_order: 2,
+		};
+
+		let c1 = counts.get(&k1).copied().unwrap_or(0);
+		let c2 = counts.get(&k2).copied().unwrap_or(0);
+
+		if c1 == 0 && c2 == 0 {
+			continue;
+		}
+
+		let first_key = if c1 >= c2 { &k1 } else { &k2 };
+		if remaining > 0 {
+			if let Some(v) = counts.get_mut(first_key) {
+				let take = remaining.min(*v);
+				*v -= take;
+				remaining -= take;
+			}
+		}
+
+		if remaining > 0 {
+			let second_key = if first_key.reference_order == 1 { &k2 } else { &k1 };
+			if let Some(v) = counts.get_mut(second_key) {
+				let take = remaining.min(*v);
+				*v -= take;
+			}
+		}
+
+		touched += 1;
+	}
+
+	touched
 }
 
 fn configure_thread_pool(threads: usize) {
@@ -244,7 +349,7 @@ fn insert_mode_read_position(
 	stretch: bool,
 	fragment_len: Option<usize>,
 ) -> usize {
-	let short_fragment = fragment_len.map_or(false, |fl| fl <= max_read_len);
+	let short_fragment = fragment_len.map_or(false, |fl| fl <= max_read_len - 10);
 	let trailing_bases = seq_len - (read_pos + 1);
 
 	if stretch && seq_len > 1 {
@@ -263,7 +368,7 @@ fn insert_mode_read_position(
 		}
 	} else if is_first {
 		if read_pos >= seq_len / 2 && short_fragment {
-			2 * max_read_len - (seq_len - read_pos) + 1
+			2 * max_read_len - trailing_bases
 		} else {
 			read_pos + 1
 		}
@@ -274,7 +379,7 @@ fn insert_mode_read_position(
 	}
 }
 
-fn oriented_read_position(pos: usize, seq_len: usize, is_reverse: bool, max_read_len: usize) -> usize {
+fn read_mode_read_position(pos: usize, seq_len: usize, is_reverse: bool, max_read_len: usize) -> usize {
 	let half = (seq_len + 1) /2;
 
 	let returnit = match (is_reverse, pos <= half) {
@@ -299,7 +404,7 @@ fn base_position_for_mode(
 ) -> usize {
 
 	match position_mode {
-		PositionMode::Read => oriented_read_position(read_pos, seq_len, is_reverse, max_read_len),
+		PositionMode::Read => read_mode_read_position(read_pos, seq_len, is_reverse, max_read_len),
 		PositionMode::Insert => {
 			insert_mode_read_position(is_first_in_reference, read_pos, seq_len, max_read_len, stretch, fragment_len)
 		}
@@ -467,26 +572,43 @@ fn overlap_interval(record: &Record, mate_end: Option<i64>) -> Option<(usize, us
 	}
 }
 
-fn build_base_change(read_num: u8, ref_base: char, read_base: char, is_reverse: bool, methylation_mode: bool) -> String {
-	let mut base_change = match methylation_mode {
-		false => format!("{}>{}", ref_base, read_base),
-		true => match (read_num, ref_base, read_base, is_reverse) {
-			(1, 'C', 'T', false) 
-			| (2, 'G', 'A', false)
-			| (1, 'G', 'A', true)
-			| (2, 'C', 'T', true) => format!("{}>{}", ref_base, ref_base),
-			_ => match is_reverse {
-				true => format!("{}>{}", complement(ref_base), complement(read_base)),
-				false => format!("{}>{}", ref_base, read_base),
-			},
-		},
+fn build_base_change(
+	read_num: u8, 
+	ref_base: char, 
+	read_base: char, 
+	is_reverse: bool, 
+	methylation_mode: bool,
+	next_base_for_cpg_mode: Option<char>
+) -> String {
+	let (strand_ref, strand_read) = if is_reverse {
+		(complement(ref_base), complement(read_base))
+	} else {
+		(ref_base, read_base)
 	};
 
-	if is_reverse && !methylation_mode {
-		base_change = format!("{}>{}", complement(ref_base), complement(read_base));
+	if !methylation_mode {
+		return format!("{}>{}", strand_ref, strand_read);
 	}
 
-	base_change
+	let collapse_bisulfite = match (
+		read_num,
+		ref_base,
+		read_base,
+		is_reverse,
+	) {
+		(1, 'C', 'T', false)   => (true, 'C'),
+		| (2, 'G', 'A', false) => (true, 'G'),
+		| (1, 'G', 'A', true)  => (true, 'G'),
+		| (2, 'C', 'T', true)  => (true, 'C'),
+		_                      => (false, 'N'),
+	};
+	
+	match (collapse_bisulfite, next_base_for_cpg_mode) {
+		((true, 'G'), Some('C')) => format!("{}>{}", strand_ref, strand_ref),
+		((true, 'C'), Some('G')) => format!("{}>{}", strand_ref, strand_ref),
+		((true, _), _) => format!("{}>{}", strand_ref, strand_ref),
+		_ => format!("{}>{}", strand_ref, strand_read),
+	}
 }
 
 fn compare_record_to_reference(
@@ -498,6 +620,7 @@ fn compare_record_to_reference(
 	position_mode: PositionMode,
 	overlap_mode: &OverlapMode,
 	methylation_mode: bool,
+	cpg_only: bool,
 	mate_end: Option<i64>,
 	local_counts: &mut HashMap<InsertKey, usize>,
 ) {
@@ -524,15 +647,6 @@ fn compare_record_to_reference(
 
 	let mut read_pos = 0usize;
 	let mut ref_pos = record.pos() as usize;
-
-
-
-	let seq_str: String = (0..seq_len)		
-		.map(|i| base_to_char(seq[i]).unwrap_or('N'))
-		.collect();
-
-
-
 
 	use rust_htslib::bam::record::Cigar::*;
 	for op in record.cigar().iter() {
@@ -564,11 +678,30 @@ fn compare_record_to_reference(
 					let ref_byte = ref_seq[gp].to_ascii_uppercase();
 					let Some(ref_base) = base_to_char(ref_byte) else {
 						continue;
-					};
+					}; 
 
 					let reference_order = if is_first_in_reference { 1u8 } else { 2u8 };
+					
+					let next_base_for_cpg_mode = if cpg_only {
+						if record.is_reverse() {
+							gp.checked_sub(1) // this return None (instead of panicking) if gp(usize)==0, unlike get
+								.and_then(|idx| base_to_char(ref_seq[idx].to_ascii_uppercase()))
+						} else {
+							ref_seq
+								.get(gp + 1)
+								.and_then(|b| base_to_char(b.to_ascii_uppercase()))
+						}
+					} else {
+						None
+					};
+
 					let ref_base_change = build_base_change(
-						read_num, ref_base, read_base, record.is_reverse(), methylation_mode
+						read_num,
+						ref_base,
+						read_base,
+						record.is_reverse(),
+						methylation_mode,
+						next_base_for_cpg_mode,
 					);
 
 					let base_position = base_position_for_mode(
@@ -616,6 +749,7 @@ fn compare_record_to_reference(
 			comparison.read_base,
 			record.is_reverse(),
 			methylation_mode,
+			None,
 		);
 		let base_position = base_position_for_mode(
 			position_mode,
@@ -688,6 +822,7 @@ fn process_region(
 			args.position_mode,
 			&args.overlap_mode,
 			args.methylation_mode,
+			args.cpg_only,
 			mate_end,
 			&mut local_counts,
 		);
@@ -790,7 +925,22 @@ fn main() {
 
 	eprintln!("Total reads processed: {}", total_reads.load(Ordering::Relaxed));
 
-	let counts = global_counts.lock().expect("Lock poisoned");
+	let mut counts = global_counts.lock().expect("Lock poisoned");
+
+	if let Some(path) = args.discount_table.as_deref() {
+		if args.position_mode != PositionMode::Read {
+			eprintln!(
+				"Warning: --discount-table was provided in {:?} mode. Discount rows are read-position keyed; applying anyway by matching base_position.",
+				args.position_mode
+			);
+		}
+
+		let discounts = load_discount_table(path)
+			.unwrap_or_else(|e| panic!("Failed to load discount table from {}: {}", path, e));
+		let touched = apply_external_discounts(&mut counts, discounts);
+		eprintln!("Applied external discounts to {} key groups", touched);
+	}
+
 	write_output(&counts, args.output_file.as_deref(), args.position_mode)
 		.expect("Failed to write output");
 }
@@ -876,16 +1026,32 @@ mod tests {
 
 	#[test]
 	fn build_base_change_preserves_raw_mismatches_when_methylation_mode_is_off() {
-		assert_eq!(build_base_change(1, 'C', 'T', false, false), "C>T");
-		assert_eq!(build_base_change(2, 'G', 'A', true, false), "G>A");
+		assert_eq!(build_base_change(1, 'C', 'T', false, false, None), "C>T");
+		assert_eq!(build_base_change(2, 'G', 'A', true, false, None), "G>A");
 	}
 
 	#[test]
 	fn build_base_change_collapses_bisulfite_signatures_in_methylation_mode() {
-		assert_eq!(build_base_change(1, 'C', 'T', false, true), "C>C");
-		assert_eq!(build_base_change(2, 'G', 'A', false, true), "G>G");
-		assert_eq!(build_base_change(1, 'G', 'A', true, true), "G>G");
-		assert_eq!(build_base_change(2, 'C', 'T', true, true), "C>C");
-		assert_eq!(build_base_change(1, 'C', 'A', false, true), "C>A");
+		assert_eq!(build_base_change(1, 'C', 'T', false, true, None), "C>C");
+		assert_eq!(build_base_change(2, 'G', 'A', false, true, None), "G>G");
+		assert_eq!(build_base_change(1, 'G', 'A', true, true, None), "G>G");
+		assert_eq!(build_base_change(2, 'C', 'T', true, true, None), "C>C");
+		assert_eq!(build_base_change(1, 'C', 'A', false, true, None), "C>A");
+	}
+
+	#[test]
+	fn build_base_change_cpg_only_uses_context_and_none_does_not_affect() {
+		assert_eq!(
+			build_base_change(1, 'C', 'T', false, true, true, Some('G')),
+			"C>C"
+		);
+		assert_eq!(
+			build_base_change(1, 'C', 'T', false, true, true, None),
+			"C>T"
+		);
+		assert_eq!(
+			build_base_change(1, 'G', 'A', true, true, true, Some('C')),
+			"G>G"
+		);
 	}
 }
