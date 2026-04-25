@@ -283,7 +283,7 @@ fn estimated_fragment_length(record: &Record, mate_end: Option<i64>) -> Option<u
 	usize::try_from(fragment_end - fragment_start).ok()
 }
 
-fn should_skip_record(record: &Record, args: &Args, mate_end: Option<i64>) -> bool {
+fn should_skip_record(record: &Record, args: &Args) -> bool {
 	if record.is_unmapped() {
 		return true;
 	}
@@ -302,15 +302,6 @@ fn should_skip_record(record: &Record, args: &Args, mate_end: Option<i64>) -> bo
 	if args.excl_flags != 0 && (flags & args.excl_flags) == args.excl_flags {
 		return true;
 	}
-
-	let fragment_length = estimated_fragment_length(record, mate_end)
-		.unwrap_or_else(|| record.insert_size().abs() as usize);
-
-//	if fragment_length <= args.min_fragment_length || fragment_length > args.max_fragment_length {
-//		eprintln!("skipping read: {}\tframent_length: {}\tmax and min set are {} and {}", String::from_utf8_lossy(record.qname()), fragment_length, args.min_fragment_length, args.max_fragment_length);
-//		return true;
-//	}
-
 	false
 }
 
@@ -525,35 +516,6 @@ fn qualifying_softclip_comparisons(
 	}
 
 	comparisons
-}
-
-fn softclip_has_min_reference_identity(
-	record: &Record,
-	reference: &ReferenceGenome,
-	tid_to_name: &HashMap<i32, String>,
-	min_identity: f64,
-) -> bool {
-	let tid = record.tid();
-	if tid < 0 {
-		return false;
-	}
-
-	let Some(chr_name) = tid_to_name.get(&tid) else {
-		return false;
-	};
-	let Some(ref_seq) = reference.get(chr_name.as_str()) else {
-		return false;
-	};
-
-	!qualifying_softclip_comparisons(record, ref_seq, min_identity).is_empty()
-}
-
-fn softclip_has_reference_identity_at_least_66(
-	record: &Record,
-	reference: &ReferenceGenome,
-	tid_to_name: &HashMap<i32, String>,
-) -> bool {
-	softclip_has_min_reference_identity(record, reference, tid_to_name, 0.66)
 }
 
 fn overlap_interval(record: &Record, mate_end: Option<i64>) -> Option<(usize, usize)> {
@@ -809,7 +771,7 @@ fn process_region(
 
 		let mate_end = mc_mate_end(&record);
 
-		if should_skip_record(&record, args, mate_end) {
+		if should_skip_record(&record, args) {
 			continue;
 		}
 
