@@ -3,8 +3,6 @@ use rayon::prelude::*;
 use rust_htslib::bam::{FetchDefinition, IndexedReader, Read, Reader, Record};
 use rustmanian_mismatch::*;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{BufWriter, Write};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -86,60 +84,6 @@ struct Args {
     /// Output path for mismatch-key discounts to be consumed by main.rs
     #[arg(long, default_value = "variant_discounts.tsv")]
     discount_output: String,
-}
-
-fn write_inconsistencies_tsv(
-    inconsistency_counts: &HashMap<InconsistencyKey, usize>,
-    output_path: &str,
-) -> std::io::Result<()> {
-    let mut rows: Vec<(&InconsistencyKey, &usize)> = inconsistency_counts.iter().collect();
-    rows.sort_by(|(a, _), (b, _)| {
-        a.read1_position
-            .cmp(&b.read1_position)
-            .then(a.read2_position.cmp(&b.read2_position))
-            .then(a.discordance_type.cmp(&b.discordance_type))
-    });
-
-    let file = File::create(output_path)?;
-    let mut writer = BufWriter::new(file);
-    writeln!(writer, "read1_position\tread2_position\tdiscordance_type\tcount")?;
-
-    for (key, count) in rows {
-        writeln!(
-            writer,
-            "{}\t{}\t{}\t{}",
-            key.read1_position, key.read2_position, key.discordance_type, count
-        )?;
-    }
-
-    Ok(())
-}
-
-fn write_mismatch_discounts_tsv(
-    mismatch_discounts: &HashMap<MismatchKey, usize>,
-    output_path: &str,
-) -> std::io::Result<()> {
-    let mut rows: Vec<(&MismatchKey, &usize)> = mismatch_discounts.iter().collect();
-    rows.sort_by(|(a, _), (b, _)| {
-        a.read_num
-            .cmp(&b.read_num)
-            .then(a.read_position.cmp(&b.read_position))
-            .then(a.mismatch_type.cmp(&b.mismatch_type))
-    });
-
-    let file = File::create(output_path)?;
-    let mut writer = BufWriter::new(file);
-    writeln!(writer, "mismatch_type\tread_num\tread_position\tdiscount_count")?;
-
-    for (key, count) in rows {
-        writeln!(
-            writer,
-            "{}\t{}\t{}\t{}",
-            key.mismatch_type, key.read_num, key.read_position, count
-        )?;
-    }
-
-    Ok(())
 }
 
 fn main() {

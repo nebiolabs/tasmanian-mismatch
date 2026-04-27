@@ -58,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("Region size: {} bp", region_size);
 
     // Load reference genome
-    let reference = load_reference_fasta(reference_path)?;
+    let reference = load_reference_genome(reference_path);
     eprintln!("Loaded {} contigs from reference", reference.len());
 
     // Load rescaling matrix
@@ -182,79 +182,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn load_rescaling_matrix(
-    path: &str,
-) -> Result<HashMap<(u8, u16, char, char), f32>, Box<dyn std::error::Error>> {
-    use std::fs::File;
-    use std::io::{BufRead, BufReader};
-
-    let mut matrix = HashMap::new();
-    let file = File::open(path)?;
-    let reader = BufReader::new(file);
-
-    for line in reader.lines() {
-        let line = line?;
-        let parts: Vec<&str> = line.trim().split('\t').collect();
-
-        if parts.len() < 5 {
-            continue; // Skip malformed lines
-        }
-
-        let read_num: u8 = parts[0].parse()?;
-        let position: u16 = parts[1].parse()?;
-        let ref_base: char = parts[2].chars().next().ok_or("Invalid ref_base")?;
-        let read_base: char = parts[3].chars().next().ok_or("Invalid read_base")?;
-        let scaling_factor: f32 = parts[4].parse()?;
-
-        matrix.insert((read_num, position, ref_base, read_base), scaling_factor);
-    }
-
-    Ok(matrix)
-}
-
-fn load_reference_fasta(path: &str) -> Result<ReferenceGenome, Box<dyn std::error::Error>> {
-    use std::fs::File;
-    use std::io::{BufRead, BufReader};
-
-    let mut reference: ReferenceGenome = HashMap::new();
-    let file = File::open(path)?;
-    let reader = BufReader::new(file);
-
-    let mut current_contig: Option<String> = None;
-    let mut current_seq = Vec::new();
-
-    for line in reader.lines() {
-        let line = line?;
-        let trimmed = line.trim();
-
-        if trimmed.starts_with('>') {
-            // Header line - save previous contig if exists
-            if let Some(contig_name) = current_contig.take() {
-                reference.insert(contig_name, current_seq.clone());
-                current_seq.clear();
-            }
-
-            // Parse new contig name (take first word after >)
-            let name = trimmed[1..]
-                .split_whitespace()
-                .next()
-                .unwrap_or("")
-                .to_string();
-            current_contig = Some(name);
-        } else if !trimmed.is_empty() {
-            // Sequence line
-            current_seq.extend_from_slice(trimmed.as_bytes());
-        }
-    }
-
-    // Save last contig
-    if let Some(contig_name) = current_contig {
-        reference.insert(contig_name, current_seq);
-    }
-
-    Ok(reference)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -310,13 +237,12 @@ mod tests {
     }
 
     #[test]
-    fn load_reference_fasta_reads_multiple_contigs() {
+    fn load_reference_genome_reads_multiple_contigs() {
         let path = temp_path("rescaling_reference", "fa");
         let content = [">chr1", "ACGT", "AC", ">chr2 description", "TTaa"].join("\n");
         fs::write(&path, content).expect("failed to write temp fasta file");
 
-        let reference = load_reference_fasta(path.to_str().expect("invalid temp path"))
-            .expect("failed to load reference fasta");
+        let reference = load_reference_genome(path.to_str().expect("invalid temp path"));
 
         assert_eq!(reference.len(), 2);
         assert_eq!(reference.get("chr1"), Some(&b"ACGTAC".to_vec()));

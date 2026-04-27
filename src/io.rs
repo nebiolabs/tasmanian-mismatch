@@ -1,9 +1,10 @@
 //! Input helpers for reference FASTA and BAM-derived metadata.
 
-use crate::types::GenomicMismatchKey;
+use crate::types::{GenomicMismatchKey, InconsistencyKey, MismatchKey};
 use crate::types::ReferenceGenome;
 use bio::io::fasta;
 use rust_htslib::bam::{Read, Reader};
+use std::error::Error;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -145,4 +146,90 @@ pub fn print_read_pair_inconsistency_table(
         }
         println!();
     }
+}
+
+/// Write read-pair overlap inconsistencies to a TSV file.
+pub fn write_inconsistencies_tsv(
+    inconsistency_counts: &HashMap<InconsistencyKey, usize>,
+    output_path: &str,
+) -> std::io::Result<()> {
+    let mut rows: Vec<(&InconsistencyKey, &usize)> = inconsistency_counts.iter().collect();
+    rows.sort_by(|(a, _), (b, _)| {
+        a.read1_position
+            .cmp(&b.read1_position)
+            .then(a.read2_position.cmp(&b.read2_position))
+            .then(a.discordance_type.cmp(&b.discordance_type))
+    });
+
+    let file = File::create(output_path)?;
+    let mut writer = BufWriter::new(file);
+    writeln!(writer, "read1_position\tread2_position\tdiscordance_type\tcount")?;
+
+    for (key, count) in rows {
+        writeln!(
+            writer,
+            "{}\t{}\t{}\t{}",
+            key.read1_position, key.read2_position, key.discordance_type, count
+        )?;
+    }
+
+    Ok(())
+}
+
+/// Write mismatch-key discount counts to a TSV file.
+pub fn write_mismatch_discounts_tsv(
+    mismatch_discounts: &HashMap<MismatchKey, usize>,
+    output_path: &str,
+) -> std::io::Result<()> {
+    let mut rows: Vec<(&MismatchKey, &usize)> = mismatch_discounts.iter().collect();
+    rows.sort_by(|(a, _), (b, _)| {
+        a.read_num
+            .cmp(&b.read_num)
+            .then(a.read_position.cmp(&b.read_position))
+            .then(a.mismatch_type.cmp(&b.mismatch_type))
+    });
+
+    let file = File::create(output_path)?;
+    let mut writer = BufWriter::new(file);
+    writeln!(writer, "mismatch_type\tread_num\tread_position\tdiscount_count")?;
+
+    for (key, count) in rows {
+        writeln!(
+            writer,
+            "{}\t{}\t{}\t{}",
+            key.mismatch_type, key.read_num, key.read_position, count
+        )?;
+    }
+
+    Ok(())
+}
+
+/// Load mismatch-rescaling matrix rows from a TSV file.
+pub fn load_rescaling_matrix(
+    path: &str,
+) -> Result<HashMap<(u8, u16, char, char), f32>, Box<dyn Error>> {
+    use std::io::{BufRead, BufReader};
+
+    let mut matrix = HashMap::new();
+    let file = File::open(path)?;
+    let reader = BufReader::new(file);
+
+    for line in reader.lines() {
+        let line = line?;
+        let parts: Vec<&str> = line.trim().split('\t').collect();
+
+        if parts.len() < 5 {
+            continue;
+        }
+
+        let read_num: u8 = parts[0].parse()?;
+        let position: u16 = parts[1].parse()?;
+        let ref_base: char = parts[2].chars().next().ok_or("Invalid ref_base")?;
+        let read_base: char = parts[3].chars().next().ok_or("Invalid read_base")?;
+        let scaling_factor: f32 = parts[4].parse()?;
+
+        matrix.insert((read_num, position, ref_base, read_base), scaling_factor);
+    }
+
+    Ok(matrix)
 }
