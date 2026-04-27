@@ -8,8 +8,6 @@
 pub mod bed;
 /// FASTA and BAM input helpers.
 pub mod io;
-/// Insert-mode-specific processing and CLI support.
-pub mod insert_mode;
 /// Methylation-aware base adjustment logic.
 pub mod methylation;
 /// Core record-processing and mismatch-counting routines.
@@ -25,20 +23,28 @@ pub use bed::{
     BedInterval, BedRegions,
 };
 pub use io::{
-    compute_read_len_max_from_sample_bam, load_reference_genome,
-    load_rescaling_matrix, print_read_pair_inconsistency_table,
-    write_inconsistencies_tsv, write_mismatch_discounts_tsv, write_potential_variants_tsv,
+    apply_external_discounts, compute_read_len_max_from_sample_bam, load_discount_table,
+    load_reference_genome, load_rescaling_matrix, print_read_pair_inconsistency_table,
+    write_inconsistencies_tsv, write_mismatch_discounts_tsv, write_output,
+    write_potential_variants_tsv,
 };
-pub use methylation::adjust_methylation_base;
 pub use processing::{
+    base_position_for_mode,
+    build_base_change, compare_record_to_reference, estimated_fragment_length, mc_mate_end,
+    cigar_reference_span, qualifying_softclip_comparisons, softclip_identity,
+    softclip_side_comparisons, build_tid_map_and_regions, configure_thread_pool,
+    insert_mode_read_position, read_mode_read_position,
+    overlap_interval, process_region, read_is_first_in_reference, record_read_num,
+    should_skip_record, should_skip_whole_read_for_bed,
     compare_and_count, create_mismatch_key, get_overlap_region, process_overlap_region,
     process_paired_reads_with_overlap, process_record, process_single_record,
     rescale_phred_scores, merge_reads_into_insert_position_mode,
     ProcessingConfig, ProcessingContext,
 };
+pub use methylation::adjust_methylation_base;
 pub use types::{
-    GenomicMismatchKey, GenomicMismatchValue, InconsistencyKey, MismatchKey, ReadInfo,
-    ReferenceGenome,
+    Args, DiscountKey, GenomicMismatchKey, GenomicMismatchValue, InconsistencyKey, InsertKey,
+    MismatchKey, OverlapMode, PositionMode, ReadInfo, ReferenceGenome, SoftclipComparison,
 };
 pub use utils::{
     base_to_char, calculate_end_pos, complement, correct_read_len_with_mode, parse_md_tag,

@@ -6,11 +6,12 @@
 use crate::bed::position_overlaps_intervals;
 use crate::methylation::adjust_methylation_base;
 use crate::types::{
-    GenomicMismatchKey, GenomicMismatchValue, InconsistencyKey, MismatchKey, ReadInfo,
-    ReferenceGenome,
+    Args, GenomicMismatchKey, GenomicMismatchValue, InconsistencyKey, InsertKey, MismatchKey,
+    OverlapMode, PositionMode, ReadInfo, ReferenceGenome, SoftclipComparison,
 };
 use crate::utils::{base_to_char, calculate_end_pos, complement, correct_read_len_with_mode};
-use rust_htslib::bam::Record;
+use rust_htslib::bam::{record::Aux, FetchDefinition, IndexedReader, Read, Reader, Record};
+use rayon;
 use std::collections::{HashMap, HashSet};
 
 /// Configuration values shared across record-processing entry points.
@@ -456,7 +457,7 @@ fn count_softclip_mismatches(
 }
 
 #[inline]
-fn should_skip_record(
+fn should_skip_record_core(
     record: &Record,
     min_map_quality: u8,
     required_flags: u16,
@@ -538,7 +539,7 @@ pub fn process_overlap_region(
     let mut read2_map: HashMap<usize, (usize, u8, u8)> = HashMap::new();
 
     for (record, map) in [(record1, &mut read1_map), (record2, &mut read2_map)] {
-        if should_skip_record(
+        if should_skip_record_core(
             record,
             min_map_quality,
             required_flags,
@@ -586,7 +587,7 @@ pub fn process_overlap_region(
 
     // Process mismatch counts for both reads
     for record in [record1, record2] {
-        if should_skip_record(
+        if should_skip_record_core(
             record,
             min_map_quality,
             required_flags,
@@ -686,7 +687,7 @@ pub fn process_record(
     bed_intervals: &[crate::bed::BedInterval],
     use_insert_mode: bool,
 ) {
-    if should_skip_record(
+    if should_skip_record_core(
         record,
         min_map_quality,
         required_flags,
@@ -866,7 +867,7 @@ pub fn process_paired_reads_with_overlap(
         (record1, true, &mut read1_overlap_map),
         (record2, false, &mut read2_overlap_map),
     ] {
-        if should_skip_record(
+        if should_skip_record_core(
             record,
             config.min_map_quality,
             config.required_flags,
@@ -1181,4 +1182,647 @@ pub fn merge_reads_into_insert_position_mode(
         *insert_position_counts.entry(insert_key).or_insert(0) += count;
     }
     insert_position_counts
+}
+
+pub fn insert_mode_read_position(
+    is_first: bool,
+    read_pos: usize,
+    seq_len: usize,
+    max_read_len: usize,
+    stretch: bool,
+    fragment_len: Option<usize>,
+) -> usize {
+    let short_fragment = fragment_len.is_some_and(|fl| fl <= max_read_len - 10);
+    let trailing_bases = seq_len - (read_pos + 1);
+
+    if stretch && seq_len > 1 {
+        // Cubic smooth-step: s = t^2(3 - 2t), maps [0,1] to [0,1].
+        if is_first {
+            let t = read_pos as f64 / (seq_len - 1) as f64;
+            let s = t * t * (3.0 - 2.0 * t);
+            1 + (s * (max_read_len - 1) as f64).round() as usize
+        } else {
+            let trailing = seq_len - 1 - read_pos;
+            let t = trailing as f64 / (seq_len - 1) as f64;
+            let s = t * t * (3.0 - 2.0 * t);
+            2 * max_read_len - (s * (max_read_len - 1) as f64).round() as usize
+        }
+    } else if is_first {
+        if read_pos >= seq_len / 2 && short_fragment {
+            2 * max_read_len - trailing_bases
+        } else {
+            read_pos + 1
+        }
+    } else if read_pos < seq_len / 2 && short_fragment {
+        read_pos + 1
+    } else {
+        2 * max_read_len - trailing_bases
+    }
+}
+
+pub fn read_mode_read_position(
+    pos: usize,
+    seq_len: usize,
+    is_reverse: bool,
+    max_read_len: usize,
+) -> usize {
+    let half = (seq_len + 1) / 2;
+
+    match (is_reverse, pos <= half) {
+        (true, true) => max_read_len - pos,
+        (true, false) => seq_len - pos,
+        (false, false) => pos + (max_read_len - seq_len) + 1,
+        (false, true) => pos + 1,
+    }
+}
+
+pub fn base_position_for_mode(
+    position_mode: PositionMode,
+    read_pos: usize,
+    seq_len: usize,
+    is_reverse: bool,
+    is_first_in_reference: bool,
+    max_read_len: usize,
+    stretch: bool,
+    fragment_len: Option<usize>,
+) -> usize {
+    match position_mode {
+        PositionMode::Read => read_mode_read_position(read_pos, seq_len, is_reverse, max_read_len),
+        PositionMode::Insert => insert_mode_read_position(
+            is_first_in_reference,
+            read_pos,
+            seq_len,
+            max_read_len,
+            stretch,
+            fragment_len,
+        ),
+    }
+}
+
+pub fn configure_thread_pool(threads: usize) {
+    if threads > 0 {
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build_global()
+            .expect("Failed to configure rayon thread pool");
+    }
+}
+
+pub fn build_tid_map_and_regions(
+    bam_path: &str,
+    region_size: usize,
+) -> (std::sync::Arc<HashMap<i32, String>>, Vec<(i32, i64, i64)>) {
+    let bam = Reader::from_path(bam_path).expect("Failed to open BAM file");
+
+    let tid_to_name: std::sync::Arc<HashMap<i32, String>> = std::sync::Arc::new(
+        (0..bam.header().target_count())
+            .map(|i| {
+                (
+                    i as i32,
+                    String::from_utf8_lossy(bam.header().tid2name(i)).to_string(),
+                )
+            })
+            .collect(),
+    );
+
+    let mut regions = Vec::new();
+    for &tid in tid_to_name.keys() {
+        let chr_len = bam.header().target_len(tid as u32).unwrap_or(0) as i64;
+        let mut start = 0i64;
+        while start < chr_len {
+            let end = std::cmp::min(start + region_size as i64, chr_len);
+            regions.push((tid, start, end));
+            start = end;
+        }
+    }
+
+    (tid_to_name, regions)
+}
+
+pub fn cigar_reference_span(cigar: &str) -> Option<usize> {
+    let mut ref_bases = 0usize;
+    let mut run_len = 0usize;
+
+    for b in cigar.bytes() {
+        if b.is_ascii_digit() {
+            run_len = run_len * 10 + (b - b'0') as usize;
+            continue;
+        }
+
+        match b {
+            b'M' | b'=' | b'X' | b'D' | b'N' => {
+                ref_bases += run_len;
+            }
+            b'I' | b'S' | b'H' | b'P' => {}
+            _ => return None,
+        }
+        run_len = 0;
+    }
+
+    if run_len != 0 {
+        return None;
+    }
+
+    Some(ref_bases)
+}
+
+pub fn softclip_side_comparisons(
+    record: &Record,
+    ref_seq: &[u8],
+    read_start: usize,
+    clip_len: usize,
+    ref_start: usize,
+) -> Vec<SoftclipComparison> {
+    if clip_len == 0
+        || read_start + clip_len > record.seq().len()
+        || ref_start + clip_len > ref_seq.len()
+    {
+        return Vec::new();
+    }
+
+    let read_seq = record.seq();
+    let mut comparisons = Vec::with_capacity(clip_len);
+
+    for offset in 0..clip_len {
+        let read_index = read_start + offset;
+        let ref_index = ref_start + offset;
+
+        let Some(read_base) = base_to_char(read_seq[read_index]) else {
+            continue;
+        };
+        let Some(ref_base) = base_to_char(ref_seq[ref_index].to_ascii_uppercase()) else {
+            continue;
+        };
+
+        comparisons.push(SoftclipComparison {
+            read_pos: read_index,
+            ref_pos: ref_index,
+            read_base,
+            ref_base,
+        });
+    }
+
+    comparisons
+}
+
+pub fn softclip_identity(comparisons: &[SoftclipComparison]) -> Option<f64> {
+    if comparisons.is_empty() {
+        None
+    } else {
+        let matches = comparisons
+            .iter()
+            .filter(|comparison| comparison.read_base == comparison.ref_base)
+            .count();
+        Some(matches as f64 / comparisons.len() as f64)
+    }
+}
+
+pub fn qualifying_softclip_comparisons(
+    record: &Record,
+    ref_seq: &[u8],
+    min_identity: f64,
+) -> Vec<SoftclipComparison> {
+    let cigar = record.cigar();
+    let aligned_start = record.pos();
+    let aligned_end = cigar.end_pos();
+    let mut comparisons = Vec::new();
+
+    if let Some(rust_htslib::bam::record::Cigar::SoftClip(len)) = cigar.iter().next() {
+        if aligned_start >= *len as i64 {
+            let side = softclip_side_comparisons(
+                record,
+                ref_seq,
+                0,
+                *len as usize,
+                (aligned_start - *len as i64) as usize,
+            );
+            if softclip_identity(&side).is_some_and(|identity| identity >= min_identity) {
+                comparisons.extend(side);
+            }
+        }
+    }
+
+    if let Some(rust_htslib::bam::record::Cigar::SoftClip(len)) = cigar.iter().last() {
+        let side = softclip_side_comparisons(
+            record,
+            ref_seq,
+            record.seq().len().saturating_sub(*len as usize),
+            *len as usize,
+            aligned_end as usize,
+        );
+        if softclip_identity(&side).is_some_and(|identity| identity >= min_identity) {
+            comparisons.extend(side);
+        }
+    }
+
+    comparisons
+}
+
+/// Parse the MC tag and return the mate's exclusive end position, or `None`
+/// when the MC tag is absent, the record is unpaired / mate-unmapped, or the
+/// reads are on different contigs.
+pub fn mc_mate_end(record: &Record) -> Option<i64> {
+    if !record.is_paired() || record.is_mate_unmapped() {
+        return None;
+    }
+    if record.tid() < 0 || record.mtid() < 0 || record.tid() != record.mtid() {
+        return None;
+    }
+    let mate_start = record.mpos();
+    let mate_span = match record.aux(b"MC".as_ref()) {
+        Ok(Aux::String(mc)) => i64::try_from(cigar_reference_span(mc)?).ok()?,
+        _ => return None,
+    };
+    Some(mate_start + mate_span)
+}
+
+pub fn estimated_fragment_length(record: &Record, mate_end: Option<i64>) -> Option<usize> {
+    let mate_end = mate_end?;
+
+    let read_start = record.pos();
+    let read_end = record.cigar().end_pos();
+    let mate_start = record.mpos();
+
+    let fragment_start = std::cmp::min(read_start, mate_start);
+    let fragment_end = std::cmp::max(read_end, mate_end);
+    if fragment_end <= fragment_start {
+        return None;
+    }
+
+    usize::try_from(fragment_end - fragment_start).ok()
+}
+
+pub fn should_skip_record(record: &Record, args: &Args) -> bool {
+    if record.is_unmapped() {
+        return true;
+    }
+
+    if record.mapq() < args.min_map_quality {
+        return true;
+    }
+
+    let flags = record.flags();
+    if args.required_flags != 0 && (flags & args.required_flags) != args.required_flags {
+        return true;
+    }
+    if args.filter_flags != 0 && (flags & args.filter_flags) != 0 {
+        return true;
+    }
+    if args.excl_flags != 0 && (flags & args.excl_flags) == args.excl_flags {
+        return true;
+    }
+    false
+}
+
+pub fn should_skip_whole_read_for_bed(
+    record: &Record,
+    bed_filter_whole_reads: bool,
+    chunk_bed_intervals: &[crate::bed::BedInterval],
+    bed_cursor: &mut usize,
+) -> bool {
+    if !bed_filter_whole_reads || chunk_bed_intervals.is_empty() {
+        return false;
+    }
+
+    let read_start = record.pos();
+    let read_end = calculate_end_pos(read_start, &record.cigar());
+
+    // Reads are fetched in coordinate order, so we can advance a cursor
+    // and never revisit intervals that end before this read starts.
+    while *bed_cursor < chunk_bed_intervals.len() && chunk_bed_intervals[*bed_cursor].end < read_start {
+        *bed_cursor += 1;
+    }
+
+    let mut idx = *bed_cursor;
+    while idx < chunk_bed_intervals.len() {
+        let interval = &chunk_bed_intervals[idx];
+
+        if interval.start > read_end {
+            break;
+        }
+
+        if read_start <= interval.end && read_end >= interval.start {
+            return true;
+        }
+
+        idx += 1;
+    }
+
+    false
+}
+
+pub fn record_read_num(record: &Record) -> u8 {
+    if record.is_first_in_template() {
+        1
+    } else if record.is_last_in_template() {
+        2
+    } else {
+        1
+    }
+}
+
+pub fn read_is_first_in_reference(record: &Record) -> bool {
+    if !record.is_paired() || record.is_mate_unmapped() {
+        return true;
+    }
+
+    let read_coord = (record.tid(), record.pos());
+    let mate_coord = (record.mtid(), record.mpos());
+
+    if read_coord < mate_coord {
+        true
+    } else if read_coord > mate_coord {
+        false
+    } else {
+        record_read_num(record) == 1
+    }
+}
+
+pub fn overlap_interval(record: &Record, mate_end: Option<i64>) -> Option<(usize, usize)> {
+    let mate_end = mate_end?;
+
+    let read_start = record.pos();
+    let read_end = record.cigar().end_pos();
+    let mate_start = record.mpos();
+
+    let ov_start = std::cmp::max(read_start, mate_start);
+    let ov_end = std::cmp::min(read_end, mate_end);
+    if ov_start < ov_end {
+        Some((ov_start as usize, ov_end as usize))
+    } else {
+        None
+    }
+}
+
+pub fn build_base_change(
+    read_num: u8,
+    ref_base: char,
+    read_base: char,
+    is_reverse: bool,
+    methylation_mode: bool,
+    next_base_for_cpg_mode: Option<char>,
+) -> String {
+    let (strand_ref, strand_read) = if is_reverse {
+        (complement(ref_base), complement(read_base))
+    } else {
+        (ref_base, read_base)
+    };
+
+    if !methylation_mode {
+        return format!("{}>{}", strand_ref, strand_read);
+    }
+
+    let collapse_bisulfite = match (read_num, ref_base, read_base, is_reverse) {
+        (1, 'C', 'T', false) => (true, 'C'),
+        (2, 'G', 'A', false) => (true, 'G'),
+        (1, 'G', 'A', true) => (true, 'G'),
+        (2, 'C', 'T', true) => (true, 'C'),
+        _ => (false, 'N'),
+    };
+
+    match (collapse_bisulfite, next_base_for_cpg_mode) {
+        ((true, 'G'), Some('C')) => format!("{}>{}", strand_ref, strand_ref),
+        ((true, 'C'), Some('G')) => format!("{}>{}", strand_ref, strand_ref),
+        ((true, _), _) => format!("{}>{}", strand_ref, strand_ref),
+        _ => format!("{}>{}", strand_ref, strand_read),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn compare_record_to_reference(
+    record: &Record,
+    reference: &ReferenceGenome,
+    tid_to_name: &HashMap<i32, String>,
+    min_base_quality: u8,
+    max_read_len: usize,
+    position_mode: PositionMode,
+    overlap_mode: &OverlapMode,
+    methylation_mode: bool,
+    cpg_only: bool,
+    mate_end: Option<i64>,
+    local_counts: &mut HashMap<InsertKey, usize>,
+) {
+    let tid = record.tid();
+    if tid < 0 {
+        return;
+    }
+
+    let Some(chr_name) = tid_to_name.get(&tid) else {
+        return;
+    };
+    let Some(ref_seq) = reference.get(chr_name.as_str()) else {
+        return;
+    };
+
+    let seq = record.seq();
+    let qual = record.qual();
+    let seq_len = seq.len();
+    let read_num = record_read_num(record);
+    let is_first_in_reference = read_is_first_in_reference(record);
+    let overlap = overlap_interval(record, mate_end);
+    let softclip_comparisons = qualifying_softclip_comparisons(record, ref_seq, 0.66);
+    let stretch = *overlap_mode == OverlapMode::Stretch;
+
+    let mut read_pos = 0usize;
+    let mut ref_pos = record.pos() as usize;
+
+    use rust_htslib::bam::record::Cigar::*;
+    for op in record.cigar().iter() {
+        match op {
+            Match(len) | Equal(len) | Diff(len) => {
+                for i in 0..*len as usize {
+                    let rp = read_pos + i;
+                    let gp = ref_pos + i;
+
+                    if *overlap_mode == OverlapMode::Cut {
+                        if let Some((ov_start, ov_end)) = overlap {
+                            if gp >= ov_start && gp < ov_end && read_num == 2 {
+                                continue;
+                            }
+                        }
+                    }
+
+                    if rp >= seq_len || rp >= qual.len() || gp >= ref_seq.len() {
+                        continue;
+                    }
+                    if qual[rp] < min_base_quality {
+                        continue;
+                    }
+
+                    let Some(read_base) = base_to_char(seq[rp]) else {
+                        continue;
+                    };
+
+                    let ref_byte = ref_seq[gp].to_ascii_uppercase();
+                    let Some(ref_base) = base_to_char(ref_byte) else {
+                        continue;
+                    };
+
+                    let reference_order = if is_first_in_reference { 1u8 } else { 2u8 };
+
+                    let next_base_for_cpg_mode = if cpg_only {
+                        if record.is_reverse() {
+                            gp.checked_sub(1)
+                                .and_then(|idx| base_to_char(ref_seq[idx].to_ascii_uppercase()))
+                        } else {
+                            ref_seq
+                                .get(gp + 1)
+                                .and_then(|b| base_to_char(b.to_ascii_uppercase()))
+                        }
+                    } else {
+                        None
+                    };
+
+                    let ref_base_change = build_base_change(
+                        read_num,
+                        ref_base,
+                        read_base,
+                        record.is_reverse(),
+                        methylation_mode,
+                        next_base_for_cpg_mode,
+                    );
+
+                    let base_position = base_position_for_mode(
+                        position_mode,
+                        rp,
+                        seq_len,
+                        record.is_reverse(),
+                        is_first_in_reference,
+                        max_read_len,
+                        stretch,
+                        estimated_fragment_length(record, mate_end),
+                    );
+
+                    let key = InsertKey {
+                        base_change: ref_base_change,
+                        read_num,
+                        base_position,
+                        reference_order,
+                    };
+                    *local_counts.entry(key).or_insert(0) += 1;
+                }
+
+                read_pos += *len as usize;
+                ref_pos += *len as usize;
+            }
+            Ins(len) | SoftClip(len) => {
+                read_pos += *len as usize;
+            }
+            Del(len) | RefSkip(len) => {
+                ref_pos += *len as usize;
+            }
+            HardClip(_) | Pad(_) => {}
+        }
+    }
+
+    for comparison in softclip_comparisons {
+        if comparison.read_pos >= qual.len() || qual[comparison.read_pos] < min_base_quality {
+            continue;
+        }
+
+        let reference_order = if is_first_in_reference { 1u8 } else { 2u8 };
+        let ref_base_change = build_base_change(
+            read_num,
+            comparison.ref_base,
+            comparison.read_base,
+            record.is_reverse(),
+            methylation_mode,
+            None,
+        );
+        let base_position = base_position_for_mode(
+            position_mode,
+            comparison.read_pos,
+            seq_len,
+            record.is_reverse(),
+            is_first_in_reference,
+            max_read_len,
+            stretch,
+            estimated_fragment_length(record, mate_end),
+        );
+        let key = InsertKey {
+            base_change: ref_base_change,
+            read_num,
+            base_position,
+            reference_order,
+        };
+        *local_counts.entry(key).or_insert(0) += 1;
+
+        let _ = comparison.ref_pos;
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn process_region(
+    bam_path: &str,
+    tid: i32,
+    chr_name: &str,
+    start: i64,
+    end: i64,
+    reference: &ReferenceGenome,
+    tid_to_name: &HashMap<i32, String>,
+    args: &Args,
+    max_read_len: usize,
+    bed_for_filtering: Option<&crate::bed::BedRegions>,
+    bed_filter_whole_reads: bool,
+) -> (HashMap<InsertKey, usize>, usize) {
+    let mut bam = IndexedReader::from_path(bam_path).expect("Failed to open indexed BAM");
+    if let Err(error) = bam.fetch(FetchDefinition::Region(tid, start, end)) {
+        eprintln!(
+            "Warning: failed to fetch region tid {}:{}-{}: {}",
+            tid, start, end, error
+        );
+        return (HashMap::new(), 0);
+    }
+
+    let mut local_counts: HashMap<InsertKey, usize> = HashMap::new();
+    let mut local_read_count = 0usize;
+    let chunk_bed_intervals = bed_for_filtering
+        .map(|bed| crate::filter_bed_for_region(bed, chr_name, start, end))
+        .unwrap_or_default();
+    let mut bed_cursor = 0usize;
+
+    for result in bam.records() {
+        let record = match result {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+
+        // Ensure each read is counted once across chunks.
+        let read_start = record.pos();
+        if read_start < start || read_start >= end {
+            continue;
+        }
+
+        if should_skip_whole_read_for_bed(
+            &record,
+            bed_filter_whole_reads,
+            &chunk_bed_intervals,
+            &mut bed_cursor,
+        ) {
+            continue;
+        }
+
+        let mate_end = mc_mate_end(&record);
+
+        if should_skip_record(&record, args) {
+            continue;
+        }
+
+        compare_record_to_reference(
+            &record,
+            reference,
+            tid_to_name,
+            args.min_base_quality,
+            max_read_len,
+            args.position_mode,
+            &args.overlap_mode,
+            args.methylation_mode,
+            args.cpg_only,
+            mate_end,
+            &mut local_counts,
+        );
+        local_read_count += 1;
+    }
+
+    (local_counts, local_read_count)
 }
