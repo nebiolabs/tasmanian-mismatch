@@ -8,6 +8,8 @@
 pub mod bed;
 /// FASTA and BAM input helpers.
 pub mod io;
+/// Insert-mode-specific processing and CLI support.
+pub mod insert_mode;
 /// Methylation-aware base adjustment logic.
 pub mod methylation;
 /// Core record-processing and mismatch-counting routines.
@@ -24,7 +26,8 @@ pub use bed::{
 };
 pub use io::{
     compute_read_len_max_from_sample_bam, load_reference_genome,
-    print_read_pair_inconsistency_table, write_potential_variants_tsv,
+    load_rescaling_matrix, print_read_pair_inconsistency_table,
+    write_inconsistencies_tsv, write_mismatch_discounts_tsv, write_potential_variants_tsv,
 };
 pub use methylation::adjust_methylation_base;
 pub use processing::{
