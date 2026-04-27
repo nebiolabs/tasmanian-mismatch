@@ -377,6 +377,56 @@ pub fn normalize_mismatch_counts(
     normalized
 }
 
+/// Convert normalized mismatch frequencies to a rescaling matrix format for tasmanian-rescale-quality.
+///
+/// This is a placeholder function that transforms normalized frequencies into scaling factors
+/// suitable for quality score rescaling. The conversion strategy (e.g., inverse probability,
+/// log-odds, empirical scaling) can be customized by changing the formula.
+///
+/// # Arguments
+/// * `normalized_counts` - HashMap of normalized frequencies from [`normalize_mismatch_counts`].
+///
+/// # Returns
+/// * A HashMap keyed by `(read_num, position, ref_base, read_base)` with scaling factors.
+/// * Each scaling factor is currently a placeholder (1.0) pending implementation strategy.
+///
+/// # Implementation Notes
+/// * The `position` is cast to `u16`; positions > 65535 will overflow.
+/// * To use different scaling strategies (e.g., inverse probability, log-odds), modify
+///   the conversion formula in the loop.
+pub fn frequencies_to_rescaling_matrix(
+    normalized_counts: &HashMap<InsertKey, f64>,
+) -> HashMap<(u8, u16, char, char), f32> {
+    let mut matrix: HashMap<(u8, u16, char, char), f32> = HashMap::new();
+
+    for (key, _normalized_freq) in normalized_counts {
+        let Some((ref_part, alt_part)) = key.base_change.split_once('>') else {
+            continue;
+        };
+
+        let Some(ref_base) = ref_part.chars().next() else {
+            continue;
+        };
+        let Some(alt_base) = alt_part.chars().next() else {
+            continue;
+        };
+
+        let position = key.base_position as u16;
+
+        // PLACEHOLDER: Default scaling factor = 1.0 (no scaling).
+        // Replace this with actual conversion strategy:
+        // - Example: 1.0 / normalized_freq (inverse: rarer variants get higher scaling)
+        // - Example: (1.0 - normalized_freq) / normalized_freq (odds ratio)
+        // - Example: Empirical quality recalibration based on mismatch-vs-quality correlation
+        let scaling_factor = 1.0f32;
+
+        let matrix_key = (key.read_num, position, ref_base, alt_base);
+        matrix.insert(matrix_key, scaling_factor);
+    }
+
+    matrix
+}
+
 pub fn write_output(
     counts: &HashMap<InsertKey, usize>,
     output_file: Option<&str>,
