@@ -96,7 +96,7 @@ pub enum PositionMode {
 }
 
 #[derive(Parser, Debug)]
-#[command(name = "tasmanian-insert-mode")]
+#[command(name = "tasmanian-mismatch")]
 #[command(version, about = "Parallel indexed BAM mismatch caller by read and position")]
 pub struct Args {
     /// Coordinate-sorted BAM file path (requires .bai)
