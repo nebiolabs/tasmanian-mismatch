@@ -1,6 +1,6 @@
 use clap::Parser;
 use rayon::prelude::*;
-use rustmanian_mismatch::insert_mode::{
+use rustmanian_mismatch::{
     apply_external_discounts, build_tid_map_and_regions, configure_thread_pool, load_discount_table,
     process_region, write_output, Args, InsertKey, PositionMode,
 };

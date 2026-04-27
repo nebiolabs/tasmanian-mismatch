@@ -731,4 +731,107 @@ mod tests {
 
         std::fs::remove_file(bed_path).unwrap();
     }
+
+    #[test]
+    fn test_write_potential_variants_tsv_writes_header_and_rows() {
+        let mut genomic_counts = HashMap::new();
+        genomic_counts.insert(
+            GenomicMismatchKey {
+                chromosome: "chr1".to_string(),
+                mismatch_type: "A>G".to_string(),
+                genomic_position: 42,
+            },
+            (3, 10),
+        );
+        genomic_counts.insert(
+            GenomicMismatchKey {
+                chromosome: "chr2".to_string(),
+                mismatch_type: "INVALID".to_string(),
+                genomic_position: 7,
+            },
+            (1, 2),
+        );
+
+        let output_path = "test_potential_variants.tsv";
+        write_potential_variants_tsv(&genomic_counts, output_path).unwrap();
+
+        let output = std::fs::read_to_string(output_path).unwrap();
+        assert!(output.contains("chromosome\tposition\treference_base\tmismatch_base\tcount\tdepth"));
+        assert!(output.contains("chr1\t42\tA\tG\t3\t10"));
+        assert!(!output.contains("chr2\t7"));
+
+        std::fs::remove_file(output_path).unwrap();
+    }
+
+    #[test]
+    fn test_write_inconsistencies_tsv_sorts_rows() {
+        let mut inconsistency_counts = HashMap::new();
+        inconsistency_counts.insert(
+            InconsistencyKey {
+                discordance_type: "R1:C_R2:T".to_string(),
+                read1_position: 8,
+                read2_position: 5,
+            },
+            2,
+        );
+        inconsistency_counts.insert(
+            InconsistencyKey {
+                discordance_type: "R1:A_R2:G".to_string(),
+                read1_position: 3,
+                read2_position: 9,
+            },
+            4,
+        );
+
+        let output_path = "test_inconsistencies.tsv";
+        write_inconsistencies_tsv(&inconsistency_counts, output_path).unwrap();
+
+        let output = std::fs::read_to_string(output_path).unwrap();
+        let lines: Vec<&str> = output.lines().collect();
+
+        assert_eq!(
+            lines[0],
+            "read1_position\tread2_position\tdiscordance_type\tcount"
+        );
+        assert_eq!(lines[1], "3\t9\tR1:A_R2:G\t4");
+        assert_eq!(lines[2], "8\t5\tR1:C_R2:T\t2");
+
+        std::fs::remove_file(output_path).unwrap();
+    }
+
+    #[test]
+    fn test_write_mismatch_discounts_tsv_sorts_rows() {
+        let mut mismatch_discounts = HashMap::new();
+        mismatch_discounts.insert(
+            MismatchKey {
+                mismatch_type: "G>A".to_string(),
+                read_position: 12,
+                read_num: 2,
+            },
+            7,
+        );
+        mismatch_discounts.insert(
+            MismatchKey {
+                mismatch_type: "A>G".to_string(),
+                read_position: 4,
+                read_num: 1,
+            },
+            3,
+        );
+
+        let output_path = "test_mismatch_discounts.tsv";
+        write_mismatch_discounts_tsv(&mismatch_discounts, output_path).unwrap();
+
+        let output = std::fs::read_to_string(output_path).unwrap();
+        let lines: Vec<&str> = output.lines().collect();
+
+        assert_eq!(
+            lines[0],
+            "mismatch_type\tread_num\tread_position\tdiscount_count"
+        );
+        assert_eq!(lines[1], "A>G\t1\t4\t3");
+        assert_eq!(lines[2], "G>A\t2\t12\t7");
+
+        std::fs::remove_file(output_path).unwrap();
+    }
 }

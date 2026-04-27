@@ -1,13 +1,15 @@
 //! Input helpers for reference FASTA and BAM-derived metadata.
 
-use crate::types::{GenomicMismatchKey, InconsistencyKey, MismatchKey};
+use crate::types::{
+    DiscountKey, GenomicMismatchKey, InconsistencyKey, InsertKey, MismatchKey, PositionMode,
+};
 use crate::types::ReferenceGenome;
 use bio::io::fasta;
 use rust_htslib::bam::{Read, Reader};
 use std::error::Error;
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::process;
 
 /// Load a reference genome from a FASTA file.
@@ -208,8 +210,6 @@ pub fn write_mismatch_discounts_tsv(
 pub fn load_rescaling_matrix(
     path: &str,
 ) -> Result<HashMap<(u8, u16, char, char), f32>, Box<dyn Error>> {
-    use std::io::{BufRead, BufReader};
-
     let mut matrix = HashMap::new();
     let file = File::open(path)?;
     let reader = BufReader::new(file);
@@ -232,4 +232,148 @@ pub fn load_rescaling_matrix(
     }
 
     Ok(matrix)
+}
+
+pub fn load_discount_table(path: &str) -> std::io::Result<HashMap<DiscountKey, usize>> {
+    let file = File::open(path)?;
+    let reader = BufReader::new(file);
+    let mut discounts: HashMap<DiscountKey, usize> = HashMap::new();
+
+    for (line_idx, line_result) in reader.lines().enumerate() {
+        let line = line_result?;
+        if line_idx == 0 {
+            continue;
+        }
+
+        let fields: Vec<&str> = line.split('\t').collect();
+        if fields.len() != 4 {
+            continue;
+        }
+
+        let read_num = match fields[1].parse::<u8>() {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let base_position = match fields[2].parse::<usize>() {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let discount_count = match fields[3].parse::<usize>() {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        let key = DiscountKey {
+            base_change: fields[0].to_string(),
+            read_num,
+            base_position,
+        };
+        *discounts.entry(key).or_insert(0) += discount_count;
+    }
+
+    Ok(discounts)
+}
+
+pub fn apply_external_discounts(
+    counts: &mut HashMap<InsertKey, usize>,
+    discounts: HashMap<DiscountKey, usize>,
+) -> usize {
+    let mut touched = 0usize;
+
+    for (discount_key, mut remaining) in discounts {
+        let k1 = InsertKey {
+            base_change: discount_key.base_change.clone(),
+            read_num: discount_key.read_num,
+            base_position: discount_key.base_position,
+            reference_order: 1,
+        };
+        let k2 = InsertKey {
+            base_change: discount_key.base_change,
+            read_num: discount_key.read_num,
+            base_position: discount_key.base_position,
+            reference_order: 2,
+        };
+
+        let c1 = counts.get(&k1).copied().unwrap_or(0);
+        let c2 = counts.get(&k2).copied().unwrap_or(0);
+
+        if c1 == 0 && c2 == 0 {
+            continue;
+        }
+
+        let first_key = if c1 >= c2 { &k1 } else { &k2 };
+        if remaining > 0 {
+            if let Some(v) = counts.get_mut(first_key) {
+                let take = remaining.min(*v);
+                *v -= take;
+                remaining -= take;
+            }
+        }
+
+        if remaining > 0 {
+            let second_key = if first_key.reference_order == 1 {
+                &k2
+            } else {
+                &k1
+            };
+            if let Some(v) = counts.get_mut(second_key) {
+                let take = remaining.min(*v);
+                *v -= take;
+            }
+        }
+
+        touched += 1;
+    }
+
+    touched
+}
+
+pub fn write_output(
+    counts: &HashMap<InsertKey, usize>,
+    output_file: Option<&str>,
+    position_mode: PositionMode,
+) -> std::io::Result<()> {
+    let position_label = match position_mode {
+        PositionMode::Read => "read_position",
+        PositionMode::Insert => "fragment_position",
+    };
+
+    let mut rows: Vec<(&InsertKey, &usize)> = counts.iter().collect();
+    rows.sort_by(|(a, _), (b, _)| {
+        a.reference_order
+            .cmp(&b.reference_order)
+            .then(a.read_num.cmp(&b.read_num))
+            .then(a.base_position.cmp(&b.base_position))
+            .then(a.base_change.cmp(&b.base_change))
+    });
+
+    if let Some(path) = output_file {
+        let file = File::create(path)?;
+        let mut writer = BufWriter::new(file);
+        writeln!(
+            writer,
+            "base_change\tread_num\treference_order\t{}\tcount",
+            position_label
+        )?;
+        for (key, count) in rows {
+            writeln!(
+                writer,
+                "{}\t{}\t{}\t{}\t{}",
+                key.base_change, key.read_num, key.reference_order, key.base_position, count
+            )?;
+        }
+        return Ok(());
+    }
+
+    println!(
+        "base_change\tread_num\treference_order\t{}\tcount",
+        position_label
+    );
+    for (key, count) in rows {
+        println!(
+            "{}\t{}\t{}\t{}\t{}",
+            key.base_change, key.read_num, key.reference_order, key.base_position, count
+        );
+    }
+    Ok(())
 }

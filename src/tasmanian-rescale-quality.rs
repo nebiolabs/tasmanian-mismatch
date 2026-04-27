@@ -235,19 +235,4 @@ mod tests {
 
         let _ = fs::remove_file(path);
     }
-
-    #[test]
-    fn load_reference_genome_reads_multiple_contigs() {
-        let path = temp_path("rescaling_reference", "fa");
-        let content = [">chr1", "ACGT", "AC", ">chr2 description", "TTaa"].join("\n");
-        fs::write(&path, content).expect("failed to write temp fasta file");
-
-        let reference = load_reference_genome(path.to_str().expect("invalid temp path"));
-
-        assert_eq!(reference.len(), 2);
-        assert_eq!(reference.get("chr1"), Some(&b"ACGTAC".to_vec()));
-        assert_eq!(reference.get("chr2"), Some(&b"TTaa".to_vec()));
-
-        let _ = fs::remove_file(path);
-    }
 }
