@@ -240,6 +240,150 @@ mod tests {
     }
 
     #[test]
+    fn test_normalize_mismatch_counts_grouped_by_ref_base() {
+        let mut counts: HashMap<InsertKey, usize> = HashMap::new();
+
+        // Group 1: read 1, reference order 1, position 10, ref base C
+        counts.insert(
+            InsertKey {
+                base_change: "C>A".to_string(),
+                read_num: 1,
+                base_position: 10,
+                reference_order: 1,
+            },
+            2,
+        );
+        counts.insert(
+            InsertKey {
+                base_change: "C>T".to_string(),
+                read_num: 1,
+                base_position: 10,
+                reference_order: 1,
+            },
+            3,
+        );
+        counts.insert(
+            InsertKey {
+                base_change: "C>C".to_string(),
+                read_num: 1,
+                base_position: 10,
+                reference_order: 1,
+            },
+            5,
+        );
+
+        // Group 2: same location metadata but ref base T (separate denominator)
+        counts.insert(
+            InsertKey {
+                base_change: "T>A".to_string(),
+                read_num: 1,
+                base_position: 10,
+                reference_order: 1,
+            },
+            4,
+        );
+        counts.insert(
+            InsertKey {
+                base_change: "T>T".to_string(),
+                read_num: 1,
+                base_position: 10,
+                reference_order: 1,
+            },
+            6,
+        );
+
+        let normalized = normalize_mismatch_counts(&counts);
+
+        let c_to_t = InsertKey {
+            base_change: "C>T".to_string(),
+            read_num: 1,
+            base_position: 10,
+            reference_order: 1,
+        };
+        let c_to_a = InsertKey {
+            base_change: "C>A".to_string(),
+            read_num: 1,
+            base_position: 10,
+            reference_order: 1,
+        };
+        let t_to_a = InsertKey {
+            base_change: "T>A".to_string(),
+            read_num: 1,
+            base_position: 10,
+            reference_order: 1,
+        };
+
+        // C group denominator: (2 + 3 + 5) + 1.0 = 11.0
+        // T group denominator: (4 + 6) + 1.0 = 11.0
+        assert!((normalized[&c_to_t] - (3.0 / 11.0)).abs() < 1e-9);
+        assert!((normalized[&c_to_a] - (2.0 / 11.0)).abs() < 1e-9);
+        assert!((normalized[&t_to_a] - (4.0 / 11.0)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_normalize_mismatch_counts_separates_read_number() {
+        let mut counts: HashMap<InsertKey, usize> = HashMap::new();
+
+        counts.insert(
+            InsertKey {
+                base_change: "C>T".to_string(),
+                read_num: 1,
+                base_position: 7,
+                reference_order: 1,
+            },
+            4,
+        );
+        counts.insert(
+            InsertKey {
+                base_change: "C>C".to_string(),
+                read_num: 1,
+                base_position: 7,
+                reference_order: 1,
+            },
+            6,
+        );
+
+        counts.insert(
+            InsertKey {
+                base_change: "C>T".to_string(),
+                read_num: 2,
+                base_position: 7,
+                reference_order: 1,
+            },
+            1,
+        );
+        counts.insert(
+            InsertKey {
+                base_change: "C>C".to_string(),
+                read_num: 2,
+                base_position: 7,
+                reference_order: 1,
+            },
+            3,
+        );
+
+        let normalized = normalize_mismatch_counts(&counts);
+
+        let r1_c_to_t = InsertKey {
+            base_change: "C>T".to_string(),
+            read_num: 1,
+            base_position: 7,
+            reference_order: 1,
+        };
+        let r2_c_to_t = InsertKey {
+            base_change: "C>T".to_string(),
+            read_num: 2,
+            base_position: 7,
+            reference_order: 1,
+        };
+
+        // R1 C group denominator: (4 + 6) + 1.0 = 11.0
+        // R2 C group denominator: (1 + 3) + 1.0 = 5.0
+        assert!((normalized[&r1_c_to_t] - (4.0 / 11.0)).abs() < 1e-9);
+        assert!((normalized[&r2_c_to_t] - (1.0 / 5.0)).abs() < 1e-9);
+    }
+
+    #[test]
     fn test_process_overlap_region() {
         // Create header
         let header = Header::new();

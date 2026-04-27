@@ -172,4 +172,8 @@ pub struct Args {
     /// Filter mode: 'mask' (skip individual bases in BED regions) or 'filter' (skip whole reads overlapping BED regions)
     #[arg(long, default_value = "mask")]
     pub bed_filter_mode: String,
+
+    /// Normalize counts to frequencies within each (read_num, position, ref_base) group
+    #[arg(long, default_value_t = false)]
+    pub normalize: bool,
 }
