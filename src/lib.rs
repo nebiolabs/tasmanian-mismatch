@@ -24,9 +24,9 @@ pub use bed::{
 };
 pub use io::{
     apply_external_discounts, compute_read_len_max_from_sample_bam, load_discount_table,
-    load_reference_genome, load_rescaling_matrix, print_read_pair_inconsistency_table,
-    write_inconsistencies_tsv, write_mismatch_discounts_tsv, write_output,
-    write_potential_variants_tsv,
+    load_reference_genome, load_rescaling_matrix, normalize_mismatch_counts,
+    print_read_pair_inconsistency_table, write_inconsistencies_tsv, write_mismatch_discounts_tsv,
+    write_normalized_output, write_output, write_potential_variants_tsv,
 };
 pub use processing::{
     base_position_for_mode,

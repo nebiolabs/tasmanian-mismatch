@@ -328,6 +328,55 @@ pub fn apply_external_discounts(
     touched
 }
 
+/// Normalize mismatch counts within each `(read_num, position, ref_base)` group.
+///
+/// For example, for a row key `C>T`, the normalized value is:
+/// `C>T / (C>A + C>C + C>G + C>T)` at the same read number
+/// and base position.
+pub fn normalize_mismatch_counts(
+    counts: &HashMap<InsertKey, usize>,
+) -> HashMap<InsertKey, f64> {
+    let mut group_totals: HashMap<(u8, usize, char), usize> = HashMap::new();
+
+    for (key, count) in counts {
+        let Some((ref_part, _)) = key.base_change.split_once('>') else {
+            continue;
+        };
+        let Some(ref_base) = ref_part.chars().next() else {
+            continue;
+        };
+
+        let group_key = (
+            key.read_num,
+            key.base_position,
+            ref_base,
+        );
+        *group_totals.entry(group_key).or_insert(0) += *count;
+    }
+
+    let mut normalized: HashMap<InsertKey, f64> = HashMap::new();
+    for (key, count) in counts {
+        let Some((ref_part, _)) = key.base_change.split_once('>') else {
+            continue;
+        };
+        let Some(ref_base) = ref_part.chars().next() else {
+            continue;
+        };
+
+        let group_key = (
+            key.read_num,
+            key.base_position,
+            ref_base,
+        );
+
+        if let Some(total) = group_totals.get(&group_key) {
+            normalized.insert(key.clone(), *count as f64 / (*total as f64 + 1.0) ); //1.0 to avoid div by zero
+        }
+    }
+
+    normalized
+}
+
 pub fn write_output(
     counts: &HashMap<InsertKey, usize>,
     output_file: Option<&str>,
@@ -373,6 +422,58 @@ pub fn write_output(
         println!(
             "{}\t{}\t{}\t{}\t{}",
             key.base_change, key.read_num, key.reference_order, key.base_position, count
+        );
+    }
+    Ok(())
+}
+
+pub fn write_normalized_output(
+    counts: &HashMap<InsertKey, usize>,
+    output_file: Option<&str>,
+    position_mode: PositionMode,
+) -> std::io::Result<()> {
+    let normalized = normalize_mismatch_counts(counts);
+
+    let position_label = match position_mode {
+        PositionMode::Read => "read_position",
+        PositionMode::Insert => "fragment_position",
+    };
+
+    let mut rows: Vec<(&InsertKey, &f64)> = normalized.iter().collect();
+    rows.sort_by(|(a, _), (b, _)| {
+        a.reference_order
+            .cmp(&b.reference_order)
+            .then(a.read_num.cmp(&b.read_num))
+            .then(a.base_position.cmp(&b.base_position))
+            .then(a.base_change.cmp(&b.base_change))
+    });
+
+    if let Some(path) = output_file {
+        let file = File::create(path)?;
+        let mut writer = BufWriter::new(file);
+        writeln!(
+            writer,
+            "base_change\tread_num\treference_order\t{}\tnormalized_frequency",
+            position_label
+        )?;
+        for (key, norm_freq) in rows {
+            writeln!(
+                writer,
+                "{}\t{}\t{}\t{}\t{:.6}",
+                key.base_change, key.read_num, key.reference_order, key.base_position, norm_freq
+            )?;
+        }
+        return Ok(());
+    }
+
+    println!(
+        "base_change\tread_num\treference_order\t{}\tnormalized_frequency",
+        position_label
+    );
+    for (key, norm_freq) in rows {
+        println!(
+            "{}\t{}\t{}\t{}\t{:.6}",
+            key.base_change, key.read_num, key.reference_order, key.base_position, norm_freq
         );
     }
     Ok(())
