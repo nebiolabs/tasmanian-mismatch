@@ -6,8 +6,8 @@ use crate::types::{
 use crate::types::ReferenceGenome;
 use bio::io::fasta;
 use rust_htslib::bam::{Read, Reader};
-use std::error::Error;
 use std::collections::HashMap;
+use std::error::Error;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::process;
@@ -183,6 +183,15 @@ pub fn write_mismatch_discounts_tsv(
     mismatch_discounts: &HashMap<MismatchKey, usize>,
     output_path: &str,
 ) -> std::io::Result<()> {
+    let file = File::create(output_path)?;
+    let mut writer = BufWriter::new(file);
+    write_mismatch_discounts_to_writer(mismatch_discounts, &mut writer)
+}
+
+pub fn write_mismatch_discounts_to_writer<W: Write>(
+    mismatch_discounts: &HashMap<MismatchKey, usize>,
+    writer: &mut W,
+) -> std::io::Result<()> {
     let mut rows: Vec<(&MismatchKey, &usize)> = mismatch_discounts.iter().collect();
     rows.sort_by(|(a, _), (b, _)| {
         a.read_num
@@ -191,8 +200,6 @@ pub fn write_mismatch_discounts_tsv(
             .then(a.mismatch_type.cmp(&b.mismatch_type))
     });
 
-    let file = File::create(output_path)?;
-    let mut writer = BufWriter::new(file);
     writeln!(writer, "mismatch_type\tread_num\tread_position\tdiscount_count")?;
 
     for (key, count) in rows {
@@ -210,9 +217,20 @@ pub fn write_mismatch_discounts_tsv(
 pub fn load_rescaling_matrix(
     path: &str,
 ) -> Result<HashMap<(u8, u16, char, char), f32>, Box<dyn Error>> {
-    let mut matrix = HashMap::new();
+    if path == "-" {
+        let stdin = std::io::stdin();
+        return load_rescaling_matrix_from_reader(stdin.lock());
+    }
+
     let file = File::open(path)?;
     let reader = BufReader::new(file);
+    load_rescaling_matrix_from_reader(reader)
+}
+
+pub fn load_rescaling_matrix_from_reader<R: BufRead>(
+    reader: R,
+) -> Result<HashMap<(u8, u16, char, char), f32>, Box<dyn Error>> {
+    let mut matrix = HashMap::new();
 
     for line in reader.lines() {
         let line = line?;
@@ -222,11 +240,27 @@ pub fn load_rescaling_matrix(
             continue;
         }
 
-        let read_num: u8 = parts[0].parse()?;
-        let position: u16 = parts[1].parse()?;
-        let ref_base: char = parts[2].chars().next().ok_or("Invalid ref_base")?;
-        let read_base: char = parts[3].chars().next().ok_or("Invalid read_base")?;
-        let scaling_factor: f32 = parts[4].parse()?;
+        // Skip header or malformed rows instead of failing the whole matrix load.
+        let read_num = match parts[0].parse::<u8>() {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let position = match parts[1].parse::<u16>() {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let ref_base = match parts[2].chars().next() {
+            Some(v) => v,
+            None => continue,
+        };
+        let read_base = match parts[3].chars().next() {
+            Some(v) => v,
+            None => continue,
+        };
+        let scaling_factor = match parts[4].parse::<f32>() {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
 
         matrix.insert((read_num, position, ref_base, read_base), scaling_factor);
     }
@@ -235,8 +269,19 @@ pub fn load_rescaling_matrix(
 }
 
 pub fn load_discount_table(path: &str) -> std::io::Result<HashMap<DiscountKey, usize>> {
+    if path == "-" {
+        let stdin = std::io::stdin();
+        return load_discount_table_from_reader(stdin.lock());
+    }
+
     let file = File::open(path)?;
     let reader = BufReader::new(file);
+    load_discount_table_from_reader(reader)
+}
+
+pub fn load_discount_table_from_reader<R: BufRead>(
+    reader: R,
+) -> std::io::Result<HashMap<DiscountKey, usize>> {
     let mut discounts: HashMap<DiscountKey, usize> = HashMap::new();
 
     for (line_idx, line_result) in reader.lines().enumerate() {
@@ -425,6 +470,44 @@ pub fn frequencies_to_rescaling_matrix(
     }
 
     matrix
+}
+
+pub fn write_rescaling_matrix_output(
+    counts: &HashMap<InsertKey, usize>,
+    output_file: Option<&str>,
+) -> std::io::Result<()> {
+    let normalized = normalize_mismatch_counts(counts);
+    let matrix = frequencies_to_rescaling_matrix(&normalized);
+
+    let mut rows: Vec<(&(u8, u16, char, char), &f32)> = matrix.iter().collect();
+    rows.sort_by(|(a, _), (b, _)| {
+        a.0.cmp(&b.0)
+            .then(a.1.cmp(&b.1))
+            .then(a.2.cmp(&b.2))
+            .then(a.3.cmp(&b.3))
+    });
+
+    if let Some(path) = output_file {
+        let file = File::create(path)?;
+        let mut writer = BufWriter::new(file);
+        for ((read_num, position, ref_base, read_base), scaling_factor) in rows {
+            writeln!(
+                writer,
+                "{}\t{}\t{}\t{}\t{:.6}",
+                read_num, position, ref_base, read_base, scaling_factor
+            )?;
+        }
+        return Ok(());
+    }
+
+    for ((read_num, position, ref_base, read_base), scaling_factor) in rows {
+        println!(
+            "{}\t{}\t{}\t{}\t{:.6}",
+            read_num, position, ref_base, read_base, scaling_factor
+        );
+    }
+
+    Ok(())
 }
 
 pub fn write_output(

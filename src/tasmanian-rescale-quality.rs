@@ -15,7 +15,8 @@ struct Args {
     /// Reference FASTA file
     reference_fasta: String,
     
-    /// Rescaling matrix file (tab-separated: read_num, position, ref_base, read_base, scaling_factor)
+    /// Rescaling matrix file (tab-separated: read_num, position, ref_base, read_base, scaling_factor).
+    /// Use '-' to read matrix rows from stdin.
     matrix_file: String,
     
     #[arg(short = 'r', long, default_value_t = 10_000_000)]

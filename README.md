@@ -55,6 +55,7 @@ Common options:
 --methylation-mode                Collapse methylation-driven mismatch classes
 --cpg-only                        Restrict methylation collapsing to CpG context
 --normalize                       Write normalized frequencies instead of raw counts
+--emit-rescaling-matrix           Emit matrix rows for tasmanian-rescale-quality
 -o, --output-file <TSV>           Output path
 ```
 
@@ -72,11 +73,22 @@ tasmanian-mismatch sample.bam reference.fa \
   --discount-table variant_discounts.tsv \
   -o mismatch_counts.tsv
 
+# Pipe discount table via stdin (use '-' to read --discount-table from stdin)
+cat variant_discounts.tsv | tasmanian-mismatch sample.bam reference.fa \
+  --position-mode read \
+  --discount-table - \
+  -o mismatch_counts.tsv
+
 # Normalized frequencies instead of integer counts
 tasmanian-mismatch sample.bam reference.fa \
   --position-mode read \
   --normalize \
   -o mismatch_normalized.tsv
+
+# Emit rescaling matrix rows to stdout (or -o file.tsv)
+tasmanian-mismatch sample.bam reference.fa \
+  --position-mode read \
+  --emit-rescaling-matrix
 ```
 
 ### `tasmanian-diagnostics`
@@ -102,6 +114,19 @@ tasmanian-diagnostics sample.bam reference.fa \
   --discount-output variant_discounts.tsv
 ```
 
+Direct piping to `tasmanian-mismatch` is supported by writing discounts to stdout:
+
+```bash
+tasmanian-diagnostics sample.bam reference.fa \
+  --variants-output potential_variants.tsv \
+  --inconsistencies-output read_pair_inconsistencies.tsv \
+  --discount-output - | \
+tasmanian-mismatch sample.bam reference.fa \
+  --position-mode read \
+  --discount-table - \
+  -o mismatch_counts.tsv
+```
+
 The `variant_discounts.tsv` output can be consumed by `tasmanian-mismatch` using `--discount-table`.
 
 ### `tasmanian-rescale-quality`
@@ -114,10 +139,16 @@ Basic usage:
 tasmanian-rescale-quality <BAM> <REFERENCE_FASTA> <MATRIX_TSV> [OPTIONS]
 ```
 
+Use `-` as `<MATRIX_TSV>` to read matrix rows from stdin.
+
 Example:
 
 ```bash
 tasmanian-rescale-quality sample.bam reference.fa quality_matrix.tsv \
+  -o rescaled.bam
+
+# Consume matrix from stdin
+cat quality_matrix.tsv | tasmanian-rescale-quality sample.bam reference.fa - \
   -o rescaled.bam
 ```
 
@@ -136,6 +167,16 @@ Important distinction:
 - `tasmanian-mismatch` output is not the direct input to `tasmanian-rescale-quality`
 - `tasmanian-rescale-quality` expects a matrix with columns `read_num`, `position`, `ref_base`, `read_base`, `scaling_factor`
 - `variant_discounts.tsv` is for `tasmanian-mismatch`, not for `tasmanian-rescale-quality`
+
+Direct pipe from mismatch into rescale-quality:
+
+```bash
+tasmanian-mismatch sample.bam reference.fa \
+  --position-mode read \
+  --emit-rescaling-matrix | \
+tasmanian-rescale-quality sample.bam reference.fa - \
+  -o rescaled.bam
+```
 
 ## Output Formats
 
