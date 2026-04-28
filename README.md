@@ -1,264 +1,266 @@
 # Rustmanian-Mismatch
 
-A high-performance tool for the analysis of mismatches in high-throughput sequencing data from a reference genome.
+Rustmanian-Mismatch is a Rust toolkit for mismatch analysis on indexed BAM files against a reference FASTA. The repository currently builds three binaries:
 
-## Features
+- `tasmanian-mismatch`: count mismatches by read position or fragment position
+- `tasmanian-diagnostics`: report genomic mismatch sites, overlap inconsistencies, and read-position discount tables
+- `tasmanian-rescale-quality`: rescale BAM quality scores from a tab-delimited matrix
 
-- **Fast parallel processing** for multi-threaded BAM analysis
-- **BED file filtering** - Filter or mask reads based on genomic regions
-- **Methylation-aware analysis** for bisulfite/EM-seq data
-- **Paired-end overlap detection** and inconsistency analysis
-- **Soft-clip handling** with configurable thresholds
-- **Genomic variant calling** with depth filtering and no correction. Just raw data.
-- **SAM flag filtering** compatible with samtools
-
-## Installation
-
-### Build from source
+## Build
 
 ```bash
-# Clone the repository
-cd /path/to/tasmanian-mismatch
-
-# Build release version
 cargo build --release
-
-# Binaries will be at:
-# ./target/release/rustmanian-mismatch
-# ./target/release/tasmanian-rescale-quality
-# ./target/release/tasmanian-insert-mode
-# ./target/release/tasmanian-diagnostics
 ```
 
-### Dependencies
+Release binaries:
 
-- Rust 1.70+
-- rust-htslib 0.47
-- rayon 1.10
-- bio 1.6
-- clap 4.5
-
-## Usage
-
-### Basic Usage
-
-```bash
-rustmanian-mismatch <BAM_FILE> <REFERENCE_FASTA> [OPTIONS]
+```text
+./target/release/tasmanian-mismatch
+./target/release/tasmanian-diagnostics
+./target/release/tasmanian-rescale-quality
 ```
 
-### Practical Two-Tool Workflow
+## Inputs
 
-Use dedicated binaries for dedicated outputs:
+- Coordinate-sorted BAM with index (`.bai`)
+- Reference FASTA
+- Optional BED file for masking or whole-read filtering
+- Optional discount table from `tasmanian-diagnostics`
+- Optional rescaling matrix for `tasmanian-rescale-quality`
 
-- `tasmanian-insert-mode`: read/fragment-position mismatch counting.
-- `tasmanian-diagnostics`: genomic potential variants + read-pair overlap inconsistencies.
+## Binary Overview
 
-Examples:
+### `tasmanian-mismatch`
 
-```bash
-# Position-transformed mismatch counting
-tasmanian-insert-mode input.bam reference.fa --position-mode insert -o insert_counts.tsv
-
-# Diagnostics tables only (separate from insert-mode output)
-tasmanian-diagnostics input.bam reference.fa \
-  --variants-output potential_variants.tsv \
-  --inconsistencies-output read_pair_inconsistencies.tsv
-```
-
-### Common Options
-
-```bash
--t, --threads <N>              Number of threads (0 = all cores)
--q <QUAL>                      Minimum base quality (default: 20)
---min-map-quality <MAPQ>       Minimum mapping quality (default: 10)l
--r, --region-size <SIZE>       Region size for parallel processing (default: 10000000)
---softclip-threshold <FRAC>    Fraction of matching bases in softclips (default: 0.66)
-```
-
-### BED File Filtering
-
-Filter or mask reads based on genomic regions defined in a BED file:
-
-```bash
-# Mask individual bases in BED regions (default)
-rustmanian-mismatch input.bam reference.fa \
-  -b regions_to_mask.bed \
-  --bed-filter-mode mask
-
-# Filter entire reads overlapping BED regions
-rustmanian-mismatch input.bam reference.fa \
-  -b regions_to_exclude.bed \
-  --bed-filter-mode filter
-```
-
-**Filter Modes:**
-- `mask`: Skip individual bases within reads that overlap BED regions (keeps read)
-- `filter`: Skip entire reads that overlap any BED region (removes read)
-
-See [BED_FILTERING.md](BED_FILTERING.md) for detailed documentation.
-
-### Methylation Analysis
-
-```bash
-# Basic methylation mode (all C>T in read 1 and G>A in read 2)
-rustmanian-mismatch input.bam reference.fa -m
-
-# CpG-only methylation mode
-rustmanian-mismatch input.bam reference.fa --cpg-only
-```
-
-### Flag Filtering (samtools compatible)
-
-```bash
-# Require specific flags
-rustmanian-mismatch input.bam reference.fa -f 3  # Require paired and properly paired
-
-# Filter out flags
-rustmanian-mismatch input.bam reference.fa -F 1804  # Exclude unmapped, secondary, supplementary, duplicates
-
-# Exclude if ALL flags are set
-rustmanian-mismatch input.bam reference.fa -G 256  # Exclude secondary alignments
-```
-
-### Complete Example
-
-```bash
-rustmanian-mismatch \
-  sample.bam \
-  reference.fa \
-  -t 16 \
-  -q 30 \
-  --min-map-quality 20 \
-  -b problematic_regions.bed \
-  --bed-filter-mode mask \
-  -m \
-  --genomic-threshold 7 \
-  --genomic-depth-threshold 10 \
-  > sample_mismatches.csv
-```
-
-### Quality Rescaling Utility
-
-`tasmanian-rescale-quality` rewrites BAM base qualities using a tab-delimited rescaling matrix keyed by:
-- read number (1/2)
-- read position
-- reference base
-- observed read base
+Count mismatch classes such as `C>T`, `G>A`, `A>C` by either read position or fragment position.
 
 Basic usage:
 
 ```bash
-tasmanian-rescale-quality <BAM_FILE> <REFERENCE_FASTA> <MATRIX_TSV> [OPTIONS]
+tasmanian-mismatch <BAM> <REFERENCE_FASTA> [OPTIONS]
 ```
 
-Options:
+Common options:
 
 ```bash
--t, --threads <N>     Number of threads (0 = all cores)
--r, --region-size     Region size for parallel processing in bp (default: 10000000)
--o, --output-file     Output BAM path (default: stdout)
+-t, --threads <N>                 Number of threads (0 keeps rayon default)
+-r, --region-size <BP>            Region size for indexed chunking
+-q, --min-base-quality <QUAL>     Minimum base quality
+-m, --min-map-quality <MAPQ>      Minimum mapping quality
+--position-mode <read|insert>     Position mode
+--overlap-mode <cut|stretch>      Overlap handling mode
+--discount-table <TSV>            Discount table from tasmanian-diagnostics
+-b, --bed-file <BED>              BED file for masking/filtering
+--bed-filter-mode <mask|filter>   BED handling mode
+--methylation-mode                Collapse methylation-driven mismatch classes
+--cpg-only                        Restrict methylation collapsing to CpG context
+--normalize                       Write normalized frequencies instead of raw counts
+-o, --output-file <TSV>           Output path
 ```
 
-Matrix format (tab-separated, 5 columns):
+Examples:
 
-```text
-read_num    position    ref_base    read_base    scaling_factor
+```bash
+# Raw mismatch counts by fragment position
+tasmanian-mismatch sample.bam reference.fa \
+  --position-mode insert \
+  -o mismatch_counts.tsv
+
+# Read-position counts with a diagnostics-derived discount table
+tasmanian-mismatch sample.bam reference.fa \
+  --position-mode read \
+  --discount-table variant_discounts.tsv \
+  -o mismatch_counts.tsv
+
+# Normalized frequencies instead of integer counts
+tasmanian-mismatch sample.bam reference.fa \
+  --position-mode read \
+  --normalize \
+  -o mismatch_normalized.tsv
+```
+
+### `tasmanian-diagnostics`
+
+Produce three diagnostic outputs:
+
+- genomic mismatch sites (`potential_variants.tsv`)
+- paired-read overlap inconsistencies (`read_pair_inconsistencies.tsv`)
+- mismatch discount table (`variant_discounts.tsv`)
+
+Basic usage:
+
+```bash
+tasmanian-diagnostics <BAM> <REFERENCE_FASTA> [OPTIONS]
 ```
 
 Example:
 
 ```bash
-tasmanian-rescale-quality \
-  input.bam \
-  reference.fa \
-  quality_matrix.tsv \
-  -t 8 \
+tasmanian-diagnostics sample.bam reference.fa \
+  --variants-output potential_variants.tsv \
+  --inconsistencies-output read_pair_inconsistencies.tsv \
+  --discount-output variant_discounts.tsv
+```
+
+The `variant_discounts.tsv` output can be consumed by `tasmanian-mismatch` using `--discount-table`.
+
+### `tasmanian-rescale-quality`
+
+Rewrite BAM base qualities from a rescaling matrix keyed by read number, read position, reference base, and observed read base.
+
+Basic usage:
+
+```bash
+tasmanian-rescale-quality <BAM> <REFERENCE_FASTA> <MATRIX_TSV> [OPTIONS]
+```
+
+Example:
+
+```bash
+tasmanian-rescale-quality sample.bam reference.fa quality_matrix.tsv \
   -o rescaled.bam
 ```
 
-Or run without installing from `cargo`:
+## Workflow
 
-```bash
-cargo run --release --bin tasmanian-rescale-quality -- \
-  input.bam reference.fa quality_matrix.tsv -o rescaled.bam
+The intended workflow is:
+
+1. Run `tasmanian-mismatch` to get raw mismatch counts.
+2. Optionally run `tasmanian-mismatch --normalize` to get within-group mismatch frequencies.
+3. Optionally convert normalized frequencies into a rescaling matrix for `tasmanian-rescale-quality`.
+4. Run `tasmanian-diagnostics` when you need genomic-site summaries or a discount table.
+5. Feed `variant_discounts.tsv` back into `tasmanian-mismatch` via `--discount-table` if desired.
+
+Important distinction:
+
+- `tasmanian-mismatch` output is not the direct input to `tasmanian-rescale-quality`
+- `tasmanian-rescale-quality` expects a matrix with columns `read_num`, `position`, `ref_base`, `read_base`, `scaling_factor`
+- `variant_discounts.tsv` is for `tasmanian-mismatch`, not for `tasmanian-rescale-quality`
+
+## Output Formats
+
+### `tasmanian-mismatch` raw output
+
+Read-position mode:
+
+```tsv
+base_change	read_num	reference_order	read_position	count
+C>T	1	1	42	18
+C>A	1	1	42	3
+G>A	2	2	17	11
 ```
 
-## Output Files
+Fragment-position mode uses the same columns except `read_position` becomes `fragment_position`.
 
-In the output on INSERT mode, some positions will contain a few counts for C>T or G>A (as well as other mismatches) that are not representative and after normalizationm, will lead to huge noise. Hence, either in tableau or a proposed visualization html that we provide, these values should be filtered out before normalization (e.g. positions with less than 15 counts should not be considered). Moreover, the data could be slightly smoothed for visualization purposes. 
+### `tasmanian-mismatch --normalize`
 
+```tsv
+base_change	read_num	reference_order	read_position	normalized_frequency
+C>T	1	1	42	0.782609
+C>A	1	1	42	0.130435
+C>G	1	1	42	0.043478
+```
 
-### Standard Output (CSV)
-Main mismatch counts table with columns:
-- `Read`: Read number (1 or 2)
-- `Position`: Position in read
-- `REF>ALT`: Count of each mismatch type
+Normalization is currently performed within each `(read_num, position, ref_base)` group. For example:
 
-### potential_variants.tsv
-Genomic positions with high mismatch counts:
-- `chromosome`: Chromosome name
-- `position`: Genomic position
-- `reference_base`: Reference base
-- `mismatch_base`: Observed base
-- `count`: Number of mismatches
-- `depth`: Total depth at position
+```text
+C>T / (C>A + C>C + C>G + C>T)
+```
 
-### Overlap Analysis (if paired reads)
-Additional sections in output:
-- Overlap region mismatches
-- Read pair inconsistencies
+Note: the current implementation adds `1.0` to the denominator before division.
 
-## Performance --> Make a minimal benchmarking 
+### `potential_variants.tsv`
 
-- **Speed**: ~10-50x faster than Python version depending on dataset
-- **Memory**: Efficient memory usage with streaming BAM processing
-- **Scalability**: Linear scaling with number of threads
-- **BED filtering**: Minimal overhead (~5-10% with mask mode)
+```tsv
+chromosome	position	reference_base	mismatch_base	count	depth
+chr1	10452	C	T	12	38
+chr1	20891	G	A	9	27
+chr2	450103	A	C	15	41
+```
 
-## Example Workflow
+### `read_pair_inconsistencies.tsv`
+
+```tsv
+read1_position	read2_position	discordance_type	count
+18	83	R1:A_R2:G	5
+19	82	R1:C_R2:T	3
+20	81	R1:G_R2:A	7
+```
+
+### `variant_discounts.tsv`
+
+```tsv
+mismatch_type	read_num	read_position	discount_count
+C>T	1	42	6
+G>A	2	17	4
+A>C	1	88	9
+```
+
+This table is read-position keyed and can be supplied to `tasmanian-mismatch` through `--discount-table`.
+
+### Rescaling matrix for `tasmanian-rescale-quality`
+
+```tsv
+1	42	C	T	0.85
+1	42	C	A	1.10
+2	17	G	A	0.65
+```
+
+Columns:
+
+```text
+read_num    position    ref_base    read_base    scaling_factor
+```
+
+## BED Filtering
+
+BED-aware handling is available in both `tasmanian-mismatch` and `tasmanian-diagnostics`.
 
 ```bash
-# 1. Index your BAM file
-samtools index input.bam
+# Mask bases overlapping BED intervals
+tasmanian-mismatch sample.bam reference.fa \
+  -b regions.bed \
+  --bed-filter-mode mask
 
-# 2. Create BED file with regions to exclude (optional)
-cat > exclude.bed <<EOF
-chr1    1000000    1001000
-chr2    5000000    5002000
-EOF
-
-# 3. Run analysis
-rustmanian-mismatch input.bam reference.fa \
-  -b exclude.bed \
-  -t 8 \
-  -q 30 \
-  > results.csv 2> analysis.log
-
-# 4. Check potential variants
-cat potential_variants.tsv
+# Drop whole reads overlapping BED intervals
+tasmanian-mismatch sample.bam reference.fa \
+  -b regions.bed \
+  --bed-filter-mode filter
 ```
+
+Modes:
+
+- `mask`: skip only aligned positions overlapping BED intervals
+- `filter`: skip the whole read if any aligned portion overlaps a BED interval
+
+See [BED_FILTERING.md](/appdev/aerijman/projects/artifacts/tasmanian-mismatch/BED_FILTERING.md) for details.
+
+## Integration Tests
+
+Current integration coverage:
+
+- [tests/mismatch_integration.rs](/appdev/aerijman/projects/artifacts/tasmanian-mismatch/tests/mismatch_integration.rs): fixture-driven test for `tasmanian-mismatch`
+- [tests/diagnostics_integration.rs](/appdev/aerijman/projects/artifacts/tasmanian-mismatch/tests/diagnostics_integration.rs): fixture-driven test for `tasmanian-diagnostics`
+- [tests/rescale_integration.rs](/appdev/aerijman/projects/artifacts/tasmanian-mismatch/tests/rescale_integration.rs): end-to-end test for `tasmanian-rescale-quality`
+
+The fixture BAM used by the mismatch and diagnostics integration tests is checked in at:
+
+- [tests/test.bam](/appdev/aerijman/projects/artifacts/tasmanian-mismatch/tests/test.bam)
+- [tests/test.bam.bai](/appdev/aerijman/projects/artifacts/tasmanian-mismatch/tests/test.bam.bai)
+- [tests/test.sam](/appdev/aerijman/projects/artifacts/tasmanian-mismatch/tests/test.sam)
+
+Run the full test suite with:
+
+```bash
+cargo test --all-targets
+```
+
+## Notes
+
+- `tasmanian-mismatch` and `tasmanian-diagnostics` currently use slightly different emitted position conventions in some outputs; tests document the current behavior.
+- `frequencies_to_rescaling_matrix` exists as a placeholder conversion step in the library and currently emits `1.0` scaling factors.
+- `reference_order` in mismatch output indicates which read in a pair appears first in reference coordinates.
 
 ## License
 
 AGPL v3
-
-## Citation
-
-If you use this tool, please cite:
-[Original Tasmanian paper/repository]
-
-## Related Tools
-
-- [Python version](python_version/) - Original implementation
-- [samtools](http://www.htslib.org/) - SAM/BAM manipulation
-- [bedtools](https://bedtools.readthedocs.io/) - Genomic interval operations
-
-
-## ToDo
-  - change read mode to read max as a default BUT add an argument for the user to write the insert length manually (ex. In small RNA the mode is not the max!! Then finding the max could be too expensive) ✅
-  - Add option to report by read or by insert/fragment (main.rs:109), where the insert (in between the reads) can be 1 dash or many, depending on  the length of the reads, so that the end of the    reads can be stack and he result is the sum of observations at specific positions FROM the ends.  There is already an unused variable **_insert_position_mode.** --> in main.rs:344 I can add a function that do the analysis of both reads into a insert.
-  In the insert-mode, just use the BAM AS IS. Only compare to the + strand. ✅
-  - We can already filter through the flag (which can identify read number and strand to which it aligns to). It would be great if we can also filter through RF/FR (read that aligns to + has lower grenomic coordinate = FR (fwd/rev), and opposite for RF). ✅
-  - In processing.rs:140, __adjust_methylation_base__ is applied if tracking genomic positions (for cheap variant calling). However, that function has been already applied within __create_mismatch_key__ (line 112). Perhaps we can output that info and avoid running it twice (for each C>T found!)
-  - In each chunk, there might be a few reads without pair, because the bam is probably sorted by genomic position rather than qname. 2 options: 1. Brad proposed exceeding the loop boundary - e.g. if we loop over 10k, keep going beyond, until we find the mate or we hit a limit...  say 11K, as any fragment should not be that long. 2. Keep these reads in the heap until the end of the program and loop through these few reads.  
-  - In the overlapping fragments, we might be counting twice for the overlapping bases. But these are 2 observations of the same base. We might be able to either count 1/2 in these cases, but then the data type has to be float not int. We can, instead, double count all bases and single count the overlapping ones. At the end, we devide the table by 2.
