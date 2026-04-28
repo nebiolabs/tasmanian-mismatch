@@ -1,20 +1,13 @@
+mod test_utils;
+
 use rust_htslib::bam::header::HeaderRecord;
 use rust_htslib::bam::index;
 use rust_htslib::bam::{Format, Header, HeaderView, Record, Writer};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::io::Read;
+use std::path::Path;
 use std::process::{Command, Stdio};
-use std::time::{SystemTime, UNIX_EPOCH};
-
-fn unique_temp_dir(prefix: &str) -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock before unix epoch")
-        .as_nanos();
-    let dir = std::env::temp_dir().join(format!("{}_{}", prefix, nanos));
-    fs::create_dir_all(&dir).expect("failed to create temp dir");
-    dir
-}
+use test_utils::{log_line, repo_log_path, unique_temp_dir};
 
 fn write_test_bam(path: &Path) {
     let mut header = Header::new();
@@ -35,15 +28,26 @@ fn write_test_bam(path: &Path) {
 #[test]
 fn integration_all_binaries_with_options_and_three_way_pipe() {
     let temp_dir = unique_temp_dir("all_binaries_and_pipes");
+    let log_path = repo_log_path("all_binaries_and_pipes");
     let fixture_bam = temp_dir.join("input.bam");
     let reference_fa = temp_dir.join("reference.fa");
     let bed_file = temp_dir.join("regions.bed");
     let discount_file = temp_dir.join("discounts_in.tsv");
     let matrix_file = temp_dir.join("matrix.tsv");
 
+    log_line(&log_path, "Starting all-binaries integration test");
+
     fs::write(&reference_fa, ">chr1\nACGTACGT\n").expect("failed to write reference");
     write_test_bam(&fixture_bam);
     index::build(&fixture_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
+    log_line(
+        &log_path,
+        &format!(
+            "Prepared inputs: bam={}, reference={}",
+            fixture_bam.display(),
+            reference_fa.display()
+        ),
+    );
 
     // Non-overlapping BED interval for this tiny fixture read.
     fs::write(&bed_file, "chr1\t100\t101\n").expect("failed to write bed file");
@@ -57,7 +61,7 @@ fn integration_all_binaries_with_options_and_three_way_pipe() {
     // 1) tasmanian-mismatch with broad option coverage.
     let mismatch_output = temp_dir.join("mismatch_normalized.tsv");
     let mismatch_bin = env!("CARGO_BIN_EXE_tasmanian-mismatch");
-    let mismatch_status = Command::new(mismatch_bin)
+    let mismatch_run = Command::new(mismatch_bin)
         .arg("-t")
         .arg("1")
         .arg("-r")
@@ -93,10 +97,20 @@ fn integration_all_binaries_with_options_and_three_way_pipe() {
         .arg(&mismatch_output)
         .arg(&fixture_bam)
         .arg(&reference_fa)
-        .status()
+        .output()
         .expect("failed to execute tasmanian-mismatch");
-    assert!(mismatch_status.success(), "tasmanian-mismatch command failed");
+    log_line(&log_path, &format!("mismatch status: {}", mismatch_run.status));
+    log_line(
+        &log_path,
+        &format!("mismatch stdout:\n{}", String::from_utf8_lossy(&mismatch_run.stdout)),
+    );
+    log_line(
+        &log_path,
+        &format!("mismatch stderr:\n{}", String::from_utf8_lossy(&mismatch_run.stderr)),
+    );
+    assert!(mismatch_run.status.success(), "tasmanian-mismatch command failed");
     let mismatch_text = fs::read_to_string(&mismatch_output).expect("failed to read mismatch output");
+    log_line(&log_path, &format!("mismatch_normalized.tsv:\n{}", mismatch_text));
     assert!(
         mismatch_text
             .lines()
@@ -112,7 +126,7 @@ fn integration_all_binaries_with_options_and_three_way_pipe() {
     let inconsistencies_tsv = temp_dir.join("inconsistencies.tsv");
     let discounts_tsv = temp_dir.join("discounts.tsv");
     let diagnostics_bin = env!("CARGO_BIN_EXE_tasmanian-diagnostics");
-    let diagnostics_status = Command::new(diagnostics_bin)
+    let diagnostics_run = Command::new(diagnostics_bin)
         .arg("-t")
         .arg("1")
         .arg("-r")
@@ -150,9 +164,18 @@ fn integration_all_binaries_with_options_and_three_way_pipe() {
         .arg(&discounts_tsv)
         .arg(&fixture_bam)
         .arg(&reference_fa)
-        .status()
+        .output()
         .expect("failed to execute tasmanian-diagnostics");
-    assert!(diagnostics_status.success(), "tasmanian-diagnostics command failed");
+    log_line(&log_path, &format!("diagnostics status: {}", diagnostics_run.status));
+    log_line(
+        &log_path,
+        &format!("diagnostics stdout:\n{}", String::from_utf8_lossy(&diagnostics_run.stdout)),
+    );
+    log_line(
+        &log_path,
+        &format!("diagnostics stderr:\n{}", String::from_utf8_lossy(&diagnostics_run.stderr)),
+    );
+    assert!(diagnostics_run.status.success(), "tasmanian-diagnostics command failed");
     assert!(variants_tsv.exists(), "missing variants output");
     assert!(inconsistencies_tsv.exists(), "missing inconsistencies output");
     assert!(discounts_tsv.exists(), "missing discount output");
@@ -160,7 +183,7 @@ fn integration_all_binaries_with_options_and_three_way_pipe() {
     // 3) tasmanian-rescale-quality with explicit options.
     let rescaled_bam = temp_dir.join("rescaled_from_file_matrix.bam");
     let rescale_bin = env!("CARGO_BIN_EXE_tasmanian-rescale-quality");
-    let rescale_status = Command::new(rescale_bin)
+    let rescale_run = Command::new(rescale_bin)
         .arg(&fixture_bam)
         .arg(&reference_fa)
         .arg(&matrix_file)
@@ -170,9 +193,18 @@ fn integration_all_binaries_with_options_and_three_way_pipe() {
         .arg("1000")
         .arg("-o")
         .arg(&rescaled_bam)
-        .status()
+        .output()
         .expect("failed to execute tasmanian-rescale-quality");
-    assert!(rescale_status.success(), "tasmanian-rescale-quality command failed");
+    log_line(&log_path, &format!("rescale(file) status: {}", rescale_run.status));
+    log_line(
+        &log_path,
+        &format!("rescale(file) stdout:\n{}", String::from_utf8_lossy(&rescale_run.stdout)),
+    );
+    log_line(
+        &log_path,
+        &format!("rescale(file) stderr:\n{}", String::from_utf8_lossy(&rescale_run.stderr)),
+    );
+    assert!(rescale_run.status.success(), "tasmanian-rescale-quality command failed");
     assert!(rescaled_bam.exists(), "missing rescaled BAM output");
 
     // 4) Full 3-binary pipe:
@@ -200,6 +232,7 @@ fn integration_all_binaries_with_options_and_three_way_pipe() {
         .arg(&fixture_bam)
         .arg(&reference_fa)
         .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .expect("failed to spawn diagnostics child");
 
@@ -222,6 +255,7 @@ fn integration_all_binaries_with_options_and_three_way_pipe() {
         .arg(&reference_fa)
         .stdin(Stdio::from(diagnostics_stdout))
         .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .expect("failed to spawn mismatch child");
 
@@ -241,12 +275,39 @@ fn integration_all_binaries_with_options_and_three_way_pipe() {
         .arg("-o")
         .arg(&piped_rescaled_bam)
         .stdin(Stdio::from(mismatch_stdout))
+        .stderr(Stdio::piped())
         .spawn()
         .expect("failed to spawn rescale child");
 
     let rescale_pipe_status = rescale_child.wait().expect("failed waiting for rescale child");
     let mismatch_pipe_status = mismatch_child.wait().expect("failed waiting for mismatch child");
     let diagnostics_pipe_status = diagnostics_child.wait().expect("failed waiting for diagnostics child");
+
+    let mut diagnostics_stderr = String::new();
+    if let Some(mut stderr) = diagnostics_child.stderr.take() {
+        stderr
+            .read_to_string(&mut diagnostics_stderr)
+            .expect("failed to read diagnostics stderr");
+    }
+    let mut mismatch_stderr = String::new();
+    if let Some(mut stderr) = mismatch_child.stderr.take() {
+        stderr
+            .read_to_string(&mut mismatch_stderr)
+            .expect("failed to read mismatch stderr");
+    }
+    let mut rescale_stderr = String::new();
+    if let Some(mut stderr) = rescale_child.stderr.take() {
+        stderr
+            .read_to_string(&mut rescale_stderr)
+            .expect("failed to read rescale stderr");
+    }
+
+    log_line(&log_path, &format!("pipe diagnostics status: {}", diagnostics_pipe_status));
+    log_line(&log_path, &format!("pipe diagnostics stderr:\n{}", diagnostics_stderr));
+    log_line(&log_path, &format!("pipe mismatch status: {}", mismatch_pipe_status));
+    log_line(&log_path, &format!("pipe mismatch stderr:\n{}", mismatch_stderr));
+    log_line(&log_path, &format!("pipe rescale status: {}", rescale_pipe_status));
+    log_line(&log_path, &format!("pipe rescale stderr:\n{}", rescale_stderr));
 
     assert!(diagnostics_pipe_status.success(), "diagnostics in pipe failed");
     assert!(mismatch_pipe_status.success(), "mismatch in pipe failed");

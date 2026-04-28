@@ -1,20 +1,12 @@
+mod test_utils;
+
 use rust_htslib::bam::header::HeaderRecord;
 use rust_htslib::bam::index;
 use rust_htslib::bam::{Format, Header, HeaderView, Record, Writer};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
-
-fn unique_temp_dir(prefix: &str) -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock before unix epoch")
-        .as_nanos();
-    let dir = std::env::temp_dir().join(format!("{}_{}", prefix, nanos));
-    fs::create_dir_all(&dir).expect("failed to create temp dir");
-    dir
-}
+use test_utils::{log_line, repo_log_path, unique_temp_dir};
 
 fn write_test_bam(path: &Path) {
     let mut header = Header::new();
@@ -35,16 +27,27 @@ fn write_test_bam(path: &Path) {
 #[test]
 fn integration_mismatch_fixture_bam_produces_expected_counts() {
     let temp_dir = unique_temp_dir("mismatch_integration");
+    let log_path = repo_log_path("mismatch_integration");
     let fixture_bam = temp_dir.join("input.bam");
     let reference_fa = temp_dir.join("reference.fa");
     let output_tsv = temp_dir.join("mismatch.tsv");
 
+    log_line(&log_path, "Starting mismatch integration test");
+
     fs::write(&reference_fa, ">chr1\nACGTACGT\n").expect("failed to write reference");
     write_test_bam(&fixture_bam);
     index::build(&fixture_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
+    log_line(
+        &log_path,
+        &format!(
+            "Prepared inputs: bam={}, reference={}",
+            fixture_bam.display(),
+            reference_fa.display()
+        ),
+    );
 
     let binary = env!("CARGO_BIN_EXE_tasmanian-mismatch");
-    let status = Command::new(binary)
+    let output = Command::new(binary)
         .arg("-q")
         .arg("0")
         .arg("-m")
@@ -55,12 +58,22 @@ fn integration_mismatch_fixture_bam_produces_expected_counts() {
         .arg(&output_tsv)
         .arg(&fixture_bam)
         .arg(&reference_fa)
-        .status()
+        .output()
         .expect("failed to execute mismatch binary");
+    log_line(&log_path, &format!("Command status: {}", output.status));
+    log_line(
+        &log_path,
+        &format!("Command stdout:\n{}", String::from_utf8_lossy(&output.stdout)),
+    );
+    log_line(
+        &log_path,
+        &format!("Command stderr:\n{}", String::from_utf8_lossy(&output.stderr)),
+    );
 
-    assert!(status.success(), "mismatch command failed");
+    assert!(output.status.success(), "mismatch command failed");
 
     let output = fs::read_to_string(&output_tsv).expect("failed to read mismatch output");
+    log_line(&log_path, &format!("Mismatch output file:\n{}", output));
     let mut lines = output.lines();
     assert_eq!(
         lines.next(),
