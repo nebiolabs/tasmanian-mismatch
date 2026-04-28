@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    name: Test Suite
+    name: Rust Tests
     runs-on: ubuntu-latest
     
     steps:
@@ -20,15 +20,6 @@ jobs:
     
     - name: Cache Rust dependencies
       uses: Swatinem/rust-cache@v2
-    
-    - name: Install samtools
-      run: sudo apt-get update && sudo apt-get install -y samtools
-    
-    - name: Build
-      run: cargo build --verbose
-    
-    - name: Run unit tests
-      run: cargo test --verbose
-    
-    - name: Run integration tests
-      run: bash ./integration_test.sh
+
+    - name: Run all tests (unit + integration)
+      run: cargo test --workspace --all-targets --verbose
