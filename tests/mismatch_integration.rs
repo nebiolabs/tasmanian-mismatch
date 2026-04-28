@@ -6,7 +6,7 @@ use rust_htslib::bam::{Format, Header, HeaderView, Record, Writer};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
-use test_utils::{log_line, repo_log_path, unique_temp_dir};
+use test_utils::{log_command, log_line, repo_log_path, unique_temp_dir};
 
 fn write_test_bam(path: &Path) {
     let mut header = Header::new();
@@ -47,6 +47,12 @@ fn integration_mismatch_fixture_bam_produces_expected_counts() {
     );
 
     let binary = env!("CARGO_BIN_EXE_tasmanian-mismatch");
+    log_command(&log_path, binary, &[
+        "-q", "0", "-m", "0", "--position-mode", "read", 
+        "-o", &output_tsv.to_string_lossy(),
+        &fixture_bam.to_string_lossy(),
+        &reference_fa.to_string_lossy(),
+    ]);
     let output = Command::new(binary)
         .arg("-q")
         .arg("0")

@@ -7,7 +7,7 @@ use std::fs;
 use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use test_utils::{log_line, repo_log_path, unique_temp_dir};
+use test_utils::{log_command, log_line, repo_log_path, unique_temp_dir};
 
 fn write_test_bam(path: &Path) {
     let mut header = Header::new();
@@ -61,6 +61,15 @@ fn integration_all_binaries_with_options_and_three_way_pipe() {
     // 1) tasmanian-mismatch with broad option coverage.
     let mismatch_output = temp_dir.join("mismatch_normalized.tsv");
     let mismatch_bin = env!("CARGO_BIN_EXE_tasmanian-mismatch");
+    log_command(&log_path, mismatch_bin, &[
+        "-t", "1", "-r", "1000", "-q", "0", "-m", "0", "-f", "0", "-F", "0", "-G", "0",
+        "--overlap-mode", "stretch", "--position-mode", "insert",
+        "--min-fragment-length", "0", "--max-fragment-length", "1000",
+        "--methylation-mode", "--cpg-only", "-b", &bed_file.to_string_lossy(),
+        "--bed-filter-mode", "mask", "--discount-table", &discount_file.to_string_lossy(),
+        "--normalize", "-o", &mismatch_output.to_string_lossy(),
+        &fixture_bam.to_string_lossy(), &reference_fa.to_string_lossy(),
+    ]);
     let mismatch_run = Command::new(mismatch_bin)
         .arg("-t")
         .arg("1")
@@ -126,6 +135,16 @@ fn integration_all_binaries_with_options_and_three_way_pipe() {
     let inconsistencies_tsv = temp_dir.join("inconsistencies.tsv");
     let discounts_tsv = temp_dir.join("discounts.tsv");
     let diagnostics_bin = env!("CARGO_BIN_EXE_tasmanian-diagnostics");
+    log_command(&log_path, diagnostics_bin, &[
+        "-t", "1", "-r", "1000", "--softclip-threshold", "0.5", "-q", "0",
+        "--min-map-quality", "0", "-m", "--cpg-only", "--use-read-len-max", "8",
+        "--use-insert-mode", "--genomic-threshold", "1", "--genomic-depth-threshold", "1",
+        "-f", "0", "-F", "0", "-G", "0", "-b", &bed_file.to_string_lossy(),
+        "--bed-filter-mode", "filter", "--variants-output", &variants_tsv.to_string_lossy(),
+        "--inconsistencies-output", &inconsistencies_tsv.to_string_lossy(),
+        "--discount-output", &discounts_tsv.to_string_lossy(),
+        &fixture_bam.to_string_lossy(), &reference_fa.to_string_lossy(),
+    ]);
     let diagnostics_run = Command::new(diagnostics_bin)
         .arg("-t")
         .arg("1")
@@ -183,6 +202,11 @@ fn integration_all_binaries_with_options_and_three_way_pipe() {
     // 3) tasmanian-rescale-quality with explicit options.
     let rescaled_bam = temp_dir.join("rescaled_from_file_matrix.bam");
     let rescale_bin = env!("CARGO_BIN_EXE_tasmanian-rescale-quality");
+    log_command(&log_path, rescale_bin, &[
+        &fixture_bam.to_string_lossy(), &reference_fa.to_string_lossy(),
+        &matrix_file.to_string_lossy(), "-t", "1", "-r", "1000",
+        "-o", &rescaled_bam.to_string_lossy(),
+    ]);
     let rescale_run = Command::new(rescale_bin)
         .arg(&fixture_bam)
         .arg(&reference_fa)

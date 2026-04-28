@@ -8,7 +8,7 @@ use std::fs;
 use std::io::Read as IoRead;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use test_utils::{log_line, repo_log_path, unique_temp_dir};
+use test_utils::{log_command, log_line, repo_log_path, unique_temp_dir};
 
 
 fn write_test_bam(path: &Path) {
@@ -46,6 +46,10 @@ fn integration_rescale_matrix_produces_rescaled_sam() {
     index::build(&input_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
 
     let binary = env!("CARGO_BIN_EXE_tasmanian-rescale-quality");
+    log_command(&log_path, binary, &[
+        &input_bam.to_string_lossy(), &reference_fa.to_string_lossy(),
+        &matrix_tsv.to_string_lossy(), "-o", &output_bam.to_string_lossy(),
+    ]);
     let output = Command::new(binary)
         .arg(&input_bam)
         .arg(&reference_fa)
@@ -119,6 +123,10 @@ fn integration_rescale_can_consume_matrix_from_mismatch_stdout() {
     index::build(&input_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
 
     let mismatch_bin = env!("CARGO_BIN_EXE_tasmanian-mismatch");
+    log_command(&log_path, mismatch_bin, &[
+        "-q", "0", "-m", "0", "--position-mode", "read",
+        "--emit-rescaling-matrix", &input_bam.to_string_lossy(), &reference_fa.to_string_lossy(),
+    ]);
     let mismatch_output = Command::new(mismatch_bin)
         .arg("-q")
         .arg("0")
@@ -151,6 +159,10 @@ fn integration_rescale_can_consume_matrix_from_mismatch_stdout() {
     );
 
     let rescale_bin = env!("CARGO_BIN_EXE_tasmanian-rescale-quality");
+    log_command(&log_path, rescale_bin, &[
+        &input_bam.to_string_lossy(), &reference_fa.to_string_lossy(),
+        "-", "-o", &output_bam.to_string_lossy(),
+    ]);
     let mut child = Command::new(rescale_bin)
         .arg(&input_bam)
         .arg(&reference_fa)
