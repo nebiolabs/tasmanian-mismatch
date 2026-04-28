@@ -1,5 +1,8 @@
+use rust_htslib::bam::header::HeaderRecord;
+use rust_htslib::bam::index;
+use rust_htslib::bam::{Format, Header, HeaderView, Record, Writer};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -13,22 +16,34 @@ fn unique_temp_dir(prefix: &str) -> PathBuf {
     dir
 }
 
+fn write_test_bam(path: &Path) {
+    let mut header = Header::new();
+    let mut sq = HeaderRecord::new(b"SQ");
+    sq.push_tag(b"SN", &"chr1");
+    sq.push_tag(b"LN", &8);
+    header.push_record(&sq);
+
+    let header_view = HeaderView::from_header(&header);
+    let mut writer = Writer::from_path(path, &header, Format::Bam).expect("failed to open BAM writer");
+
+    // Reference is ACGTACGT. This read has one mismatch (A->T).
+    let sam_line = b"read1\t0\tchr1\t1\t60\t8M\t*\t0\t0\tACGTTCGT\tIIIIIIII\tNM:i:1";
+    let record = Record::from_sam(&header_view, sam_line).expect("failed to parse SAM line");
+    writer.write(&record).expect("failed to write BAM record");
+}
+
 #[test]
 fn integration_diagnostics_fixture_bam_produces_expected_outputs() {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let fixture_bam = manifest_dir.join("tests/test.bam");
-    let fixture_bai = manifest_dir.join("tests/test.bam.bai");
-
-    assert!(fixture_bam.exists(), "missing BAM fixture at {}", fixture_bam.display());
-    assert!(fixture_bai.exists(), "missing BAM index at {}", fixture_bai.display());
-
     let temp_dir = unique_temp_dir("diagnostics_integration");
+    let fixture_bam = temp_dir.join("input.bam");
     let reference_fa = temp_dir.join("reference.fa");
     let variants_tsv = temp_dir.join("variants.tsv");
     let inconsistencies_tsv = temp_dir.join("inconsistencies.tsv");
     let discounts_tsv = temp_dir.join("discounts.tsv");
 
     fs::write(&reference_fa, ">chr1\nACGTACGT\n").expect("failed to write reference");
+    write_test_bam(&fixture_bam);
+    index::build(&fixture_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
 
     let binary = env!("CARGO_BIN_EXE_tasmanian-diagnostics");
     let status = Command::new(binary)
@@ -81,19 +96,15 @@ fn integration_diagnostics_fixture_bam_produces_expected_outputs() {
 
 #[test]
 fn integration_diagnostics_can_write_discounts_to_stdout() {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let fixture_bam = manifest_dir.join("tests/test.bam");
-    let fixture_bai = manifest_dir.join("tests/test.bam.bai");
-
-    assert!(fixture_bam.exists(), "missing BAM fixture at {}", fixture_bam.display());
-    assert!(fixture_bai.exists(), "missing BAM index at {}", fixture_bai.display());
-
     let temp_dir = unique_temp_dir("diagnostics_stdout_integration");
+    let fixture_bam = temp_dir.join("input.bam");
     let reference_fa = temp_dir.join("reference.fa");
     let variants_tsv = temp_dir.join("variants.tsv");
     let inconsistencies_tsv = temp_dir.join("inconsistencies.tsv");
 
     fs::write(&reference_fa, ">chr1\nACGTACGT\n").expect("failed to write reference");
+    write_test_bam(&fixture_bam);
+    index::build(&fixture_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
 
     let binary = env!("CARGO_BIN_EXE_tasmanian-diagnostics");
     let output = Command::new(binary)
