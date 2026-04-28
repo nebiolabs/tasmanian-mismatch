@@ -176,4 +176,9 @@ pub struct Args {
     /// Normalize counts to frequencies within each (read_num, position, ref_base) group
     #[arg(long, default_value_t = false)]
     pub normalize: bool,
+
+    /// Emit rescaling matrix rows (read_num, position, ref_base, read_base, scaling_factor)
+    /// suitable for piping into tasmanian-rescale-quality.
+    #[arg(long, default_value_t = false)]
+    pub emit_rescaling_matrix: bool,
 }

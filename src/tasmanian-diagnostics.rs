@@ -81,7 +81,8 @@ struct Args {
     #[arg(long, default_value = "read_pair_inconsistencies.tsv")]
     inconsistencies_output: String,
 
-    /// Output path for mismatch-key discounts to be consumed by main.rs
+    /// Output path for mismatch-key discounts to be consumed by tasmanian-mismatch.
+    /// Use '-' to write the discount table to stdout.
     #[arg(long, default_value = "variant_discounts.tsv")]
     discount_output: String,
 }
@@ -397,12 +398,23 @@ fn main() {
 
     {
         let discounts = mismatch_discounts.lock().expect("Lock poisoned");
-        write_mismatch_discounts_tsv(&discounts, &args.discount_output)
-            .expect("Failed to write mismatch discount output");
-        eprintln!(
-            "Wrote {} mismatch discount keys to {}",
-            discounts.len(),
-            args.discount_output
-        );
+        if args.discount_output == "-" {
+            let stdout = std::io::stdout();
+            let mut handle = stdout.lock();
+            write_mismatch_discounts_to_writer(&discounts, &mut handle)
+                .expect("Failed to write mismatch discount output to stdout");
+            eprintln!(
+                "Wrote {} mismatch discount keys to stdout",
+                discounts.len()
+            );
+        } else {
+            write_mismatch_discounts_tsv(&discounts, &args.discount_output)
+                .expect("Failed to write mismatch discount output");
+            eprintln!(
+                "Wrote {} mismatch discount keys to {}",
+                discounts.len(),
+                args.discount_output
+            );
+        }
     }
 }
