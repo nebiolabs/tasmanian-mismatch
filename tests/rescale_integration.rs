@@ -1,22 +1,15 @@
+mod test_utils;
+
 use rust_htslib::bam;
 use rust_htslib::bam::index;
 use rust_htslib::bam::{Format, Header, HeaderView, Read, Record, Writer};
 use rust_htslib::bam::header::HeaderRecord;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::io::Read as IoRead;
+use std::path::Path;
 use std::process::{Command, Stdio};
-use std::time::{SystemTime, UNIX_EPOCH};
+use test_utils::{log_line, repo_log_path, unique_temp_dir};
 
-
-fn unique_temp_dir(prefix: &str) -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock before unix epoch")
-        .as_nanos();
-    let dir = std::env::temp_dir().join(format!("{}_{}", prefix, nanos));
-    fs::create_dir_all(&dir).expect("failed to create temp dir");
-    dir
-}
 
 fn write_test_bam(path: &Path) {
     let mut header = Header::new();
@@ -37,11 +30,14 @@ fn write_test_bam(path: &Path) {
 #[test]
 fn integration_rescale_matrix_produces_rescaled_sam() {
     let temp_dir = unique_temp_dir("rescale_integration");
+    let log_path = repo_log_path("rescale_integration");
     let input_bam = temp_dir.join("input.bam");
     let reference_fa = temp_dir.join("reference.fa");
     let matrix_tsv = temp_dir.join("weights.tsv");
     let output_bam = temp_dir.join("rescaled.bam");
     let output_sam = temp_dir.join("rescaled.sam");
+
+    log_line(&log_path, "Starting rescale integration test (file matrix)");
 
     fs::write(&reference_fa, ">chr1\nACGTACGT\n").expect("failed to write reference");
     fs::write(&matrix_tsv, "1\t4\tA\tT\t0.5\n").expect("failed to write matrix");
@@ -50,16 +46,25 @@ fn integration_rescale_matrix_produces_rescaled_sam() {
     index::build(&input_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
 
     let binary = env!("CARGO_BIN_EXE_tasmanian-rescale-quality");
-    let status = Command::new(binary)
+    let output = Command::new(binary)
         .arg(&input_bam)
         .arg(&reference_fa)
         .arg(&matrix_tsv)
         .arg("-o")
         .arg(&output_bam)
-        .status()
+        .output()
         .expect("failed to execute rescale binary");
+    log_line(&log_path, &format!("Command status: {}", output.status));
+    log_line(
+        &log_path,
+        &format!("Command stdout:\n{}", String::from_utf8_lossy(&output.stdout)),
+    );
+    log_line(
+        &log_path,
+        &format!("Command stderr:\n{}", String::from_utf8_lossy(&output.stderr)),
+    );
 
-    assert!(status.success(), "rescale command failed");
+    assert!(output.status.success(), "rescale command failed");
     assert!(output_bam.exists(), "rescaled BAM file was not created");
 
     let mut bam_reader = bam::Reader::from_path(&output_bam).expect("failed to open rescaled BAM");
@@ -96,14 +101,18 @@ fn integration_rescale_matrix_produces_rescaled_sam() {
         "IIII5III",
         "expected rescaled quality string in SAM QUAL column"
     );
+    log_line(&log_path, &format!("SAM output line:\n{}", data_line));
 }
 
 #[test]
 fn integration_rescale_can_consume_matrix_from_mismatch_stdout() {
     let temp_dir = unique_temp_dir("rescale_pipeline_integration");
+    let log_path = repo_log_path("rescale_pipeline_integration");
     let input_bam = temp_dir.join("input.bam");
     let reference_fa = temp_dir.join("reference.fa");
     let output_bam = temp_dir.join("rescaled_from_pipe.bam");
+
+    log_line(&log_path, "Starting rescale integration test (stdin matrix)");
 
     fs::write(&reference_fa, ">chr1\nACGTACGT\n").expect("failed to write reference");
     write_test_bam(&input_bam);
@@ -122,6 +131,18 @@ fn integration_rescale_can_consume_matrix_from_mismatch_stdout() {
         .arg(&reference_fa)
         .output()
         .expect("failed to execute mismatch binary");
+    log_line(
+        &log_path,
+        &format!("mismatch status: {}", mismatch_output.status),
+    );
+    log_line(
+        &log_path,
+        &format!("mismatch stdout:\n{}", String::from_utf8_lossy(&mismatch_output.stdout)),
+    );
+    log_line(
+        &log_path,
+        &format!("mismatch stderr:\n{}", String::from_utf8_lossy(&mismatch_output.stderr)),
+    );
 
     assert!(mismatch_output.status.success(), "mismatch command failed");
     assert!(
@@ -137,6 +158,7 @@ fn integration_rescale_can_consume_matrix_from_mismatch_stdout() {
         .arg("-o")
         .arg(&output_bam)
         .stdin(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .expect("failed to execute rescale binary");
 
@@ -149,6 +171,14 @@ fn integration_rescale_can_consume_matrix_from_mismatch_stdout() {
     }
 
     let status = child.wait().expect("failed waiting for rescale process");
+    let mut rescale_stderr = String::new();
+    if let Some(mut stderr) = child.stderr.take() {
+        stderr
+            .read_to_string(&mut rescale_stderr)
+            .expect("failed to read rescale stderr");
+    }
+    log_line(&log_path, &format!("rescale status: {}", status));
+    log_line(&log_path, &format!("rescale stderr:\n{}", rescale_stderr));
     assert!(status.success(), "rescale command failed");
     assert!(output_bam.exists(), "rescaled BAM file was not created");
 
