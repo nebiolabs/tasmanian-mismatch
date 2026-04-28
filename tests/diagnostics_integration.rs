@@ -6,7 +6,7 @@ use rust_htslib::bam::{Format, Header, HeaderView, Record, Writer};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
-use test_utils::{log_line, repo_log_path, unique_temp_dir};
+use test_utils::{log_command, log_line, repo_log_path, unique_temp_dir};
 
 fn write_test_bam(path: &Path) {
     let mut header = Header::new();
@@ -49,6 +49,13 @@ fn integration_diagnostics_fixture_bam_produces_expected_outputs() {
     );
 
     let binary = env!("CARGO_BIN_EXE_tasmanian-diagnostics");
+    log_command(&log_path, binary, &[
+        "-q", "0", "--min-map-quality", "0", "--genomic-threshold", "1",
+        "--genomic-depth-threshold", "1", "--variants-output", &variants_tsv.to_string_lossy(),
+        "--inconsistencies-output", &inconsistencies_tsv.to_string_lossy(),
+        "--discount-output", &discounts_tsv.to_string_lossy(),
+        &fixture_bam.to_string_lossy(), &reference_fa.to_string_lossy(),
+    ]);
     let output = Command::new(binary)
         .arg("-q")
         .arg("0")
@@ -125,6 +132,13 @@ fn integration_diagnostics_can_write_discounts_to_stdout() {
     index::build(&fixture_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
 
     let binary = env!("CARGO_BIN_EXE_tasmanian-diagnostics");
+    log_command(&log_path, binary, &[
+        "-q", "0", "--min-map-quality", "0", "--genomic-threshold", "1",
+        "--genomic-depth-threshold", "1", "--variants-output", &variants_tsv.to_string_lossy(),
+        "--inconsistencies-output", &inconsistencies_tsv.to_string_lossy(),
+        "--discount-output", "-",
+        &fixture_bam.to_string_lossy(), &reference_fa.to_string_lossy(),
+    ]);
     let output = Command::new(binary)
         .arg("-q")
         .arg("0")
