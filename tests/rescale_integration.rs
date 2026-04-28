@@ -4,7 +4,7 @@ use rust_htslib::bam::{Format, Header, HeaderView, Read, Record, Writer};
 use rust_htslib::bam::header::HeaderRecord;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 
@@ -96,4 +96,69 @@ fn integration_rescale_matrix_produces_rescaled_sam() {
         "IIII5III",
         "expected rescaled quality string in SAM QUAL column"
     );
+}
+
+#[test]
+fn integration_rescale_can_consume_matrix_from_mismatch_stdout() {
+    let temp_dir = unique_temp_dir("rescale_pipeline_integration");
+    let input_bam = temp_dir.join("input.bam");
+    let reference_fa = temp_dir.join("reference.fa");
+    let output_bam = temp_dir.join("rescaled_from_pipe.bam");
+
+    fs::write(&reference_fa, ">chr1\nACGTACGT\n").expect("failed to write reference");
+    write_test_bam(&input_bam);
+    index::build(&input_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
+
+    let mismatch_bin = env!("CARGO_BIN_EXE_tasmanian-mismatch");
+    let mismatch_output = Command::new(mismatch_bin)
+        .arg("-q")
+        .arg("0")
+        .arg("-m")
+        .arg("0")
+        .arg("--position-mode")
+        .arg("read")
+        .arg("--emit-rescaling-matrix")
+        .arg(&input_bam)
+        .arg(&reference_fa)
+        .output()
+        .expect("failed to execute mismatch binary");
+
+    assert!(mismatch_output.status.success(), "mismatch command failed");
+    assert!(
+        !mismatch_output.stdout.is_empty(),
+        "mismatch matrix stdout was empty"
+    );
+
+    let rescale_bin = env!("CARGO_BIN_EXE_tasmanian-rescale-quality");
+    let mut child = Command::new(rescale_bin)
+        .arg(&input_bam)
+        .arg(&reference_fa)
+        .arg("-")
+        .arg("-o")
+        .arg(&output_bam)
+        .stdin(Stdio::piped())
+        .spawn()
+        .expect("failed to execute rescale binary");
+
+    {
+        let stdin = child.stdin.as_mut().expect("failed to open child stdin");
+        use std::io::Write;
+        stdin
+            .write_all(&mismatch_output.stdout)
+            .expect("failed to feed matrix stdin");
+    }
+
+    let status = child.wait().expect("failed waiting for rescale process");
+    assert!(status.success(), "rescale command failed");
+    assert!(output_bam.exists(), "rescaled BAM file was not created");
+
+    let mut bam_reader = bam::Reader::from_path(&output_bam).expect("failed to open rescaled BAM");
+    let mut records = bam_reader.records();
+    let record = records
+        .next()
+        .expect("expected one record in rescaled BAM")
+        .expect("failed to read rescaled record");
+
+    // Placeholder matrix emission currently uses 1.0 scaling for every key, so qualities stay unchanged.
+    assert_eq!(record.qual()[4], 40, "quality should remain unchanged with 1.0 scaling");
 }

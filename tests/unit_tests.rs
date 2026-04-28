@@ -7,6 +7,7 @@ mod tests {
     use super::*;
     use rust_htslib::bam::{Format, Header, HeaderView, Record, Writer};
     use std::collections::HashMap;
+    use std::io::Cursor;
 
     #[test]
     fn test_complement() {
@@ -975,6 +976,74 @@ mod tests {
         );
         assert_eq!(lines[1], "A>G\t1\t4\t3");
         assert_eq!(lines[2], "G>A\t2\t12\t7");
+
+        std::fs::remove_file(output_path).unwrap();
+    }
+
+    #[test]
+    fn test_load_discount_table_from_reader_parses_and_accumulates() {
+        let input = "base_change\tread_num\tread_position\tdiscount_count\nC>T\t1\t42\t3\nC>T\t1\t42\t2\nA>G\t2\t7\t1\nbad\tline\n";
+        let reader = Cursor::new(input.as_bytes());
+
+        let discounts = load_discount_table_from_reader(reader).unwrap();
+
+        let key1 = DiscountKey {
+            base_change: "C>T".to_string(),
+            read_num: 1,
+            base_position: 42,
+        };
+        let key2 = DiscountKey {
+            base_change: "A>G".to_string(),
+            read_num: 2,
+            base_position: 7,
+        };
+
+        assert_eq!(discounts.get(&key1), Some(&5));
+        assert_eq!(discounts.get(&key2), Some(&1));
+        assert_eq!(discounts.len(), 2);
+    }
+
+    #[test]
+    fn test_load_rescaling_matrix_from_reader_skips_header_and_invalid_rows() {
+        let input = "read_num\tposition\tref_base\tread_base\tscaling_factor\n1\t42\tC\tT\t0.5\nX\tbad\tZ\tY\tnope\n2\t7\tG\tA\t1.25\n";
+        let reader = Cursor::new(input.as_bytes());
+
+        let matrix = load_rescaling_matrix_from_reader(reader).unwrap();
+
+        assert_eq!(matrix.get(&(1, 42, 'C', 'T')), Some(&0.5f32));
+        assert_eq!(matrix.get(&(2, 7, 'G', 'A')), Some(&1.25f32));
+        assert_eq!(matrix.len(), 2);
+    }
+
+    #[test]
+    fn test_write_rescaling_matrix_output_emits_parseable_rows() {
+        let mut counts: HashMap<InsertKey, usize> = HashMap::new();
+        counts.insert(
+            InsertKey {
+                base_change: "A>T".to_string(),
+                read_num: 1,
+                base_position: 4,
+                reference_order: 1,
+            },
+            3,
+        );
+        counts.insert(
+            InsertKey {
+                base_change: "A>A".to_string(),
+                read_num: 1,
+                base_position: 4,
+                reference_order: 1,
+            },
+            7,
+        );
+
+        let output_path = "test_rescaling_matrix.tsv";
+        write_rescaling_matrix_output(&counts, Some(output_path)).unwrap();
+
+        let matrix = load_rescaling_matrix(output_path).unwrap();
+        assert!(matrix.contains_key(&(1, 4, 'A', 'T')));
+        assert!(matrix.contains_key(&(1, 4, 'A', 'A')));
+        assert_eq!(matrix.get(&(1, 4, 'A', 'T')), Some(&1.0f32));
 
         std::fs::remove_file(output_path).unwrap();
     }
