@@ -4,7 +4,8 @@ use rustmanian_mismatch::{
     apply_external_discounts, build_tid_map_and_regions, compute_read_len_max_from_sample_bam,
     configure_thread_pool, load_discount_table, load_reference_genome, mask_reference_with_bed,
     maybe_parse_bed_file, process_region, write_normalized_output, write_output,
-    write_rescaling_matrix_output, Args, InsertKey, PositionMode,
+    write_rescaling_matrix_output, Args, BedFilter, GenomicRegion, InsertKey, PositionMode,
+    ProcessingConfig, ProcessingContext,
 };
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -59,25 +60,41 @@ fn main() {
     let (tid_to_name, regions) = build_tid_map_and_regions(&args.bam_path, args.region_size);
     log::info!("Processing {} indexed regions", regions.len());
 
+    let config = ProcessingConfig {
+        softclip_threshold: 0.66,
+        min_base_quality: args.min_base_quality,
+        is_methylation: args.methylation_mode,
+        cpg_only: args.cpg_only,
+        mode_len: max_read_len,
+        min_map_quality: args.min_map_quality,
+        required_flags: args.required_flags,
+        filter_flags: args.filter_flags,
+        excl_flags: args.excl_flags,
+        use_insert_mode: args.position_mode == PositionMode::Insert,
+        position_mode: args.position_mode,
+        overlap_mode: args.overlap_mode,
+    };
+
     let total_reads = AtomicUsize::new(0);
     let global_counts: Arc<Mutex<HashMap<InsertKey, usize>>> = Arc::new(Mutex::new(HashMap::new()));
 
     regions.par_iter().for_each(|(tid, start, end)| {
-        let Some(chr_name) = tid_to_name.get(tid) else {
-            return;
+        let context = ProcessingContext {
+            reference: &reference,
+            tid_to_name: &tid_to_name,
+            bed_intervals: &[],
+        };
+        let region = GenomicRegion { tid: *tid, start: *start, end: *end };
+        let bed_filter = BedFilter {
+            regions: bed_for_filtering.as_deref(),
+            filter_whole_reads: bed_filter_whole_reads,
         };
         let (region_counts, region_reads) = process_region(
             &args.bam_path,
-            *tid,
-            chr_name,
-            *start,
-            *end,
-            &reference,
-            &tid_to_name,
-            &args,
-            max_read_len,
-            bed_for_filtering.as_deref(),
-            bed_filter_whole_reads,
+            &region,
+            &context,
+            config,
+            &bed_filter,
         );
 
         if !region_counts.is_empty() {

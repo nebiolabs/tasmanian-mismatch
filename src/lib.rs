@@ -20,7 +20,7 @@ pub mod utils;
 // Re-export commonly used items
 pub use bed::{
     filter_bed_for_region, mask_reference_with_bed, maybe_parse_bed_file, parse_bed_file,
-    position_overlaps_intervals, BedInterval, BedRegions,
+    position_overlaps_intervals, BedFilter, BedInterval, BedRegions,
 };
 pub use io::{
     apply_external_discounts, compute_read_len_max_from_sample_bam,
@@ -39,11 +39,12 @@ pub use processing::{
     process_paired_reads_with_overlap, process_record, process_region, process_single_record,
     qualifying_softclip_comparisons, read_is_first_in_reference, read_mode_read_position,
     record_read_num, rescale_phred_scores, should_skip_record, should_skip_whole_read_for_bed,
-    softclip_identity, softclip_side_comparisons, ProcessingConfig, ProcessingContext,
+    softclip_identity, softclip_side_comparisons, ProcessingContext,
 };
 pub use types::{
-    Args, DiscountKey, GenomicMismatchKey, GenomicMismatchValue, InconsistencyKey, InsertKey,
-    MismatchKey, OverlapMode, PositionMode, ReadInfo, ReferenceGenome, SoftclipComparison,
+    Args, DiscountKey, GenomicMismatchKey, GenomicMismatchValue, GenomicRegion, InconsistencyKey,
+    InsertKey, MismatchKey, OverlapMode, PositionMode, ProcessingConfig, ReadInfo, ReferenceGenome,
+    SoftclipComparison,
 };
 pub use utils::{
     base_to_char, calculate_end_pos, complement, correct_read_len_with_mode, parse_md_tag,

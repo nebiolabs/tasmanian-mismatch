@@ -1,7 +1,7 @@
 use clap::Parser;
 use rayon::prelude::*;
 use rust_htslib::bam::{FetchDefinition, IndexedReader, Read, Reader, Record};
-use rustmanian_mismatch::*;
+use rustmanian_mismatch::{OverlapMode, PositionMode, *};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -190,6 +190,8 @@ fn main() {
         filter_flags: args.filter_flags,
         excl_flags: args.excl_flags,
         use_insert_mode: args.use_insert_mode,
+        position_mode: if args.use_insert_mode { PositionMode::Insert } else { PositionMode::Read },
+        overlap_mode: OverlapMode::Cut,
     };
 
     let bam_path_arc = Arc::new(args.bam_file.clone());

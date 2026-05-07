@@ -6,38 +6,14 @@
 use crate::bed::position_overlaps_intervals;
 use crate::methylation::adjust_methylation_base;
 use crate::types::{
-    Args, GenomicMismatchKey, GenomicMismatchValue, InconsistencyKey, InsertKey, MismatchKey,
-    OverlapMode, PositionMode, ReadInfo, ReferenceGenome, SoftclipComparison,
+    GenomicMismatchKey, GenomicMismatchValue, GenomicRegion, InconsistencyKey, InsertKey,
+    MismatchKey, OverlapMode, PositionMode, ProcessingConfig, ReadInfo, ReferenceGenome,
+    SoftclipComparison,
 };
 use crate::utils::{base_to_char, calculate_end_pos, complement, correct_read_len_with_mode};
 use rayon;
 use rust_htslib::bam::{record::Aux, FetchDefinition, IndexedReader, Read, Reader, Record};
 use std::collections::{HashMap, HashSet};
-
-/// Configuration values shared across record-processing entry points.
-#[derive(Debug, Clone, Copy)]
-pub struct ProcessingConfig {
-    /// Minimum soft-clipped match fraction required before counting soft-clip mismatches.
-    pub softclip_threshold: f64,
-    /// Minimum base quality required for a base to be counted.
-    pub min_base_quality: u8,
-    /// Whether methylation-aware mismatch normalization is enabled.
-    pub is_methylation: bool,
-    /// Whether methylation normalization should be limited to CpG context.
-    pub cpg_only: bool,
-    /// Modal read length used for optional read-position normalization.
-    pub mode_len: usize,
-    /// Minimum mapping quality required for a record to be processed.
-    pub min_map_quality: u8,
-    /// SAM flags that must all be present.
-    pub required_flags: u16,
-    /// SAM flags that cause a record to be skipped if any are present.
-    pub filter_flags: u16,
-    /// SAM flags that cause a record to be skipped if all are present.
-    pub excl_flags: u16,
-    /// Whether to use insert position mode (fragment-level instead of read-level).
-    pub use_insert_mode: bool,
-}
 
 /// Shared references needed while processing records within a region.
 pub struct ProcessingContext<'a> {
@@ -1579,17 +1555,10 @@ pub fn build_base_change(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn compare_record_to_reference(
     record: &Record,
-    reference: &ReferenceGenome,
-    tid_to_name: &HashMap<i32, String>,
-    min_base_quality: u8,
-    max_read_len: usize,
-    position_mode: PositionMode,
-    overlap_mode: &OverlapMode,
-    methylation_mode: bool,
-    cpg_only: bool,
+    context: &ProcessingContext,
+    config: ProcessingConfig,
     mate_end: Option<i64>,
     local_counts: &mut HashMap<InsertKey, usize>,
 ) {
@@ -1598,10 +1567,10 @@ pub fn compare_record_to_reference(
         return;
     }
 
-    let Some(chr_name) = tid_to_name.get(&tid) else {
+    let Some(chr_name) = context.tid_to_name.get(&tid) else {
         return;
     };
-    let Some(ref_seq) = reference.get(chr_name.as_str()) else {
+    let Some(ref_seq) = context.reference.get(chr_name.as_str()) else {
         return;
     };
 
@@ -1612,7 +1581,7 @@ pub fn compare_record_to_reference(
     let is_first_in_reference = read_is_first_in_reference(record);
     let overlap = overlap_interval(record, mate_end);
     let softclip_comparisons = qualifying_softclip_comparisons(record, ref_seq, 0.66);
-    let stretch = *overlap_mode == OverlapMode::Stretch;
+    let stretch = config.overlap_mode == OverlapMode::Stretch;
 
     let mut read_pos = 0usize;
     let mut ref_pos = record.pos() as usize;
@@ -1625,7 +1594,7 @@ pub fn compare_record_to_reference(
                     let rp = read_pos + i;
                     let gp = ref_pos + i;
 
-                    if *overlap_mode == OverlapMode::Cut {
+                    if config.overlap_mode == OverlapMode::Cut {
                         if let Some((ov_start, ov_end)) = overlap {
                             if gp >= ov_start && gp < ov_end && read_num == 2 {
                                 continue;
@@ -1636,22 +1605,20 @@ pub fn compare_record_to_reference(
                     if rp >= seq_len || rp >= qual.len() || gp >= ref_seq.len() {
                         continue;
                     }
-                    if qual[rp] < min_base_quality {
+                    if qual[rp] < config.min_base_quality {
                         continue;
                     }
 
                     let Some(read_base) = base_to_char(seq[rp]) else {
                         continue;
                     };
-
-                    let ref_byte = ref_seq[gp].to_ascii_uppercase();
-                    let Some(ref_base) = base_to_char(ref_byte) else {
+                    let Some(ref_base) = base_to_char(ref_seq[gp].to_ascii_uppercase()) else {
                         continue;
                     };
 
                     let reference_order = if is_first_in_reference { 1u8 } else { 2u8 };
 
-                    let next_base_for_cpg_mode = if cpg_only {
+                    let next_base_for_cpg_mode = if config.cpg_only {
                         if record.is_reverse() {
                             gp.checked_sub(1)
                                 .and_then(|idx| base_to_char(ref_seq[idx].to_ascii_uppercase()))
@@ -1669,28 +1636,24 @@ pub fn compare_record_to_reference(
                         ref_base,
                         read_base,
                         record.is_reverse(),
-                        methylation_mode,
+                        config.is_methylation,
                         next_base_for_cpg_mode,
                     );
 
                     let base_position = base_position_for_mode(
-                        position_mode,
+                        config.position_mode,
                         rp,
                         seq_len,
                         record.is_reverse(),
                         is_first_in_reference,
-                        max_read_len,
+                        config.mode_len,
                         stretch,
                         estimated_fragment_length(record, mate_end),
                     );
 
-                    let key = InsertKey {
-                        base_change: ref_base_change,
-                        read_num,
-                        base_position,
-                        reference_order,
-                    };
-                    *local_counts.entry(key).or_insert(0) += 1;
+                    *local_counts
+                        .entry(InsertKey { base_change: ref_base_change, read_num, base_position, reference_order })
+                        .or_insert(0) += 1;
                 }
 
                 read_pos += *len as usize;
@@ -1706,72 +1669,62 @@ pub fn compare_record_to_reference(
         }
     }
 
+    let reference_order = if is_first_in_reference { 1u8 } else { 2u8 };
+    let frag_len = estimated_fragment_length(record, mate_end);
     for comparison in softclip_comparisons {
-        if comparison.read_pos >= qual.len() || qual[comparison.read_pos] < min_base_quality {
+        if comparison.read_pos >= qual.len() || qual[comparison.read_pos] < config.min_base_quality {
             continue;
         }
 
-        let reference_order = if is_first_in_reference { 1u8 } else { 2u8 };
         let ref_base_change = build_base_change(
             read_num,
             comparison.ref_base,
             comparison.read_base,
             record.is_reverse(),
-            methylation_mode,
+            config.is_methylation,
             None,
         );
         let base_position = base_position_for_mode(
-            position_mode,
+            config.position_mode,
             comparison.read_pos,
             seq_len,
             record.is_reverse(),
             is_first_in_reference,
-            max_read_len,
+            config.mode_len,
             stretch,
-            estimated_fragment_length(record, mate_end),
+            frag_len,
         );
-        let key = InsertKey {
-            base_change: ref_base_change,
-            read_num,
-            base_position,
-            reference_order,
-        };
-        *local_counts.entry(key).or_insert(0) += 1;
-
-        let _ = comparison.ref_pos;
+        *local_counts
+            .entry(InsertKey { base_change: ref_base_change, read_num, base_position, reference_order })
+            .or_insert(0) += 1;
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn process_region(
     bam_path: &str,
-    tid: i32,
-    chr_name: &str,
-    start: i64,
-    end: i64,
-    reference: &ReferenceGenome,
-    tid_to_name: &HashMap<i32, String>,
-    args: &Args,
-    max_read_len: usize,
-    bed_for_filtering: Option<&crate::bed::BedRegions>,
-    bed_filter_whole_reads: bool,
+    region: &GenomicRegion,
+    context: &ProcessingContext,
+    config: ProcessingConfig,
+    bed_filter: &crate::bed::BedFilter<'_>,
 ) -> (HashMap<InsertKey, usize>, usize) {
+    let chr_name = context
+        .tid_to_name
+        .get(&region.tid)
+        .expect("tid not found in tid_to_name");
     let mut bam = IndexedReader::from_path(bam_path).expect("Failed to open indexed BAM");
-    if let Err(error) = bam.fetch(FetchDefinition::Region(tid, start, end)) {
+    if let Err(error) = bam.fetch(FetchDefinition::Region(region.tid, region.start, region.end)) {
         log::warn!(
-            "Failed to fetch region tid {}:{}-{}: {}",
-            tid,
-            start,
-            end,
-            error
+            "Failed to fetch region {}:{}-{}: {}",
+            chr_name, region.start, region.end, error
         );
         return (HashMap::new(), 0);
     }
 
     let mut local_counts: HashMap<InsertKey, usize> = HashMap::new();
     let mut local_read_count = 0usize;
-    let chunk_bed_intervals = bed_for_filtering
-        .map(|bed| crate::filter_bed_for_region(bed, chr_name, start, end))
+    let chunk_bed_intervals = bed_filter
+        .regions
+        .map(|bed| crate::filter_bed_for_region(bed, chr_name, region.start, region.end))
         .unwrap_or_default();
     let mut bed_cursor = 0usize;
 
@@ -1783,13 +1736,13 @@ pub fn process_region(
 
         // Ensure each read is counted once across chunks.
         let read_start = record.pos();
-        if read_start < start || read_start >= end {
+        if read_start < region.start || read_start >= region.end {
             continue;
         }
 
         if should_skip_whole_read_for_bed(
             &record,
-            bed_filter_whole_reads,
+            bed_filter.filter_whole_reads,
             &chunk_bed_intervals,
             &mut bed_cursor,
         ) {
@@ -1798,23 +1751,11 @@ pub fn process_region(
 
         let mate_end = mc_mate_end(&record);
 
-        if should_skip_record(&record, args) {
+        if should_skip_record(&record, config) {
             continue;
         }
 
-        compare_record_to_reference(
-            &record,
-            reference,
-            tid_to_name,
-            args.min_base_quality,
-            max_read_len,
-            args.position_mode,
-            &args.overlap_mode,
-            args.methylation_mode,
-            args.cpg_only,
-            mate_end,
-            &mut local_counts,
-        );
+        compare_record_to_reference(&record, context, config, mate_end, &mut local_counts);
         local_read_count += 1;
     }
 

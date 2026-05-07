@@ -20,6 +20,16 @@ pub struct BedInterval {
 /// BED intervals grouped by chromosome or contig name.
 pub type BedRegions = HashMap<String, Vec<BedInterval>>;
 
+/// Bundles BED filtering state for a processing run.
+#[derive(Clone, Copy)]
+pub struct BedFilter<'a> {
+    /// Per-chromosome BED intervals, or `None` when no BED file was supplied.
+    pub regions: Option<&'a BedRegions>,
+    /// When `true`, skip any read whose alignment overlaps a BED interval.
+    /// When `false`, individual bases at BED positions are masked in the reference.
+    pub filter_whole_reads: bool,
+}
+
 /// Parse a BED file into chromosome-indexed intervals.
 ///
 /// # Arguments
@@ -191,6 +201,10 @@ pub fn mask_reference_with_bed(reference: &mut ReferenceGenome, bed_regions: &Be
             for interval in intervals {
                 let start = interval.start.max(0) as usize;
                 let end = (interval.end as usize).min(ref_seq.len());
+
+                if start >= end {
+                    continue;
+                }
 
                 ref_seq[start..end].fill(b'N');
                 total_masked += end - start;

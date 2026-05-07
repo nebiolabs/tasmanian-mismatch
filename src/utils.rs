@@ -95,71 +95,6 @@ pub fn calculate_end_pos(start_pos: i64, cigar: &rust_htslib::bam::record::Cigar
     end
 }
 
-/// Parse an MD tag into mismatch and match spans.
-///
-/// # Arguments
-/// * `md_string` - MD tag string from a SAM/BAM alignment record.
-///
-/// # Returns
-/// * A tuple containing mismatch positions and match spans.
-#[allow(dead_code)]
-pub fn parse_md_tag(md_string: &str) -> (Vec<(usize, char)>, Vec<(usize, usize)>) {
-    // Parse MD tag and return:
-    // 1. (position_offset, ref_base) for mismatches
-    // 2. (start_pos, length) for matches
-    let mut mismatches = Vec::new();
-    let mut matches = Vec::new();
-    let mut pos = 0;
-    let mut num_str = String::new();
-    let mut in_deletion = false;
-
-    for ch in md_string.chars() {
-        if ch.is_numeric() {
-            if in_deletion {
-                in_deletion = false;
-            }
-            num_str.push(ch);
-        } else if ch == '^' {
-            // Deletion - skip the deleted bases
-            if !num_str.is_empty() {
-                let match_len = num_str.parse::<usize>().unwrap_or(0);
-                if match_len > 0 {
-                    matches.push((pos, match_len));
-                    pos += match_len;
-                }
-                num_str.clear();
-            }
-            in_deletion = true;
-        } else if ch.is_alphabetic() {
-            if in_deletion {
-                // Deletion bases are present in reference only and should not affect read position.
-                continue;
-            }
-            // This is a reference base at a mismatch position
-            if !num_str.is_empty() {
-                let match_len = num_str.parse::<usize>().unwrap_or(0);
-                if match_len > 0 {
-                    matches.push((pos, match_len));
-                    pos += match_len;
-                }
-                num_str.clear();
-            }
-            mismatches.push((pos, ch));
-            pos += 1;
-        }
-    }
-
-    // Handle trailing matches
-    if !num_str.is_empty() {
-        let match_len = num_str.parse::<usize>().unwrap_or(0);
-        if match_len > 0 {
-            matches.push((pos, match_len));
-        }
-    }
-
-    (mismatches, matches)
-}
-
 /// Print the position-based mismatch table as CSV.
 ///
 /// # Arguments
@@ -218,7 +153,49 @@ pub fn print_position_table(
     Ok(())
 }
 
-/// Print the main mismatch table followed by summary statistics.
+/// Parse an MD tag string into mismatches and match runs.
+///
+/// # Arguments
+/// * `md` - The MD tag string from a BAM record.
+/// * `read_name` - Read name used in panic messages to help locate the offending record.
+///
+/// # Returns
+/// * A tuple of `(mismatches, matches)` where:
+///   - `mismatches` is a `Vec<(usize, char)>` of (read_position, reference_base)
+///   - `matches` is a `Vec<(usize, usize)>` of (start_position, length)
+pub fn parse_md_tag(md: &str, read_name: &str) -> (Vec<(usize, char)>, Vec<(usize, usize)>) {
+    let mut mismatches = Vec::new();
+    let mut matches = Vec::new();
+    let mut pos = 0usize;
+    let mut chars = md.chars().peekable();
+
+    while let Some(&c) = chars.peek() {
+        if c.is_ascii_digit() {
+            // digits: run of matching bases e.g. "5" in "5A4"
+            let len: usize = std::iter::from_fn(|| chars.next_if(|c| c.is_ascii_digit()))
+                .collect::<String>()
+                .parse()
+                .unwrap();
+            if len > 0 {
+                matches.push((pos, len));
+                pos += len;
+            }
+        } else if c == '^' {
+            // caret: deleted reference bases e.g. "^AC" — skip, no read position advance
+            chars.next(); // consume '^'
+            while chars.next_if(|c| c.is_ascii_alphabetic()).is_some() {}
+        } else if c.is_ascii_alphabetic() {
+            // letter: substitution — reference base differs from read
+            chars.next();
+            mismatches.push((pos, c.to_ascii_uppercase()));
+            pos += 1;
+        } else {
+            panic!("unexpected character '{}' in MD tag '{}' for read '{}'", c, md, read_name);
+        }
+    }
+
+    (mismatches, matches)
+}
 ///
 /// # Arguments
 /// * `position_map` - Nested mismatch counts keyed by read number and position.
