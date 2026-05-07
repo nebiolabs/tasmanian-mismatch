@@ -377,6 +377,13 @@ pub fn apply_external_discounts(
     touched
 }
 
+/// Extract the reference base from an `InsertKey`'s `base_change` field (e.g. `"C>T"` → `'C'`).
+fn ref_base_of(key: &InsertKey) -> Option<char> {
+    key.base_change
+        .split_once('>')
+        .and_then(|(ref_part, _)| ref_part.chars().next())
+}
+
 /// Normalize mismatch counts within each `(read_num, position, ref_base)` group.
 ///
 /// For example, for a row key `C>T`, the normalized value is:
@@ -386,35 +393,23 @@ pub fn normalize_mismatch_counts(counts: &HashMap<InsertKey, usize>) -> HashMap<
     let mut group_totals: HashMap<(u8, usize, char), usize> = HashMap::new();
 
     for (key, count) in counts {
-        let Some((ref_part, _)) = key.base_change.split_once('>') else {
-            continue;
-        };
-        let Some(ref_base) = ref_part.chars().next() else {
-            continue;
-        };
-
-        let group_key = (key.read_num, key.base_position, ref_base);
-        *group_totals.entry(group_key).or_insert(0) += *count;
-    }
-
-    let mut normalized: HashMap<InsertKey, f64> = HashMap::new();
-    for (key, count) in counts {
-        let Some((ref_part, _)) = key.base_change.split_once('>') else {
-            continue;
-        };
-        let Some(ref_base) = ref_part.chars().next() else {
-            continue;
-        };
-
-        let group_key = (key.read_num, key.base_position, ref_base);
-
-        if let Some(total) = group_totals.get(&group_key) {
-            normalized.insert(key.clone(), *count as f64 / (*total as f64 + 1.0));
-            //1.0 to avoid div by zero
+        if let Some(ref_base) = ref_base_of(key) {
+            *group_totals
+                .entry((key.read_num, key.base_position, ref_base))
+                .or_insert(0) += count;
         }
     }
 
-    normalized
+    counts
+        .iter()
+        .filter_map(|(key, &count)| {
+            let ref_base = ref_base_of(key)?;
+            let total = *group_totals.get(&(key.read_num, key.base_position, ref_base))?;
+            // +1.0 guards against NaN when apply_external_discounts has reduced
+            // every count in a group to zero.
+            Some((key.clone(), count as f64 / (total as f64 + 1.0)))
+        })
+        .collect()
 }
 
 /// Convert normalized mismatch frequencies to a rescaling matrix format for tasmanian-rescale-quality.
