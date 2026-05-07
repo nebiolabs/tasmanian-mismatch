@@ -81,7 +81,7 @@ pub struct SoftclipComparison {
     pub ref_base: char,
 }
 
-#[derive(Debug, Clone, clap::ValueEnum, PartialEq)]
+#[derive(Debug, Clone, Copy, clap::ValueEnum, PartialEq)]
 pub enum OverlapMode {
     /// Split the overlap at its midpoint; read 1 keeps [ov_start, mid), read 2 keeps [mid, ov_end)
     Cut,
@@ -93,6 +93,45 @@ pub enum OverlapMode {
 pub enum PositionMode {
     Read,
     Insert,
+}
+
+/// Identifies a genomic region within a BAM file.
+pub struct GenomicRegion {
+    /// BAM target ID.
+    pub tid: i32,
+    /// Inclusive region start in 0-based coordinates.
+    pub start: i64,
+    /// Exclusive region end in 0-based coordinates.
+    pub end: i64,
+}
+
+/// Configuration values shared across record-processing entry points.
+#[derive(Debug, Clone, Copy)]
+pub struct ProcessingConfig {
+    /// Minimum soft-clipped match fraction required before counting soft-clip mismatches.
+    pub softclip_threshold: f64,
+    /// Minimum base quality required for a base to be counted.
+    pub min_base_quality: u8,
+    /// Whether methylation-aware mismatch normalization is enabled.
+    pub is_methylation: bool,
+    /// Whether methylation normalization should be limited to CpG context.
+    pub cpg_only: bool,
+    /// Modal read length used for optional read-position normalization.
+    pub mode_len: usize,
+    /// Minimum mapping quality required for a record to be processed.
+    pub min_map_quality: u8,
+    /// SAM flags that must all be present.
+    pub required_flags: u16,
+    /// SAM flags that cause a record to be skipped if any are present.
+    pub filter_flags: u16,
+    /// SAM flags that cause a record to be skipped if all are present.
+    pub excl_flags: u16,
+    /// Whether to use insert position mode (fragment-level instead of read-level).
+    pub use_insert_mode: bool,
+    /// Read-position or fragment-position counting mode.
+    pub position_mode: PositionMode,
+    /// How to handle read-pair overlapping positions.
+    pub overlap_mode: OverlapMode,
 }
 
 #[derive(Parser, Debug)]

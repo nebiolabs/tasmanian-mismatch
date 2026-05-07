@@ -31,17 +31,17 @@ mod tests {
     #[test]
     fn test_correct_read_len_with_mode() {
         // No mode correction
-        assert_eq!(correct_read_len_with_mode(10, 100, 0, "split_read", 1), 10);
+        assert_eq!(correct_read_len_with_mode(10, 100, 0, false, 1), 10);
 
         // With mode correction for second half of read
         assert_eq!(
-            correct_read_len_with_mode(60, 100, 150, "split_read", 1),
+            correct_read_len_with_mode(60, 100, 150, false, 1),
             110
         );
 
         // No correction for first half even with mode
         assert_eq!(
-            correct_read_len_with_mode(40, 100, 150, "split_read", 1),
+            correct_read_len_with_mode(40, 100, 150, false, 1),
             40
         );
     }
@@ -489,7 +489,7 @@ mod tests {
     #[test]
     fn test_parse_md_tag_basic() {
         // MD: 5A4 means 5 matches, A mismatch, 4 matches
-        let (mismatches, matches) = parse_md_tag("5A4");
+        let (mismatches, matches) = parse_md_tag("5A4", "test_read");
 
         assert_eq!(mismatches.len(), 1);
         assert_eq!(mismatches[0], (5, 'A'));
@@ -502,7 +502,7 @@ mod tests {
     #[test]
     fn test_parse_md_tag_with_deletion() {
         // MD: 3^AC5 means 3 matches, AC deleted, 5 matches
-        let (mismatches, matches) = parse_md_tag("3^AC5");
+        let (mismatches, matches) = parse_md_tag("3^AC5", "test_read");
 
         assert_eq!(mismatches.len(), 0); // Deletions don't create mismatches
         assert_eq!(matches.len(), 2);
@@ -513,7 +513,7 @@ mod tests {
     #[test]
     fn test_parse_md_tag_complex() {
         // MD: 2A3T4 means 2 matches, A mismatch, 3 matches, T mismatch, 4 matches
-        let (mismatches, matches) = parse_md_tag("2A3T4");
+        let (mismatches, matches) = parse_md_tag("2A3T4", "test_read");
 
         assert_eq!(mismatches.len(), 2);
         assert_eq!(mismatches[0], (2, 'A'));
@@ -528,7 +528,7 @@ mod tests {
     #[test]
     fn test_parse_md_tag_only_matches() {
         // MD: 10 means 10 matches only
-        let (mismatches, matches) = parse_md_tag("10");
+        let (mismatches, matches) = parse_md_tag("10", "test_read");
 
         assert_eq!(mismatches.len(), 0);
         assert_eq!(matches.len(), 1);
@@ -704,6 +704,8 @@ mod tests {
             filter_flags: 0,
             excl_flags: 0,
             use_insert_mode: false,
+            position_mode: PositionMode::Read,
+            overlap_mode: OverlapMode::Cut,
         };
 
         // Should not panic
@@ -767,6 +769,8 @@ mod tests {
             filter_flags: 0,
             excl_flags: 0,
             use_insert_mode: false,
+            position_mode: PositionMode::Read,
+            overlap_mode: OverlapMode::Cut,
         };
 
         // Should not panic
