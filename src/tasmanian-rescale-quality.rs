@@ -49,7 +49,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Set default thread count
     let actual_threads = if num_threads == 0 {
-        num_cpus::get()
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1)
     } else {
         num_threads
     };
