@@ -125,22 +125,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .fetch(FetchDefinition::Region(*tid, *start, *end))
                         .is_ok()
                     {
-                        for record_result in bam.records() {
-                            if let Ok(mut record) = record_result {
-                                // Avoid boundary duplicates from region-based fetch.
-                                let rec_start = record.pos();
-                                if rec_start < *start || rec_start >= *end {
-                                    continue;
-                                }
-
-                                rescale_phred_scores(
-                                    &mut record,
-                                    &reference_arc,
-                                    &tid_to_name_arc,
-                                    &matrix_arc,
-                                );
-                                region_records.push(record);
+                        for mut record in bam.records().flatten() {
+                            // Avoid boundary duplicates from region-based fetch.
+                            let rec_start = record.pos();
+                            if rec_start < *start || rec_start >= *end {
+                                continue;
                             }
+
+                            rescale_phred_scores(
+                                &mut record,
+                                &reference_arc,
+                                &tid_to_name_arc,
+                                &matrix_arc,
+                            );
+                            region_records.push(record);
                         }
                     }
                 }
