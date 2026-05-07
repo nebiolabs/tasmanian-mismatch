@@ -25,19 +25,17 @@ fn main() {
 
     configure_thread_pool(args.threads);
 
-    let max_read_len = compute_read_len_max_from_sample_bam(&args.bam_path, 10_000);
-    eprintln!("Sampled max read length is {}", max_read_len);
+    let (max_read_len, mut reference, bed_regions) = std::thread::scope(|s| {
+        let t1 = s.spawn(|| compute_read_len_max_from_sample_bam(&args.bam_path, 10_000));
+        let t2 = s.spawn(|| load_reference_genome(&args.reference_path));
+        let t3 = s.spawn(|| maybe_parse_bed_file(args.bed_file.as_deref()));
+        (t1.join().unwrap(), t2.join().unwrap(), t3.join().unwrap())
+    });
+    log::info!("Sampled max read length: {}", max_read_len);
 
-    let mut reference = load_reference_genome(&args.reference_path);
-
-    let bed_for_filtering = if let Some(bed_path) = args.bed_file.as_ref() {
-        eprintln!("Loading BED file: {}", bed_path);
-        let regions =
-            parse_bed_file(bed_path).expect("Failed to load BED file. Please check the file path and format.");
-        let bed_filter_mode = args.bed_filter_mode.as_str();
-        eprintln!("BED filter mode: {}", bed_filter_mode);
-
-        match bed_filter_mode {
+    let bed_for_filtering = if let Some(regions) = bed_regions {
+        log::info!("BED filter mode: {}", args.bed_filter_mode);
+        match args.bed_filter_mode.as_str() {
             "filter" => {
                 log::info!("Keeping BED regions for whole-read overlap filtering...");
                 Some(Arc::new(regions))
