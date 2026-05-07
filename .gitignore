@@ -13,3 +13,5 @@ tasmanian_venv*
 *summary
 *bam
 tasmanian/test_suite/Damage-estimator
+target/*
+test_output/*
