@@ -224,8 +224,8 @@ pub fn print_main_output(
     output_path: Option<&str>,
 ) -> std::io::Result<()> {
     print_position_table(position_map, output_path)?;
-    eprintln!(
-        "\nTotal unique (read, position) combinations: {}",
+    log::info!(
+        "Total unique (read, position) combinations: {}",
         position_map.len()
     );
 

@@ -56,8 +56,8 @@ pub fn parse_bed_file(bed_path: &str) -> Result<BedRegions, Box<dyn std::error::
         let fields: Vec<&str> = line.split('\t').collect();
 
         if fields.len() < 3 {
-            eprintln!(
-                "Warning: Skipping malformed line {} in BED file (need at least 3 fields)",
+            log::warn!(
+                "Skipping malformed line {} in BED file (need at least 3 fields)",
                 line_num + 1
             );
             continue;
@@ -72,8 +72,8 @@ pub fn parse_bed_file(bed_path: &str) -> Result<BedRegions, Box<dyn std::error::
             .map_err(|_| format!("Invalid end coordinate at line {}", line_num + 1))?;
 
         if start >= end {
-            eprintln!(
-                "Warning: Skipping invalid interval at line {} (start >= end)",
+            log::warn!(
+                "Skipping invalid interval at line {} (start >= end)",
                 line_num + 1
             );
             continue;
@@ -100,7 +100,7 @@ pub fn parse_bed_file(bed_path: &str) -> Result<BedRegions, Box<dyn std::error::
     }
 
     let total_intervals: usize = regions.values().map(|v| v.len()).sum();
-    eprintln!(
+    log::info!(
         "Loaded {} BED intervals across {} chromosomes",
         total_intervals,
         regions.len()
