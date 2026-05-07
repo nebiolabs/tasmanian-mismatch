@@ -34,10 +34,16 @@ mod tests {
         assert_eq!(correct_read_len_with_mode(10, 100, 0, "split_read", 1), 10);
 
         // With mode correction for second half of read
-        assert_eq!(correct_read_len_with_mode(60, 100, 150, "split_read", 1), 110);
+        assert_eq!(
+            correct_read_len_with_mode(60, 100, 150, "split_read", 1),
+            110
+        );
 
         // No correction for first half even with mode
-        assert_eq!(correct_read_len_with_mode(40, 100, 150, "split_read", 1), 40);
+        assert_eq!(
+            correct_read_len_with_mode(40, 100, 150, "split_read", 1),
+            40
+        );
     }
 
     #[test]
@@ -172,7 +178,7 @@ mod tests {
             &mut local_counts,
             Some(&mut genomic_region_counts),
             "chr1",
-            0, // mode_len
+            0,     // mode_len
             false, // use_insert_mode
         );
 
@@ -194,8 +200,8 @@ mod tests {
             1,     // read 1
             false, // not methylation mode
             false, // not cpg_only
-            ref_seq, 0, // genome position
-            0, // mode_len
+            ref_seq, 0,     // genome position
+            0,     // mode_len
             false, // use_insert_mode
         );
 
@@ -392,7 +398,8 @@ mod tests {
 
         // Create overlapping paired reads with a mismatch
         // Read1: forward, pos 100
-        let sam_line1: &[u8] = b"read1\t99\t*\t101\t60\t10M\t*\t111\t20\tACGTACGTAC\tIIIIIIIIII\tMD:Z:10";
+        let sam_line1: &[u8] =
+            b"read1\t99\t*\t101\t60\t10M\t*\t111\t20\tACGTACGTAC\tIIIIIIIIII\tMD:Z:10";
         let read1 = Record::from_sam(&header_view, sam_line1).unwrap();
 
         // Read2: reverse, pos 110, overlaps last base of read1
@@ -420,16 +427,16 @@ mod tests {
             &mut inconsistency_counts,
             &reference_genome,
             &tid_to_name,
-            20,    // min base quality
-            false, // not methylation
-            false, // not cpg_only
-            0,     // mode_len
-            0,     // min_map_quality
-            0,     // required_flags
-            0,     // filter_flags
-            0,     // excl_flags
-            &[] as &[BedInterval],   // no bed intervals
-            false, // use_insert_mode
+            20,                    // min base quality
+            false,                 // not methylation
+            false,                 // not cpg_only
+            0,                     // mode_len
+            0,                     // min_map_quality
+            0,                     // required_flags
+            0,                     // filter_flags
+            0,                     // excl_flags
+            &[] as &[BedInterval], // no bed intervals
+            false,                 // use_insert_mode
         );
 
         // Should have processed the overlap region
@@ -461,18 +468,18 @@ mod tests {
             None, // no genomic counts
             &reference_genome,
             &tid_to_name,
-            0.0,   // softclip_threshold
-            20,    // min base quality
-            false, // not methylation
-            false, // not cpg_only
-            150,   // read len mode
-            0,     // min map quality
-            None,  // no genomic depth
-            0,     // required_flags
-            0,     // filter_flags
-            0,     // excl_flags
-            &[] as &[BedInterval],   // no bed intervals
-            false, // use_insert_mode
+            0.0,                   // softclip_threshold
+            20,                    // min base quality
+            false,                 // not methylation
+            false,                 // not cpg_only
+            150,                   // read len mode
+            0,                     // min map quality
+            None,                  // no genomic depth
+            0,                     // required_flags
+            0,                     // filter_flags
+            0,                     // excl_flags
+            &[] as &[BedInterval], // no bed intervals
+            false,                 // use_insert_mode
         );
 
         // Function completed successfully (unmapped reads may result in no counts)
@@ -483,10 +490,10 @@ mod tests {
     fn test_parse_md_tag_basic() {
         // MD: 5A4 means 5 matches, A mismatch, 4 matches
         let (mismatches, matches) = parse_md_tag("5A4");
-        
+
         assert_eq!(mismatches.len(), 1);
         assert_eq!(mismatches[0], (5, 'A'));
-        
+
         assert_eq!(matches.len(), 2);
         assert_eq!(matches[0], (0, 5));
         assert_eq!(matches[1], (6, 4));
@@ -496,7 +503,7 @@ mod tests {
     fn test_parse_md_tag_with_deletion() {
         // MD: 3^AC5 means 3 matches, AC deleted, 5 matches
         let (mismatches, matches) = parse_md_tag("3^AC5");
-        
+
         assert_eq!(mismatches.len(), 0); // Deletions don't create mismatches
         assert_eq!(matches.len(), 2);
         assert_eq!(matches[0], (0, 3));
@@ -507,11 +514,11 @@ mod tests {
     fn test_parse_md_tag_complex() {
         // MD: 2A3T4 means 2 matches, A mismatch, 3 matches, T mismatch, 4 matches
         let (mismatches, matches) = parse_md_tag("2A3T4");
-        
+
         assert_eq!(mismatches.len(), 2);
         assert_eq!(mismatches[0], (2, 'A'));
         assert_eq!(mismatches[1], (6, 'T'));
-        
+
         assert_eq!(matches.len(), 3);
         assert_eq!(matches[0], (0, 2));
         assert_eq!(matches[1], (3, 3));
@@ -522,7 +529,7 @@ mod tests {
     fn test_parse_md_tag_only_matches() {
         // MD: 10 means 10 matches only
         let (mismatches, matches) = parse_md_tag("10");
-        
+
         assert_eq!(mismatches.len(), 0);
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0], (0, 10));
@@ -531,22 +538,28 @@ mod tests {
     #[test]
     fn test_position_overlaps_intervals() {
         let intervals = vec![
-            BedInterval { start: 100, end: 200 },
-            BedInterval { start: 300, end: 400 },
+            BedInterval {
+                start: 100,
+                end: 200,
+            },
+            BedInterval {
+                start: 300,
+                end: 400,
+            },
         ];
 
         // Position within first interval
         assert!(position_overlaps_intervals(&intervals, 150));
-        
+
         // Position at interval boundary (inclusive start)
         assert!(position_overlaps_intervals(&intervals, 100));
-        
+
         // Position at interval boundary (exclusive end)
         assert!(!position_overlaps_intervals(&intervals, 200));
-        
+
         // Position between intervals
         assert!(!position_overlaps_intervals(&intervals, 250));
-        
+
         // Position in second interval
         assert!(position_overlaps_intervals(&intervals, 350));
     }
@@ -564,7 +577,7 @@ mod tests {
         // Create a temporary FASTA file
         let fasta_path = "test_reference.fa";
         let fasta_content = ">chr1\nACGTACGTACGT\n>chr2\nGGCCTTAA\n";
-        
+
         std::fs::write(fasta_path, fasta_content).unwrap();
 
         let reference = load_reference_genome(fasta_path);
@@ -572,7 +585,7 @@ mod tests {
         // Verify contents
         assert!(reference.contains_key("chr1"));
         assert!(reference.contains_key("chr2"));
-        
+
         let chr1_seq = reference.get("chr1").unwrap();
         assert_eq!(chr1_seq.len(), 12);
         assert_eq!(&chr1_seq[0..4], b"ACGT");
@@ -590,7 +603,7 @@ mod tests {
         // Create a FASTA with sequences spanning multiple lines
         let fasta_path = "test_reference_multiline.fa";
         let fasta_content = ">chr1\nACGT\nACGT\nACGT\n>chr2\nGG\nCC\n";
-        
+
         std::fs::write(fasta_path, fasta_content).unwrap();
 
         let reference = load_reference_genome(fasta_path);
@@ -598,7 +611,7 @@ mod tests {
         assert!(reference.contains_key("chr1"));
         let chr1_seq = reference.get("chr1").unwrap();
         assert_eq!(chr1_seq.len(), 12); // 4+4+4
-        
+
         assert!(reference.contains_key("chr2"));
         let chr2_seq = reference.get("chr2").unwrap();
         assert_eq!(chr2_seq.len(), 4); // 2+2
@@ -612,7 +625,7 @@ mod tests {
         // Create a temporary BED file
         let bed_path = "test.bed";
         let bed_content = "chr1\t100\t200\nchromosome2\t500\t600\nchr3\t1000\t1500\n";
-        
+
         std::fs::write(bed_path, bed_content).unwrap();
 
         let bed_regions = parse_bed_file(bed_path).unwrap();
@@ -641,7 +654,7 @@ mod tests {
         // Create a BED file with multiple regions on the same contig
         let bed_path = "test_multi.bed";
         let bed_content = "chr1\t100\t200\nchr1\t300\t400\nchr1\t1000\t1500\n";
-        
+
         std::fs::write(bed_path, bed_content).unwrap();
 
         let bed_regions = parse_bed_file(bed_path).unwrap();
@@ -713,15 +726,20 @@ mod tests {
         let header_view = HeaderView::from_header(&header);
 
         // Read1: pos 100, 20M
-        let sam_line1: &[u8] = b"read1\t99\t*\t101\t60\t20M\t*\t111\t30\tACGTACGTACGTACGTACGT\tIIIIIIIIIIIIIIIIIIII";
+        let sam_line1: &[u8] =
+            b"read1\t99\t*\t101\t60\t20M\t*\t111\t30\tACGTACGTACGTACGTACGT\tIIIIIIIIIIIIIIIIIIII";
         let read1 = Record::from_sam(&header_view, sam_line1).unwrap();
 
         // Read2: pos 110, 20M (overlaps with read1)
-        let sam_line2: &[u8] = b"read1\t147\t*\t111\t60\t20M\t*\t101\t-30\tTGCATGCATGCATGCATGCA\tIIIIIIIIIIIIIIIIIIII";
+        let sam_line2: &[u8] =
+            b"read1\t147\t*\t111\t60\t20M\t*\t101\t-30\tTGCATGCATGCATGCATGCA\tIIIIIIIIIIIIIIIIIIII";
         let read2 = Record::from_sam(&header_view, sam_line2).unwrap();
 
         let mut reference_genome = HashMap::new();
-        reference_genome.insert("*".to_string(), b"ACGTACGTACGTACGTACGTACGTACGTACGT".to_vec());
+        reference_genome.insert(
+            "*".to_string(),
+            b"ACGTACGTACGTACGTACGTACGTACGTACGT".to_vec(),
+        );
 
         let mut tid_to_name = HashMap::new();
         tid_to_name.insert(-1i32, "*".to_string());
@@ -755,8 +773,8 @@ mod tests {
         process_paired_reads_with_overlap(
             &read1,
             &read2,
-            110,  // overlap_start
-            120,  // overlap_end
+            110, // overlap_start
+            120, // overlap_end
             &mut local_counts,
             &mut overlap_counts,
             &mut inconsistency_counts,
@@ -786,7 +804,12 @@ mod tests {
         let rescaling_matrix = HashMap::new(); // Empty rescaling matrix
 
         // Should not panic
-        rescale_phred_scores(&mut record, &reference_genome, &tid_to_name, &rescaling_matrix);
+        rescale_phred_scores(
+            &mut record,
+            &reference_genome,
+            &tid_to_name,
+            &rescaling_matrix,
+        );
 
         assert!(true);
     }
@@ -811,7 +834,12 @@ mod tests {
         rescaling_matrix.insert((1, 1u16, 'G', 'C'), 0.8f32);
 
         // Should not panic
-        rescale_phred_scores(&mut record, &reference_genome, &tid_to_name, &rescaling_matrix);
+        rescale_phred_scores(
+            &mut record,
+            &reference_genome,
+            &tid_to_name,
+            &rescaling_matrix,
+        );
 
         assert!(true);
     }
@@ -821,7 +849,7 @@ mod tests {
         // Create a BED file
         let bed_path = "test_filter.bed";
         let bed_content = "chr1\t100\t200\nchr1\t500\t600\nchr2\t1000\t1500\n";
-        
+
         std::fs::write(bed_path, bed_content).unwrap();
         let bed_regions = parse_bed_file(bed_path).unwrap();
 
@@ -845,7 +873,7 @@ mod tests {
         // Create a BED file
         let bed_path = "test_filter_no_overlap.bed";
         let bed_content = "chr1\t100\t200\nchr1\t500\t600\n";
-        
+
         std::fs::write(bed_path, bed_content).unwrap();
         let bed_regions = parse_bed_file(bed_path).unwrap();
 
@@ -859,7 +887,6 @@ mod tests {
 
     #[test]
     fn test_mask_reference_with_bed() {
-
         let mut reference_genome = HashMap::new();
         reference_genome.insert("chr1".to_string(), b"ACGTACGTACGT".to_vec());
 
@@ -901,7 +928,9 @@ mod tests {
         write_potential_variants_tsv(&genomic_counts, output_path).unwrap();
 
         let output = std::fs::read_to_string(output_path).unwrap();
-        assert!(output.contains("chromosome\tposition\treference_base\tmismatch_base\tcount\tdepth"));
+        assert!(
+            output.contains("chromosome\tposition\treference_base\tmismatch_base\tcount\tdepth")
+        );
         assert!(output.contains("chr1\t42\tA\tG\t3\t10"));
         assert!(!output.contains("chr2\t7"));
 

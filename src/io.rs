@@ -1,9 +1,9 @@
 //! Input helpers for reference FASTA and BAM-derived metadata.
 
+use crate::types::ReferenceGenome;
 use crate::types::{
     DiscountKey, GenomicMismatchKey, InconsistencyKey, InsertKey, MismatchKey, PositionMode,
 };
-use crate::types::ReferenceGenome;
 use bio::io::fasta;
 use rust_htslib::bam::{Read, Reader};
 use std::collections::HashMap;
@@ -163,7 +163,10 @@ pub fn write_inconsistencies_tsv(
 
     let file = File::create(output_path)?;
     let mut writer = BufWriter::new(file);
-    writeln!(writer, "read1_position\tread2_position\tdiscordance_type\tcount")?;
+    writeln!(
+        writer,
+        "read1_position\tread2_position\tdiscordance_type\tcount"
+    )?;
 
     for (key, count) in rows {
         writeln!(
@@ -198,7 +201,10 @@ pub fn write_mismatch_discounts_to_writer<W: Write>(
             .then(a.mismatch_type.cmp(&b.mismatch_type))
     });
 
-    writeln!(writer, "mismatch_type\tread_num\tread_position\tdiscount_count")?;
+    writeln!(
+        writer,
+        "mismatch_type\tread_num\tread_position\tdiscount_count"
+    )?;
 
     for (key, count) in rows {
         writeln!(
@@ -376,9 +382,7 @@ pub fn apply_external_discounts(
 /// For example, for a row key `C>T`, the normalized value is:
 /// `C>T / (C>A + C>C + C>G + C>T)` at the same read number
 /// and base position.
-pub fn normalize_mismatch_counts(
-    counts: &HashMap<InsertKey, usize>,
-) -> HashMap<InsertKey, f64> {
+pub fn normalize_mismatch_counts(counts: &HashMap<InsertKey, usize>) -> HashMap<InsertKey, f64> {
     let mut group_totals: HashMap<(u8, usize, char), usize> = HashMap::new();
 
     for (key, count) in counts {
@@ -389,11 +393,7 @@ pub fn normalize_mismatch_counts(
             continue;
         };
 
-        let group_key = (
-            key.read_num,
-            key.base_position,
-            ref_base,
-        );
+        let group_key = (key.read_num, key.base_position, ref_base);
         *group_totals.entry(group_key).or_insert(0) += *count;
     }
 
@@ -406,14 +406,11 @@ pub fn normalize_mismatch_counts(
             continue;
         };
 
-        let group_key = (
-            key.read_num,
-            key.base_position,
-            ref_base,
-        );
+        let group_key = (key.read_num, key.base_position, ref_base);
 
         if let Some(total) = group_totals.get(&group_key) {
-            normalized.insert(key.clone(), *count as f64 / (*total as f64 + 1.0) ); //1.0 to avoid div by zero
+            normalized.insert(key.clone(), *count as f64 / (*total as f64 + 1.0));
+            //1.0 to avoid div by zero
         }
     }
 
@@ -442,7 +439,7 @@ pub fn frequencies_to_rescaling_matrix(
 ) -> HashMap<(u8, u16, char, char), f32> {
     let mut matrix: HashMap<(u8, u16, char, char), f32> = HashMap::new();
 
-    for (key, _normalized_freq) in normalized_counts {
+    for key in normalized_counts.keys() {
         let Some((ref_part, alt_part)) = key.base_change.split_once('>') else {
             continue;
         };

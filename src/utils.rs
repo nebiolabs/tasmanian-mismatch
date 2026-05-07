@@ -51,21 +51,25 @@ pub fn base_to_char(byte: u8) -> Option<char> {
 /// * The original position when no adjustment is needed.
 /// * A mode-adjusted position for bases in the right half of shorter reads.
 // instead of this we can use start of read + tlen and call it reference_span
-pub fn correct_read_len_with_mode(read_pos: usize, seq_len: usize, mode_len: usize, correction_type: &str, read_num: u8) -> usize {
-    match correction_type {
-        "split_read" => {
-            if mode_len > 0 && read_pos > seq_len / 2 {
-                read_pos + (mode_len - seq_len)
-            } else {
-                read_pos
-            }
-        },
-        "insert_mode" => match read_num {
-            1 => read_pos, // No adjustment for read 1 in insert mode
-            2 => (2 * mode_len + 10) - (seq_len - read_pos), // count from end.
-            _ => read_pos, // Default to no adjustment for unrecognized read numbers
-        },
-        _ => read_pos, // Default to no adjustment for unrecognized correction types
+pub fn correct_read_len_with_mode(
+    read_pos: usize,
+    seq_len: usize,
+    mode_len: usize,
+    use_insert_mode: bool,
+    read_num: u8,
+) -> usize {
+    if use_insert_mode {
+        match read_num {
+            1 => read_pos,
+            2 => (2 * mode_len + 10) - (seq_len - read_pos),
+            _ => read_pos,
+        }
+    } else {
+        if mode_len > 0 && read_pos > seq_len / 2 {
+            read_pos + (mode_len - seq_len)
+        } else {
+            read_pos
+        }
     }
 }
 

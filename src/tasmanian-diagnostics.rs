@@ -8,7 +8,10 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Parser, Debug)]
 #[command(name = "tasmanian-diagnostics")]
-#[command(version, about = "Collect genomic variants and read-pair overlap inconsistencies")]
+#[command(
+    version,
+    about = "Collect genomic variants and read-pair overlap inconsistencies"
+)]
 struct Args {
     bam_file: String,
     reference_fasta: String,
@@ -122,10 +125,7 @@ fn main() {
 
     let mut reference = load_reference_genome(&args.reference_fasta);
 
-    let bed_for_filtering = if let Some(bed_path) = args.bed_file.as_ref() {
-        let regions = parse_bed_file(bed_path)
-            .expect("Failed to load BED file. Please check the file path and format.");
-
+    let bed_for_filtering = if let Some(regions) = maybe_parse_bed_file(args.bed_file.as_deref()) {
         match args.bed_filter_mode.as_str() {
             "filter" => Some(Arc::new(regions)),
             "mask" => {
@@ -201,7 +201,10 @@ fn main() {
         if let Err(e) = bam.fetch(FetchDefinition::Region(*tid, *start, *end)) {
             log::warn!(
                 "Failed to fetch region {}:{}-{}: {}",
-                chr_name, start, end, e
+                chr_name,
+                start,
+                end,
+                e
             );
             return;
         }
@@ -246,9 +249,8 @@ fn main() {
                 continue;
             }
 
-            let should_skip_whole_read = args.bed_filter_mode == "filter"
-                && !chunk_bed_intervals.is_empty()
-                && {
+            let should_skip_whole_read =
+                args.bed_filter_mode == "filter" && !chunk_bed_intervals.is_empty() && {
                     let read_end = calculate_end_pos(record.pos(), &record.cigar());
                     chunk_bed_intervals
                         .iter()
@@ -262,7 +264,10 @@ fn main() {
                 record.is_paired() && !record.is_unmapped() && !record.is_mate_unmapped();
             if has_mapped_pair {
                 let qname = record.qname().to_vec();
-                read_groups.entry(qname).or_insert_with(Vec::new).push(record);
+                read_groups
+                    .entry(qname)
+                    .or_insert_with(Vec::new)
+                    .push(record);
                 continue;
             }
 
@@ -361,7 +366,8 @@ fn main() {
         }
 
         if !inconsistency_region_counts.is_empty() {
-            let mut global_inconsistency_counts = inconsistency_clone.lock().expect("Lock poisoned");
+            let mut global_inconsistency_counts =
+                inconsistency_clone.lock().expect("Lock poisoned");
             for (key, count) in inconsistency_region_counts {
                 *global_inconsistency_counts.entry(key).or_insert(0) += count;
             }

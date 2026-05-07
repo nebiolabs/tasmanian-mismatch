@@ -10,8 +10,8 @@ use crate::types::{
     OverlapMode, PositionMode, ReadInfo, ReferenceGenome, SoftclipComparison,
 };
 use crate::utils::{base_to_char, calculate_end_pos, complement, correct_read_len_with_mode};
-use rust_htslib::bam::{record::Aux, FetchDefinition, IndexedReader, Read, Reader, Record};
 use rayon;
+use rust_htslib::bam::{record::Aux, FetchDefinition, IndexedReader, Read, Reader, Record};
 use std::collections::{HashMap, HashSet};
 
 /// Configuration values shared across record-processing entry points.
@@ -131,12 +131,8 @@ pub fn create_mismatch_key(
     } else {
         r_pos
     };
-    let correction_type = if use_insert_mode {
-        "insert_mode"
-    } else {
-        "split_read"
-    };
-    let mode_adjusted_r_pos = correct_read_len_with_mode(adjusted_r_pos, seq_len, mode_len, correction_type, read_num);
+    let mode_adjusted_r_pos =
+        correct_read_len_with_mode(adjusted_r_pos, seq_len, mode_len, use_insert_mode, read_num);
 
     MismatchKey {
         mismatch_type: format!(
@@ -313,11 +309,8 @@ pub fn get_overlap_region(
 
 /// Iterate over read/reference-aligned bases for Match/Equal/Diff CIGAR operations.
 /// If `range` is provided, only emit positions in `[start, end)` genomic coordinates.
-fn for_each_aligned_base_in_range<F>(
-    record: &Record,
-    range: Option<(usize, usize)>,
-    mut on_base: F,
-) where
+fn for_each_aligned_base_in_range<F>(record: &Record, range: Option<(usize, usize)>, mut on_base: F)
+where
     F: FnMut(usize, usize),
 {
     let mut read_pos = 0usize;
@@ -482,9 +475,7 @@ fn should_skip_record_core(
     if record.is_unmapped() || record.mapq() <= min_map_quality {
         return true;
     }
-    if skip_secondary_and_supplementary
-        && (record.is_secondary() || record.is_supplementary())
-    {
+    if skip_secondary_and_supplementary && (record.is_secondary() || record.is_supplementary()) {
         return true;
     }
 
@@ -982,7 +973,10 @@ pub fn process_paired_reads_with_overlap(
 
                             // Update genomic depth
                             if let Some(depth) = genomic_depth.as_mut() {
-                                depth.entry(genome_pos as i64).and_modify(|d| *d += 1).or_insert(1);
+                                depth
+                                    .entry(genome_pos as i64)
+                                    .and_modify(|d| *d += 1)
+                                    .or_insert(1);
                             }
                         }
                     }
@@ -1156,8 +1150,8 @@ pub fn rescale_phred_scores(
 
 pub fn merge_reads_into_insert_position_mode(
     region_counts: &HashMap<MismatchKey, usize>,
-    max_len: usize // read_max_len
-) -> HashMap<(String, usize), usize>{
+    max_len: usize, // read_max_len
+) -> HashMap<(String, usize), usize> {
     let mut insert_position_counts: HashMap<(String, usize), usize> = HashMap::new();
 
     // example key:val = MismatchKey { mismatch_type: "C>T", read_position: 12, read_num: 1 }: 21
@@ -1165,18 +1159,24 @@ pub fn merge_reads_into_insert_position_mode(
         let insert_pos = if key.read_num == 1 {
             key.read_position
         } else {
-            max_len * 2 + 10 - key.read_position  // 10 is arbitrary separation between reads
+            max_len * 2 + 10 - key.read_position // 10 is arbitrary separation between reads
         };
 
-        log::debug!("Processing key: {:?}, count: {}, insert_pos: {}", key, count, insert_pos);
+        log::debug!(
+            "Processing key: {:?}, count: {}, insert_pos: {}",
+            key,
+            count,
+            insert_pos
+        );
 
         // Canonicalize the mismatch type (e.g., both "C>T" and "G>A" become "C>T")
-        let canonical_mismatch = if key.mismatch_type.len() == 3 && key.mismatch_type.chars().nth(1) == Some('>') {
-            let chars: Vec<char> = key.mismatch_type.chars().collect();
-            canonicalize_mismatch(chars[0], chars[2])
-        } else {
-            key.mismatch_type.clone()
-        };
+        let canonical_mismatch =
+            if key.mismatch_type.len() == 3 && key.mismatch_type.chars().nth(1) == Some('>') {
+                let chars: Vec<char> = key.mismatch_type.chars().collect();
+                canonicalize_mismatch(chars[0], chars[2])
+            } else {
+                key.mismatch_type.clone()
+            };
 
         let insert_key = (canonical_mismatch, insert_pos as usize);
         *insert_position_counts.entry(insert_key).or_insert(0) += count;
@@ -1489,7 +1489,9 @@ pub fn should_skip_whole_read_for_bed(
 
     // Reads are fetched in coordinate order, so we can advance a cursor
     // and never revisit intervals that end before this read starts.
-    while *bed_cursor < chunk_bed_intervals.len() && chunk_bed_intervals[*bed_cursor].end < read_start {
+    while *bed_cursor < chunk_bed_intervals.len()
+        && chunk_bed_intervals[*bed_cursor].end < read_start
+    {
         *bed_cursor += 1;
     }
 
@@ -1769,7 +1771,10 @@ pub fn process_region(
     if let Err(error) = bam.fetch(FetchDefinition::Region(tid, start, end)) {
         log::warn!(
             "Failed to fetch region tid {}:{}-{}: {}",
-            tid, start, end, error
+            tid,
+            start,
+            end,
+            error
         );
         return (HashMap::new(), 0);
     }

@@ -1,13 +1,10 @@
 use clap::Parser;
 use rayon::prelude::*;
 use rustmanian_mismatch::{
-    apply_external_discounts, build_tid_map_and_regions, configure_thread_pool, load_discount_table,
-    process_region, write_normalized_output, write_output, write_rescaling_matrix_output, Args,
-    InsertKey, PositionMode,
-};
-use rustmanian_mismatch::{
-    compute_read_len_max_from_sample_bam, load_reference_genome, mask_reference_with_bed,
-    parse_bed_file,
+    apply_external_discounts, build_tid_map_and_regions, compute_read_len_max_from_sample_bam,
+    configure_thread_pool, load_discount_table, load_reference_genome, mask_reference_with_bed,
+    maybe_parse_bed_file, process_region, write_normalized_output, write_output,
+    write_rescaling_matrix_output, Args, InsertKey, PositionMode,
 };
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -51,12 +48,10 @@ fn main() {
                 log::info!("Masked {} bases in reference genome", masked_bases);
                 None
             }
-            _ => {
-                panic!(
-                    "Invalid --bed-filter-mode '{}'. Expected 'mask' or 'filter'.",
-                    args.bed_filter_mode
-                );
-            }
+            _ => panic!(
+                "Invalid --bed-filter-mode '{}'. Expected 'mask' or 'filter'.",
+                args.bed_filter_mode
+            ),
         }
     } else {
         None

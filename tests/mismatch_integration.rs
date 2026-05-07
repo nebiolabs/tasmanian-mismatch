@@ -16,7 +16,8 @@ fn write_test_bam(path: &Path) {
     header.push_record(&sq);
 
     let header_view = HeaderView::from_header(&header);
-    let mut writer = Writer::from_path(path, &header, Format::Bam).expect("failed to open BAM writer");
+    let mut writer =
+        Writer::from_path(path, &header, Format::Bam).expect("failed to open BAM writer");
 
     // Reference is ACGTACGT. This read has one mismatch (A->T).
     let sam_line = b"read1\t0\tchr1\t1\t60\t8M\t*\t0\t0\tACGTTCGT\tIIIIIIII\tNM:i:1";
@@ -47,12 +48,22 @@ fn integration_mismatch_fixture_bam_produces_expected_counts() {
     );
 
     let binary = env!("CARGO_BIN_EXE_tasmanian-mismatch");
-    log_command(&log_path, binary, &[
-        "-q", "0", "-m", "0", "--position-mode", "read", 
-        "-o", &output_tsv.to_string_lossy(),
-        &fixture_bam.to_string_lossy(),
-        &reference_fa.to_string_lossy(),
-    ]);
+    log_command(
+        &log_path,
+        binary,
+        &[
+            "-q",
+            "0",
+            "-m",
+            "0",
+            "--position-mode",
+            "read",
+            "-o",
+            &output_tsv.to_string_lossy(),
+            &fixture_bam.to_string_lossy(),
+            &reference_fa.to_string_lossy(),
+        ],
+    );
     let output = Command::new(binary)
         .arg("-q")
         .arg("0")
@@ -69,11 +80,17 @@ fn integration_mismatch_fixture_bam_produces_expected_counts() {
     log_line(&log_path, &format!("Command status: {}", output.status));
     log_line(
         &log_path,
-        &format!("Command stdout:\n{}", String::from_utf8_lossy(&output.stdout)),
+        &format!(
+            "Command stdout:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        ),
     );
     log_line(
         &log_path,
-        &format!("Command stderr:\n{}", String::from_utf8_lossy(&output.stderr)),
+        &format!(
+            "Command stderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ),
     );
 
     assert!(output.status.success(), "mismatch command failed");
