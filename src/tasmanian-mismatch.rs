@@ -84,18 +84,17 @@ fn main() {
             tid_to_name: &tid_to_name,
             bed_intervals: &[],
         };
-        let region = GenomicRegion { tid: *tid, start: *start, end: *end };
+        let region = GenomicRegion {
+            tid: *tid,
+            start: *start,
+            end: *end,
+        };
         let bed_filter = BedFilter {
             regions: bed_for_filtering.as_deref(),
             filter_whole_reads: bed_filter_whole_reads,
         };
-        let (region_counts, region_reads) = process_region(
-            &args.bam_path,
-            &region,
-            &context,
-            config,
-            &bed_filter,
-        );
+        let (region_counts, region_reads) =
+            process_region(&args.bam_path, &region, &context, config, &bed_filter);
 
         if !region_counts.is_empty() {
             let mut counts = global_counts.lock().expect("Lock poisoned");

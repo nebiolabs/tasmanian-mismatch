@@ -91,7 +91,7 @@ pub fn parse_bed_file(bed_path: &str) -> Result<BedRegions, Box<dyn std::error::
 
         regions
             .entry(chrom)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(BedInterval { start, end });
     }
 

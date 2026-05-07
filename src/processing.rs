@@ -535,19 +535,17 @@ pub fn process_overlap_region(
     for (genome_pos, (r1_pos, r1_base, r1_qual)) in read1_map.iter() {
         if let Some((r2_pos, r2_base, r2_qual)) = read2_map.get(genome_pos) {
             // Both reads cover this position - check for inconsistency
-            if r1_qual >= &min_base_quality && r2_qual >= &min_base_quality {
-                if r1_base != r2_base {
-                    // Bases disagree - record inconsistency
-                    let r1_char = base_to_char(*r1_base).unwrap_or('N');
-                    let r2_char = base_to_char(*r2_base).unwrap_or('N');
+            if r1_qual >= &min_base_quality && r2_qual >= &min_base_quality && r1_base != r2_base {
+                // Bases disagree - record inconsistency
+                let r1_char = base_to_char(*r1_base).unwrap_or('N');
+                let r2_char = base_to_char(*r2_base).unwrap_or('N');
 
-                    let key = InconsistencyKey {
-                        discordance_type: format!("R1:{}_R2:{}", r1_char, r2_char),
-                        read1_position: *r1_pos,
-                        read2_position: *r2_pos,
-                    };
-                    *inconsistency_counts.entry(key).or_insert(0) += 1;
-                }
+                let key = InconsistencyKey {
+                    discordance_type: format!("R1:{}_R2:{}", r1_char, r2_char),
+                    read1_position: *r1_pos,
+                    read2_position: *r2_pos,
+                };
+                *inconsistency_counts.entry(key).or_insert(0) += 1;
             }
         }
     }
@@ -593,7 +591,7 @@ pub fn process_overlap_region(
 
                 compare_and_count(
                     &seq,
-                    &qual,
+                    qual,
                     ref_seq,
                     r_pos,
                     genome_pos,
@@ -706,7 +704,7 @@ pub fn process_record(
 
                     compare_and_count(
                         &seq,
-                        &qual,
+                        qual,
                         ref_seq,
                         r_pos,
                         genome_pos,
@@ -734,7 +732,7 @@ pub fn process_record(
             SoftClip(len) => {
                 count_softclip_mismatches(
                     &seq,
-                    &qual,
+                    qual,
                     ref_seq,
                     read_pos,
                     ref_pos,
@@ -898,7 +896,7 @@ pub fn process_paired_reads_with_overlap(
                             if is_first_read {
                                 compare_and_count(
                                     &seq,
-                                    &qual,
+                                    qual,
                                     ref_seq,
                                     r_pos,
                                     genome_pos,
@@ -927,7 +925,7 @@ pub fn process_paired_reads_with_overlap(
                             // Not in overlap - count normally
                             compare_and_count(
                                 &seq,
-                                &qual,
+                                qual,
                                 ref_seq,
                                 r_pos,
                                 genome_pos,
@@ -962,7 +960,7 @@ pub fn process_paired_reads_with_overlap(
                 SoftClip(len) => {
                     count_softclip_mismatches(
                         &seq,
-                        &qual,
+                        qual,
                         ref_seq,
                         read_pos,
                         ref_pos,
@@ -994,18 +992,19 @@ pub fn process_paired_reads_with_overlap(
     // Detect inconsistencies in the overlap region
     for (genome_pos, (r1_pos, r1_base, r1_qual)) in read1_overlap_map.iter() {
         if let Some((r2_pos, r2_base, r2_qual)) = read2_overlap_map.get(genome_pos) {
-            if r1_qual >= &config.min_base_quality && r2_qual >= &config.min_base_quality {
-                if r1_base != r2_base {
-                    let r1_char = base_to_char(*r1_base).unwrap_or('N');
-                    let r2_char = base_to_char(*r2_base).unwrap_or('N');
+            if r1_qual >= &config.min_base_quality
+                && r2_qual >= &config.min_base_quality
+                && r1_base != r2_base
+            {
+                let r1_char = base_to_char(*r1_base).unwrap_or('N');
+                let r2_char = base_to_char(*r2_base).unwrap_or('N');
 
-                    let key = InconsistencyKey {
-                        discordance_type: format!("R1:{}_R2:{}", r1_char, r2_char),
-                        read1_position: *r1_pos,
-                        read2_position: *r2_pos,
-                    };
-                    *inconsistency_counts.entry(key).or_insert(0) += 1;
-                }
+                let key = InconsistencyKey {
+                    discordance_type: format!("R1:{}_R2:{}", r1_char, r2_char),
+                    read1_position: *r1_pos,
+                    read2_position: *r2_pos,
+                };
+                *inconsistency_counts.entry(key).or_insert(0) += 1;
             }
         }
     }
@@ -1154,7 +1153,7 @@ pub fn merge_reads_into_insert_position_mode(
                 key.mismatch_type.clone()
             };
 
-        let insert_key = (canonical_mismatch, insert_pos as usize);
+        let insert_key = (canonical_mismatch, insert_pos);
         *insert_position_counts.entry(insert_key).or_insert(0) += count;
     }
     insert_position_counts
@@ -1202,7 +1201,7 @@ pub fn read_mode_read_position(
     is_reverse: bool,
     max_read_len: usize,
 ) -> usize {
-    let half = (seq_len + 1) / 2;
+    let half = seq_len.div_ceil(2);
 
     match (is_reverse, pos <= half) {
         (true, true) => max_read_len - pos,
@@ -1433,9 +1432,10 @@ pub fn should_skip_record(record: &Record, config: ProcessingConfig) -> bool {
         return true;
     }
     let flags = record.flags();
-    let missing_required = config.required_flags != 0 && (flags & config.required_flags) != config.required_flags;
-    let has_filtered     = config.filter_flags != 0   && (flags & config.filter_flags) != 0;
-    let has_excluded     = config.excl_flags != 0     && (flags & config.excl_flags) == config.excl_flags;
+    let missing_required =
+        config.required_flags != 0 && (flags & config.required_flags) != config.required_flags;
+    let has_filtered = config.filter_flags != 0 && (flags & config.filter_flags) != 0;
+    let has_excluded = config.excl_flags != 0 && (flags & config.excl_flags) == config.excl_flags;
     missing_required || has_filtered || has_excluded
 }
 
@@ -1652,7 +1652,12 @@ pub fn compare_record_to_reference(
                     );
 
                     *local_counts
-                        .entry(InsertKey { base_change: ref_base_change, read_num, base_position, reference_order })
+                        .entry(InsertKey {
+                            base_change: ref_base_change,
+                            read_num,
+                            base_position,
+                            reference_order,
+                        })
                         .or_insert(0) += 1;
                 }
 
@@ -1672,7 +1677,8 @@ pub fn compare_record_to_reference(
     let reference_order = if is_first_in_reference { 1u8 } else { 2u8 };
     let frag_len = estimated_fragment_length(record, mate_end);
     for comparison in softclip_comparisons {
-        if comparison.read_pos >= qual.len() || qual[comparison.read_pos] < config.min_base_quality {
+        if comparison.read_pos >= qual.len() || qual[comparison.read_pos] < config.min_base_quality
+        {
             continue;
         }
 
@@ -1695,7 +1701,12 @@ pub fn compare_record_to_reference(
             frag_len,
         );
         *local_counts
-            .entry(InsertKey { base_change: ref_base_change, read_num, base_position, reference_order })
+            .entry(InsertKey {
+                base_change: ref_base_change,
+                read_num,
+                base_position,
+                reference_order,
+            })
             .or_insert(0) += 1;
     }
 }
@@ -1712,10 +1723,17 @@ pub fn process_region(
         .get(&region.tid)
         .expect("tid not found in tid_to_name");
     let mut bam = IndexedReader::from_path(bam_path).expect("Failed to open indexed BAM");
-    if let Err(error) = bam.fetch(FetchDefinition::Region(region.tid, region.start, region.end)) {
+    if let Err(error) = bam.fetch(FetchDefinition::Region(
+        region.tid,
+        region.start,
+        region.end,
+    )) {
         log::warn!(
             "Failed to fetch region {}:{}-{}: {}",
-            chr_name, region.start, region.end, error
+            chr_name,
+            region.start,
+            region.end,
+            error
         );
         return (HashMap::new(), 0);
     }

@@ -13,8 +13,8 @@ use test_utils::{log_command, log_line, repo_log_path, unique_temp_dir};
 fn write_test_bam(path: &Path) {
     let mut header = Header::new();
     let mut sq = HeaderRecord::new(b"SQ");
-    sq.push_tag(b"SN", &"chr1");
-    sq.push_tag(b"LN", &8);
+    sq.push_tag(b"SN", "chr1");
+    sq.push_tag(b"LN", 8);
     header.push_record(&sq);
 
     let header_view = HeaderView::from_header(&header);
