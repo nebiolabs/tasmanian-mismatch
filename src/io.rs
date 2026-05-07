@@ -477,40 +477,26 @@ pub fn write_rescaling_matrix_output(
             .then(a.3.cmp(&b.3))
     });
 
-    if let Some(path) = output_file {
-        let file = File::create(path)?;
-        let mut writer = BufWriter::new(file);
-        for ((read_num, position, ref_base, read_base), scaling_factor) in rows {
+    with_output_writer(output_file, |w| {
+        for ((read_num, position, ref_base, read_base), scaling_factor) in &rows {
             writeln!(
-                writer,
+                w,
                 "{}\t{}\t{}\t{}\t{:.6}",
                 read_num, position, ref_base, read_base, scaling_factor
             )?;
         }
-        return Ok(());
-    }
-
-    for ((read_num, position, ref_base, read_base), scaling_factor) in rows {
-        println!(
-            "{}\t{}\t{}\t{}\t{:.6}",
-            read_num, position, ref_base, read_base, scaling_factor
-        );
-    }
-
-    Ok(())
+        Ok(())
+    })
 }
 
-pub fn write_output(
-    counts: &HashMap<InsertKey, usize>,
-    output_file: Option<&str>,
-    position_mode: PositionMode,
-) -> std::io::Result<()> {
-    let position_label = match position_mode {
+fn position_label(mode: PositionMode) -> &'static str {
+    match mode {
         PositionMode::Read => "read_position",
         PositionMode::Insert => "fragment_position",
-    };
+    }
+}
 
-    let mut rows: Vec<(&InsertKey, &usize)> = counts.iter().collect();
+fn sort_insert_rows<V>(rows: &mut Vec<(&InsertKey, V)>) {
     rows.sort_by(|(a, _), (b, _)| {
         a.reference_order
             .cmp(&b.reference_order)
@@ -518,36 +504,44 @@ pub fn write_output(
             .then(a.base_position.cmp(&b.base_position))
             .then(a.base_change.cmp(&b.base_change))
     });
+}
 
+/// Open `output_file` for writing, or lock stdout when `None`, then call `f`.
+fn with_output_writer<F>(output_file: Option<&str>, f: F) -> std::io::Result<()>
+where
+    F: FnOnce(&mut dyn Write) -> std::io::Result<()>,
+{
     if let Some(path) = output_file {
-        let file = File::create(path)?;
-        let mut writer = BufWriter::new(file);
+        f(&mut BufWriter::new(File::create(path)?))
+    } else {
+        f(&mut std::io::stdout().lock())
+    }
+}
+
+pub fn write_output(
+    counts: &HashMap<InsertKey, usize>,
+    output_file: Option<&str>,
+    position_mode: PositionMode,
+) -> std::io::Result<()> {
+    let label = position_label(position_mode);
+    let mut rows: Vec<(&InsertKey, &usize)> = counts.iter().collect();
+    sort_insert_rows(&mut rows);
+
+    with_output_writer(output_file, |w| {
         writeln!(
-            writer,
+            w,
             "base_change\tread_num\treference_order\t{}\tcount",
-            position_label
+            label
         )?;
-        for (key, count) in rows {
+        for (key, count) in &rows {
             writeln!(
-                writer,
+                w,
                 "{}\t{}\t{}\t{}\t{}",
                 key.base_change, key.read_num, key.reference_order, key.base_position, count
             )?;
         }
-        return Ok(());
-    }
-
-    println!(
-        "base_change\tread_num\treference_order\t{}\tcount",
-        position_label
-    );
-    for (key, count) in rows {
-        println!(
-            "{}\t{}\t{}\t{}\t{}",
-            key.base_change, key.read_num, key.reference_order, key.base_position, count
-        );
-    }
-    Ok(())
+        Ok(())
+    })
 }
 
 pub fn write_normalized_output(
@@ -556,48 +550,23 @@ pub fn write_normalized_output(
     position_mode: PositionMode,
 ) -> std::io::Result<()> {
     let normalized = normalize_mismatch_counts(counts);
-
-    let position_label = match position_mode {
-        PositionMode::Read => "read_position",
-        PositionMode::Insert => "fragment_position",
-    };
-
+    let label = position_label(position_mode);
     let mut rows: Vec<(&InsertKey, &f64)> = normalized.iter().collect();
-    rows.sort_by(|(a, _), (b, _)| {
-        a.reference_order
-            .cmp(&b.reference_order)
-            .then(a.read_num.cmp(&b.read_num))
-            .then(a.base_position.cmp(&b.base_position))
-            .then(a.base_change.cmp(&b.base_change))
-    });
+    sort_insert_rows(&mut rows);
 
-    if let Some(path) = output_file {
-        let file = File::create(path)?;
-        let mut writer = BufWriter::new(file);
+    with_output_writer(output_file, |w| {
         writeln!(
-            writer,
+            w,
             "base_change\tread_num\treference_order\t{}\tnormalized_frequency",
-            position_label
+            label
         )?;
-        for (key, norm_freq) in rows {
+        for (key, freq) in &rows {
             writeln!(
-                writer,
+                w,
                 "{}\t{}\t{}\t{}\t{:.6}",
-                key.base_change, key.read_num, key.reference_order, key.base_position, norm_freq
+                key.base_change, key.read_num, key.reference_order, key.base_position, freq
             )?;
         }
-        return Ok(());
-    }
-
-    println!(
-        "base_change\tread_num\treference_order\t{}\tnormalized_frequency",
-        position_label
-    );
-    for (key, norm_freq) in rows {
-        println!(
-            "{}\t{}\t{}\t{}\t{:.6}",
-            key.base_change, key.read_num, key.reference_order, key.base_position, norm_freq
-        );
-    }
-    Ok(())
+        Ok(())
+    })
 }
