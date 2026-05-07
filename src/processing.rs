@@ -1452,26 +1452,15 @@ pub fn estimated_fragment_length(record: &Record, mate_end: Option<i64>) -> Opti
     usize::try_from(fragment_end - fragment_start).ok()
 }
 
-pub fn should_skip_record(record: &Record, args: &Args) -> bool {
-    if record.is_unmapped() {
+pub fn should_skip_record(record: &Record, config: ProcessingConfig) -> bool {
+    if record.is_unmapped() || record.mapq() < config.min_map_quality {
         return true;
     }
-
-    if record.mapq() < args.min_map_quality {
-        return true;
-    }
-
     let flags = record.flags();
-    if args.required_flags != 0 && (flags & args.required_flags) != args.required_flags {
-        return true;
-    }
-    if args.filter_flags != 0 && (flags & args.filter_flags) != 0 {
-        return true;
-    }
-    if args.excl_flags != 0 && (flags & args.excl_flags) == args.excl_flags {
-        return true;
-    }
-    false
+    let missing_required = config.required_flags != 0 && (flags & config.required_flags) != config.required_flags;
+    let has_filtered     = config.filter_flags != 0   && (flags & config.filter_flags) != 0;
+    let has_excluded     = config.excl_flags != 0     && (flags & config.excl_flags) == config.excl_flags;
+    missing_required || has_filtered || has_excluded
 }
 
 pub fn should_skip_whole_read_for_bed(
