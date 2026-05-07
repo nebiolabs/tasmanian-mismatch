@@ -109,6 +109,22 @@ pub fn parse_bed_file(bed_path: &str) -> Result<BedRegions, Box<dyn std::error::
     Ok(regions)
 }
 
+/// Optionally parse a BED file, returning `None` when no path is provided.
+///
+/// This is a thin convenience wrapper around [`parse_bed_file`] for call sites
+/// that hold an `Option<&str>` path (e.g. a CLI flag that may not be set).
+///
+/// # Panics
+/// * Panics with a descriptive message if a path is given but the file cannot
+///   be opened or parsed.
+pub fn maybe_parse_bed_file(path: Option<&str>) -> Option<BedRegions> {
+    let path = path?;
+    Some(
+        parse_bed_file(path)
+            .expect("Failed to load BED file. Please check the file path and format."),
+    )
+}
+
 /// Check whether a genomic position overlaps any interval in a sorted slice.
 ///
 /// # Arguments
@@ -120,15 +136,11 @@ pub fn parse_bed_file(bed_path: &str) -> Result<BedRegions, Box<dyn std::error::
 /// * `false` otherwise.
 #[inline]
 pub fn position_overlaps_intervals(intervals: &[BedInterval], pos: i64) -> bool {
-    for interval in intervals {
-        if pos < interval.start {
-            break; // Early exit since sorted
-        }
-        if pos >= interval.start && pos < interval.end {
-            return true;
-        }
-    }
-    false
+    // Binary search for the rightmost interval whose start <= pos, then
+    // check whether pos falls before its end.  Assumes non-overlapping
+    // intervals sorted by start (the invariant enforced by parse_bed_file).
+    let idx = intervals.partition_point(|i| i.start <= pos);
+    idx > 0 && pos < intervals[idx - 1].end
 }
 
 /// Return BED intervals that overlap a genomic region.
@@ -180,10 +192,8 @@ pub fn mask_reference_with_bed(reference: &mut ReferenceGenome, bed_regions: &Be
                 let start = interval.start.max(0) as usize;
                 let end = (interval.end as usize).min(ref_seq.len());
 
-                for pos in start..end {
-                    ref_seq[pos] = b'N'; // Mask with 'N'
-                    total_masked += 1;
-                }
+                ref_seq[start..end].fill(b'N');
+                total_masked += end - start;
             }
         }
     }
