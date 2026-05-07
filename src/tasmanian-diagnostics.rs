@@ -150,7 +150,7 @@ fn main() {
             .map(|i| {
                 (
                     i as i32,
-                    String::from_utf8_lossy(bam.header().tid2name(i as u32)).to_string(),
+                    String::from_utf8_lossy(bam.header().tid2name(i)).to_string(),
                 )
             })
             .collect(),
@@ -190,7 +190,11 @@ fn main() {
         filter_flags: args.filter_flags,
         excl_flags: args.excl_flags,
         use_insert_mode: args.use_insert_mode,
-        position_mode: if args.use_insert_mode { PositionMode::Insert } else { PositionMode::Read },
+        position_mode: if args.use_insert_mode {
+            PositionMode::Insert
+        } else {
+            PositionMode::Read
+        },
         overlap_mode: OverlapMode::Cut,
     };
 
@@ -266,10 +270,7 @@ fn main() {
                 record.is_paired() && !record.is_unmapped() && !record.is_mate_unmapped();
             if has_mapped_pair {
                 let qname = record.qname().to_vec();
-                read_groups
-                    .entry(qname)
-                    .or_insert_with(Vec::new)
-                    .push(record);
+                read_groups.entry(qname).or_default().push(record);
                 continue;
             }
 

@@ -83,7 +83,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|i| {
                 (
                     i as i32,
-                    String::from_utf8_lossy(header_view.tid2name(i as u32)).to_string(),
+                    String::from_utf8_lossy(header_view.tid2name(i)).to_string(),
                 )
             })
             .collect(),
@@ -121,7 +121,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             match IndexedReader::from_path(bam_path_arc.as_str()) {
                 Ok(mut bam) => {
-                    if let Ok(_) = bam.fetch(FetchDefinition::Region(*tid, *start, *end)) {
+                    if bam
+                        .fetch(FetchDefinition::Region(*tid, *start, *end))
+                        .is_ok()
+                    {
                         for record_result in bam.records() {
                             if let Ok(mut record) = record_result {
                                 // Avoid boundary duplicates from region-based fetch.

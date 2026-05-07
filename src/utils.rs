@@ -190,7 +190,10 @@ pub fn parse_md_tag(md: &str, read_name: &str) -> (Vec<(usize, char)>, Vec<(usiz
             mismatches.push((pos, c.to_ascii_uppercase()));
             pos += 1;
         } else {
-            panic!("unexpected character '{}' in MD tag '{}' for read '{}'", c, md, read_name);
+            panic!(
+                "unexpected character '{}' in MD tag '{}' for read '{}'",
+                c, md, read_name
+            );
         }
     }
 

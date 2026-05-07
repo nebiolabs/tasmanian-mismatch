@@ -34,16 +34,10 @@ mod tests {
         assert_eq!(correct_read_len_with_mode(10, 100, 0, false, 1), 10);
 
         // With mode correction for second half of read
-        assert_eq!(
-            correct_read_len_with_mode(60, 100, 150, false, 1),
-            110
-        );
+        assert_eq!(correct_read_len_with_mode(60, 100, 150, false, 1), 110);
 
         // No correction for first half even with mode
-        assert_eq!(
-            correct_read_len_with_mode(40, 100, 150, false, 1),
-            40
-        );
+        assert_eq!(correct_read_len_with_mode(40, 100, 150, false, 1), 40);
     }
 
     #[test]
