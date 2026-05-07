@@ -88,6 +88,10 @@ struct Args {
 }
 
 fn main() {
+    env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Info)
+        .init();
+
     let args = Args::parse();
 
     if args.threads > 0 {
@@ -101,11 +105,17 @@ fn main() {
         None => 0,
         Some(None) => {
             let max_l = compute_read_len_max_from_sample_bam(&args.bam_file, 100_000);
-            eprintln!("Using max read length: {} for processing compatibility", max_l);
+            log::info!(
+                "Using max read length: {} for processing compatibility",
+                max_l
+            );
             max_l
         }
         Some(Some(val)) => {
-            eprintln!("Using max read length: {} for processing compatibility", val);
+            log::info!(
+                "Using max read length: {} for processing compatibility",
+                val
+            );
             val as usize
         }
     };
@@ -120,15 +130,13 @@ fn main() {
             "filter" => Some(Arc::new(regions)),
             "mask" => {
                 let masked_bases = mask_reference_with_bed(&mut reference, &regions);
-                eprintln!("Masked {} bases in reference genome", masked_bases);
+                log::info!("Masked {} bases in reference genome", masked_bases);
                 None
             }
-            _ => {
-                panic!(
-                    "Invalid --bed-filter-mode '{}'. Expected 'mask' or 'filter'.",
-                    args.bed_filter_mode
-                );
-            }
+            _ => panic!(
+                "Invalid --bed-filter-mode '{}'. Expected 'mask' or 'filter'.",
+                args.bed_filter_mode
+            ),
         }
     } else {
         None
@@ -160,7 +168,7 @@ fn main() {
     }
     drop(bam);
 
-    eprintln!("Created {} regions to process", regions.len());
+    log::info!("Created {} regions to process", regions.len());
 
     let total_count = AtomicUsize::new(0);
     let overlap_pairs_count = AtomicUsize::new(0);
@@ -191,8 +199,8 @@ fn main() {
             IndexedReader::from_path(bam_path_arc.as_str()).expect("Failed to open BAM file");
 
         if let Err(e) = bam.fetch(FetchDefinition::Region(*tid, *start, *end)) {
-            eprintln!(
-                "Warning: Failed to fetch region {}:{}-{}: {}",
+            log::warn!(
+                "Failed to fetch region {}:{}-{}: {}",
                 chr_name, start, end, e
             );
             return;
@@ -365,15 +373,15 @@ fn main() {
 
         let prev_total = total_count.fetch_add(local_count, Ordering::Relaxed);
         if (prev_total + local_count) / 100_000 > prev_total / 100_000 {
-            eprintln!("Processed {} records...", prev_total + local_count);
+            log::info!("Processed {} records...", prev_total + local_count);
         }
     });
 
-    eprintln!(
+    log::info!(
         "Total records processed: {}",
         total_count.load(Ordering::Relaxed)
     );
-    eprintln!(
+    log::info!(
         "Read pairs with overlaps: {}",
         overlap_pairs_count.load(Ordering::Relaxed)
     );
@@ -382,14 +390,14 @@ fn main() {
         let genomic_counts = genomic_mismatch_counts.lock().expect("Lock poisoned");
         write_potential_variants_tsv(&genomic_counts, &args.variants_output)
             .expect("Failed to write variants output");
-        eprintln!("Wrote variants table to {}", args.variants_output);
+        log::info!("Wrote variants table to {}", args.variants_output);
     }
 
     {
         let incons_counts = inconsistency_counts.lock().expect("Lock poisoned");
         write_inconsistencies_tsv(&incons_counts, &args.inconsistencies_output)
             .expect("Failed to write inconsistencies output");
-        eprintln!(
+        log::info!(
             "Wrote {} inconsistency keys to {}",
             incons_counts.len(),
             args.inconsistencies_output
@@ -403,14 +411,11 @@ fn main() {
             let mut handle = stdout.lock();
             write_mismatch_discounts_to_writer(&discounts, &mut handle)
                 .expect("Failed to write mismatch discount output to stdout");
-            eprintln!(
-                "Wrote {} mismatch discount keys to stdout",
-                discounts.len()
-            );
+            log::info!("Wrote {} mismatch discount keys to stdout", discounts.len());
         } else {
             write_mismatch_discounts_tsv(&discounts, &args.discount_output)
                 .expect("Failed to write mismatch discount output");
-            eprintln!(
+            log::info!(
                 "Wrote {} mismatch discount keys to {}",
                 discounts.len(),
                 args.discount_output

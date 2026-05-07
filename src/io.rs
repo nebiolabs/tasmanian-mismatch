@@ -24,7 +24,7 @@ use std::process;
 /// * If the FASTA file cannot be opened.
 /// * If any FASTA record cannot be read.
 pub fn load_reference_genome(fasta_path: &str) -> ReferenceGenome {
-    eprintln!("Loading reference genome from: {}", fasta_path);
+    log::info!("Loading reference genome from: {}", fasta_path);
     let reader = fasta::Reader::from_file(fasta_path).expect("Failed to open reference FASTA file");
 
     let mut genome: ReferenceGenome = HashMap::new();
@@ -35,7 +35,7 @@ pub fn load_reference_genome(fasta_path: &str) -> ReferenceGenome {
         genome.insert(chr_name, sequence);
     }
 
-    eprintln!("Loaded {} chromosome(s)", genome.len());
+    log::info!("Loaded {} chromosome(s)", genome.len());
     genome
 }
 
@@ -60,9 +60,7 @@ pub fn compute_read_len_max_from_sample_bam(bam_path: &str, sample_size: usize) 
     for result in bam.records().take(sample_size) {
         match result {
             Err(_) => {
-                eprintln!(
-                    "ERROR: Failed to sample BAM file for read length estimation. Exiting."
-                );
+                log::error!("Failed to sample BAM file for read length estimation. Exiting.");
                 process::exit(1);
             }
             Ok(record) => {
@@ -73,8 +71,8 @@ pub fn compute_read_len_max_from_sample_bam(bam_path: &str, sample_size: usize) 
             }
         }
     }
-    
-    eprintln!("Computed max read length from sample: {}", max_length);
+
+    log::info!("Computed max read length from sample: {}", max_length);
     max_length
 }
 
@@ -111,7 +109,7 @@ pub fn write_potential_variants_tsv(
         }
     }
 
-    eprintln!(
+    log::info!(
         "Wrote {} genomic positions to {}",
         genomic_counts.len(),
         output_path

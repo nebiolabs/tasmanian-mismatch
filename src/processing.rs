@@ -190,16 +190,16 @@ pub fn compare_and_count(
     let ref_len = ref_seq.len();
 
     if r_pos >= seq_len {
-        eprintln!(
-            "ERROR: Read position {} exceeds sequence length {} at chromosome {}:{}. This indicates a bug or corrupted data.",
+        log::error!(
+            "Read position {} exceeds sequence length {} at chromosome {}:{}. This indicates a bug or corrupted data.",
             r_pos, seq_len, chromosome, genome_pos
         );
         return;
     }
 
     if genome_pos >= ref_len {
-        eprintln!(
-            "ERROR: Genomic position {} exceeds reference length {} on chromosome {}. This may indicate reference/BAM mismatch or corrupted data.",
+        log::error!(
+            "Genomic position {} exceeds reference length {} on chromosome {}. This may indicate reference/BAM mismatch or corrupted data.",
             genome_pos, ref_len, chromosome
         );
         return;
@@ -1168,7 +1168,7 @@ pub fn merge_reads_into_insert_position_mode(
             max_len * 2 + 10 - key.read_position  // 10 is arbitrary separation between reads
         };
 
-        eprintln!("Processing key: {:?}, count: {}, insert_pos: {}", key, count, insert_pos);
+        log::debug!("Processing key: {:?}, count: {}, insert_pos: {}", key, count, insert_pos);
 
         // Canonicalize the mismatch type (e.g., both "C>T" and "G>A" become "C>T")
         let canonical_mismatch = if key.mismatch_type.len() == 3 && key.mismatch_type.chars().nth(1) == Some('>') {
@@ -1767,8 +1767,8 @@ pub fn process_region(
 ) -> (HashMap<InsertKey, usize>, usize) {
     let mut bam = IndexedReader::from_path(bam_path).expect("Failed to open indexed BAM");
     if let Err(error) = bam.fetch(FetchDefinition::Region(tid, start, end)) {
-        eprintln!(
-            "Warning: failed to fetch region tid {}:{}-{}: {}",
+        log::warn!(
+            "Failed to fetch region tid {}:{}-{}: {}",
             tid, start, end, error
         );
         return (HashMap::new(), 0);

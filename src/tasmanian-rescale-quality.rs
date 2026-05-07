@@ -11,28 +11,32 @@ use rayon::prelude::*;
 struct Args {
     /// Input BAM file (must be indexed)
     bam_file: String,
-    
+
     /// Reference FASTA file
     reference_fasta: String,
-    
+
     /// Rescaling matrix file (tab-separated: read_num, position, ref_base, read_base, scaling_factor).
     /// Use '-' to read matrix rows from stdin.
     matrix_file: String,
-    
+
     #[arg(short = 'r', long, default_value_t = 10_000_000)]
     /// Region size for parallel processing (bp)
     region_size: u64,
-    
+
     #[arg(short = 't', long, default_value_t = 0)]
     /// Number of threads (0 = auto-detect)
     threads: usize,
-    
+
     #[arg(short = 'o', long)]
     /// Output BAM file (default: stdout)
     output_file: Option<String>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Info)
+        .init();
+
     let args = Args::parse();
     let bam_path = &args.bam_file;
     let reference_path = &args.reference_fasta;
@@ -52,19 +56,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .num_threads(actual_threads)
         .build_global()?;
 
-    eprintln!("Rescaling quality scores in BAM file: {}", bam_path);
-    eprintln!("Using reference: {}", reference_path);
-    eprintln!("Using rescaling matrix: {}", matrix_path);
-    eprintln!("Using {} threads", actual_threads);
-    eprintln!("Region size: {} bp", region_size);
+    log::info!("Rescaling quality scores in BAM file: {}", bam_path);
+    log::info!("Using reference: {}", reference_path);
+    log::info!("Using rescaling matrix: {}", matrix_path);
+    log::info!("Using {} threads", actual_threads);
+    log::info!("Region size: {} bp", region_size);
 
     // Load reference genome
     let reference = load_reference_genome(reference_path);
-    eprintln!("Loaded {} contigs from reference", reference.len());
+    log::info!("Loaded {} contigs from reference", reference.len());
 
     // Load rescaling matrix
     let rescaling_matrix = load_rescaling_matrix(matrix_path)?;
-    eprintln!("Loaded {} rescaling entries", rescaling_matrix.len());
+    log::info!("Loaded {} rescaling entries", rescaling_matrix.len());
 
     // Open BAM to read header and create regions
     let bam = Reader::from_path(bam_path)?;
@@ -99,7 +103,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Keep write order deterministic and coordinate-like.
     regions.sort_by_key(|(tid, start, _, _)| (*tid, *start));
 
-    eprintln!("Created {} regions to process", regions.len());
+    log::info!("Created {} regions to process", regions.len());
     drop(bam); // Close the initial BAM reader
 
     // Process regions in parallel
@@ -136,9 +140,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
                 Err(e) => {
-                    eprintln!(
-                        "Warning: Failed to fetch region {}:{}-{}: {}",
-                        chr_name, start, end, e
+                    log::warn!(
+                        "Failed to fetch region {}:{}-{}: {}",
+                        chr_name,
+                        start,
+                        end,
+                        e
                     );
                 }
             }
@@ -148,7 +155,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .collect();
 
     // Write all records in order
-    eprintln!("Writing rescaled records to output...");
+    log::info!("Writing rescaled records to output...");
     let mut writer = if let Some(output_path) = output_path {
         Writer::from_path(output_path, &out_header, Format::Bam)?
     } else {
@@ -179,7 +186,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    eprintln!("Finished rescaling {} quality scores.", total_records);
+    log::info!("Finished rescaling {} quality scores.", total_records);
     Ok(())
 }
 

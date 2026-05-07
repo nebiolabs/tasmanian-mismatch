@@ -14,10 +14,15 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 fn main() {
+    env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Info)
+        .init();
+
     let args = Args::parse();
-    eprintln!(
-        "using position mode {:?} and overlap mode {:?}\n",
-        args.position_mode, args.overlap_mode
+    log::info!(
+        "position mode {:?}, overlap mode {:?}",
+        args.position_mode,
+        args.overlap_mode
     );
     let bed_filter_whole_reads = args.bed_filter_mode == "filter";
 
@@ -37,13 +42,13 @@ fn main() {
 
         match bed_filter_mode {
             "filter" => {
-                eprintln!("Keeping BED regions for whole-read overlap filtering...");
+                log::info!("Keeping BED regions for whole-read overlap filtering...");
                 Some(Arc::new(regions))
             }
             "mask" => {
-                eprintln!("Masking reference genome at BED regions...");
+                log::info!("Masking reference genome at BED regions...");
                 let masked_bases = mask_reference_with_bed(&mut reference, &regions);
-                eprintln!("Masked {} bases in reference genome", masked_bases);
+                log::info!("Masked {} bases in reference genome", masked_bases);
                 None
             }
             _ => {
@@ -59,7 +64,7 @@ fn main() {
 
     let reference = Arc::new(reference);
     let (tid_to_name, regions) = build_tid_map_and_regions(&args.bam_path, args.region_size);
-    eprintln!("Processing {} indexed regions", regions.len());
+    log::info!("Processing {} indexed regions", regions.len());
 
     let total_reads = AtomicUsize::new(0);
     let global_counts: Arc<Mutex<HashMap<InsertKey, usize>>> = Arc::new(Mutex::new(HashMap::new()));
@@ -91,18 +96,21 @@ fn main() {
 
         let prev = total_reads.fetch_add(region_reads, Ordering::Relaxed);
         if (prev + region_reads) / 100_000 > prev / 100_000 {
-            eprintln!("Processed {} reads", prev + region_reads);
+            log::info!("Processed {} reads", prev + region_reads);
         }
     });
 
-    eprintln!("Total reads processed: {}", total_reads.load(Ordering::Relaxed));
+    log::info!(
+        "Total reads processed: {}",
+        total_reads.load(Ordering::Relaxed)
+    );
 
     let mut counts = global_counts.lock().expect("Lock poisoned");
 
     if let Some(path) = args.discount_table.as_deref() {
         if args.position_mode != PositionMode::Read {
-            eprintln!(
-                "Warning: --discount-table was provided in {:?} mode. Discount rows are read-position keyed; applying anyway by matching base_position.",
+            log::warn!(
+                "--discount-table was provided in {:?} mode. Discount rows are read-position keyed; applying anyway by matching base_position.",
                 args.position_mode
             );
         }
@@ -110,20 +118,18 @@ fn main() {
         let discounts = load_discount_table(path)
             .unwrap_or_else(|e| panic!("Failed to load discount table from {}: {}", path, e));
         let touched = apply_external_discounts(&mut counts, discounts);
-        eprintln!("Applied external discounts to {} key groups", touched);
+        log::info!("Applied external discounts to {} key groups", touched);
     }
 
     if args.emit_rescaling_matrix {
         if args.normalize {
-            eprintln!(
-                "Warning: --normalize is ignored when --emit-rescaling-matrix is enabled."
-            );
+            log::warn!("--normalize is ignored when --emit-rescaling-matrix is enabled.");
         }
-        eprintln!("Writing rescaling matrix rows...");
+        log::info!("Writing rescaling matrix rows...");
         write_rescaling_matrix_output(&counts, args.output_file.as_deref())
             .expect("Failed to write rescaling matrix output");
     } else if args.normalize {
-        eprintln!("Writing normalized frequencies...");
+        log::info!("Writing normalized frequencies...");
         write_normalized_output(&counts, args.output_file.as_deref(), args.position_mode)
             .expect("Failed to write normalized output");
     } else {
