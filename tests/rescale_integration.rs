@@ -1,15 +1,14 @@
 mod test_utils;
 
 use rust_htslib::bam;
+use rust_htslib::bam::header::HeaderRecord;
 use rust_htslib::bam::index;
 use rust_htslib::bam::{Format, Header, HeaderView, Read, Record, Writer};
-use rust_htslib::bam::header::HeaderRecord;
 use std::fs;
 use std::io::Read as IoRead;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use test_utils::{log_command, log_line, repo_log_path, unique_temp_dir};
-
 
 fn write_test_bam(path: &Path) {
     let mut header = Header::new();
@@ -19,7 +18,8 @@ fn write_test_bam(path: &Path) {
     header.push_record(&sq);
 
     let header_view = HeaderView::from_header(&header);
-    let mut writer = Writer::from_path(path, &header, Format::Bam).expect("failed to open BAM writer");
+    let mut writer =
+        Writer::from_path(path, &header, Format::Bam).expect("failed to open BAM writer");
 
     // Reference is ACGTACGT. This read has one mismatch at read position 4 (A->T).
     let sam_line = b"read1\t0\tchr1\t1\t60\t8M\t*\t0\t0\tACGTTCGT\tIIIIIIII\tNM:i:1";
@@ -46,10 +46,17 @@ fn integration_rescale_matrix_produces_rescaled_sam() {
     index::build(&input_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
 
     let binary = env!("CARGO_BIN_EXE_tasmanian-rescale-quality");
-    log_command(&log_path, binary, &[
-        &input_bam.to_string_lossy(), &reference_fa.to_string_lossy(),
-        &matrix_tsv.to_string_lossy(), "-o", &output_bam.to_string_lossy(),
-    ]);
+    log_command(
+        &log_path,
+        binary,
+        &[
+            &input_bam.to_string_lossy(),
+            &reference_fa.to_string_lossy(),
+            &matrix_tsv.to_string_lossy(),
+            "-o",
+            &output_bam.to_string_lossy(),
+        ],
+    );
     let output = Command::new(binary)
         .arg(&input_bam)
         .arg(&reference_fa)
@@ -61,11 +68,17 @@ fn integration_rescale_matrix_produces_rescaled_sam() {
     log_line(&log_path, &format!("Command status: {}", output.status));
     log_line(
         &log_path,
-        &format!("Command stdout:\n{}", String::from_utf8_lossy(&output.stdout)),
+        &format!(
+            "Command stdout:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        ),
     );
     log_line(
         &log_path,
-        &format!("Command stderr:\n{}", String::from_utf8_lossy(&output.stderr)),
+        &format!(
+            "Command stderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ),
     );
 
     assert!(output.status.success(), "rescale command failed");
@@ -79,16 +92,23 @@ fn integration_rescale_matrix_produces_rescaled_sam() {
         .expect("failed to read rescaled record");
 
     // Original 'I' Phred is 40. With 0.5 scaling, position 4 should become 20.
-    assert_eq!(record.qual()[4], 20, "quality score at mismatch position was not rescaled");
+    assert_eq!(
+        record.qual()[4],
+        20,
+        "quality score at mismatch position was not rescaled"
+    );
 
     // Also write a SAM file from the rescaled BAM to validate end-to-end output artifact.
     let out_header = Header::from_template(bam_reader.header());
     let mut sam_writer = Writer::from_path(&output_sam, &out_header, Format::Sam)
         .expect("failed to open SAM writer");
 
-    let mut second_reader = bam::Reader::from_path(&output_bam).expect("failed to re-open rescaled BAM");
+    let mut second_reader =
+        bam::Reader::from_path(&output_bam).expect("failed to re-open rescaled BAM");
     for rec in second_reader.records() {
-        sam_writer.write(&rec.expect("failed to read record for SAM conversion")).expect("failed to write SAM record");
+        sam_writer
+            .write(&rec.expect("failed to read record for SAM conversion"))
+            .expect("failed to write SAM record");
     }
     drop(sam_writer);
 
@@ -99,10 +119,12 @@ fn integration_rescale_matrix_produces_rescaled_sam() {
         .find(|line| !line.starts_with('@'))
         .expect("expected a data line in SAM output");
     let fields: Vec<&str> = data_line.split('\t').collect();
-    assert!(fields.len() >= 11, "SAM line did not contain required fields");
+    assert!(
+        fields.len() >= 11,
+        "SAM line did not contain required fields"
+    );
     assert_eq!(
-        fields[10],
-        "IIII5III",
+        fields[10], "IIII5III",
         "expected rescaled quality string in SAM QUAL column"
     );
     log_line(&log_path, &format!("SAM output line:\n{}", data_line));
@@ -116,17 +138,31 @@ fn integration_rescale_can_consume_matrix_from_mismatch_stdout() {
     let reference_fa = temp_dir.join("reference.fa");
     let output_bam = temp_dir.join("rescaled_from_pipe.bam");
 
-    log_line(&log_path, "Starting rescale integration test (stdin matrix)");
+    log_line(
+        &log_path,
+        "Starting rescale integration test (stdin matrix)",
+    );
 
     fs::write(&reference_fa, ">chr1\nACGTACGT\n").expect("failed to write reference");
     write_test_bam(&input_bam);
     index::build(&input_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
 
     let mismatch_bin = env!("CARGO_BIN_EXE_tasmanian-mismatch");
-    log_command(&log_path, mismatch_bin, &[
-        "-q", "0", "-m", "0", "--position-mode", "read",
-        "--emit-rescaling-matrix", &input_bam.to_string_lossy(), &reference_fa.to_string_lossy(),
-    ]);
+    log_command(
+        &log_path,
+        mismatch_bin,
+        &[
+            "-q",
+            "0",
+            "-m",
+            "0",
+            "--position-mode",
+            "read",
+            "--emit-rescaling-matrix",
+            &input_bam.to_string_lossy(),
+            &reference_fa.to_string_lossy(),
+        ],
+    );
     let mismatch_output = Command::new(mismatch_bin)
         .arg("-q")
         .arg("0")
@@ -145,11 +181,17 @@ fn integration_rescale_can_consume_matrix_from_mismatch_stdout() {
     );
     log_line(
         &log_path,
-        &format!("mismatch stdout:\n{}", String::from_utf8_lossy(&mismatch_output.stdout)),
+        &format!(
+            "mismatch stdout:\n{}",
+            String::from_utf8_lossy(&mismatch_output.stdout)
+        ),
     );
     log_line(
         &log_path,
-        &format!("mismatch stderr:\n{}", String::from_utf8_lossy(&mismatch_output.stderr)),
+        &format!(
+            "mismatch stderr:\n{}",
+            String::from_utf8_lossy(&mismatch_output.stderr)
+        ),
     );
 
     assert!(mismatch_output.status.success(), "mismatch command failed");
@@ -159,10 +201,17 @@ fn integration_rescale_can_consume_matrix_from_mismatch_stdout() {
     );
 
     let rescale_bin = env!("CARGO_BIN_EXE_tasmanian-rescale-quality");
-    log_command(&log_path, rescale_bin, &[
-        &input_bam.to_string_lossy(), &reference_fa.to_string_lossy(),
-        "-", "-o", &output_bam.to_string_lossy(),
-    ]);
+    log_command(
+        &log_path,
+        rescale_bin,
+        &[
+            &input_bam.to_string_lossy(),
+            &reference_fa.to_string_lossy(),
+            "-",
+            "-o",
+            &output_bam.to_string_lossy(),
+        ],
+    );
     let mut child = Command::new(rescale_bin)
         .arg(&input_bam)
         .arg(&reference_fa)
@@ -202,5 +251,9 @@ fn integration_rescale_can_consume_matrix_from_mismatch_stdout() {
         .expect("failed to read rescaled record");
 
     // Placeholder matrix emission currently uses 1.0 scaling for every key, so qualities stay unchanged.
-    assert_eq!(record.qual()[4], 40, "quality should remain unchanged with 1.0 scaling");
+    assert_eq!(
+        record.qual()[4],
+        40,
+        "quality should remain unchanged with 1.0 scaling"
+    );
 }

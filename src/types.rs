@@ -9,9 +9,9 @@ pub struct MismatchKey {
     /// Mismatch class such as `A>G` or `C>T`.
     pub mismatch_type: String, // e.g., "A>G", "C>T"
     /// Position within the read in 0-based coordinates.
-    pub read_position: usize,  // Position in the read (0-based)
+    pub read_position: usize, // Position in the read (0-based)
     /// Read number within a pair.
-    pub read_num: u8,          // 1 or 2 for paired-end reads
+    pub read_num: u8, // 1 or 2 for paired-end reads
 }
 
 /// Key for counting read-pair inconsistencies inside overlap regions.
@@ -41,7 +41,7 @@ pub type ReferenceGenome = HashMap<String, Vec<u8>>;
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct GenomicMismatchKey {
     /// Chromosome or contig name.
-    pub chromosome: String,    // Chromosome/contig name
+    pub chromosome: String, // Chromosome/contig name
     /// Mismatch class such as `A>G` or `C>T`.
     pub mismatch_type: String, // e.g., "A>G", "C>T"
     /// Genomic position associated with the event.
@@ -54,7 +54,7 @@ pub struct GenomicMismatchValue {
     /// Unique read-position mismatch keys observed at this genomic site.
     pub mismatch_keys: HashSet<MismatchKey>, // Set of all MismatchKey combinations that contributed
     /// Total number of unique mismatch keys contributing to the site.
-    pub count: usize,                        // Total count (should match mismatch_keys.len())
+    pub count: usize, // Total count (should match mismatch_keys.len())
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
@@ -97,7 +97,10 @@ pub enum PositionMode {
 
 #[derive(Parser, Debug)]
 #[command(name = "tasmanian-mismatch")]
-#[command(version, about = "Parallel indexed BAM mismatch caller by read and position")]
+#[command(
+    version,
+    about = "Parallel indexed BAM mismatch caller by read and position"
+)]
 pub struct Args {
     /// Coordinate-sorted BAM file path (requires .bai)
     pub bam_path: String,

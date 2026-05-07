@@ -16,7 +16,8 @@ fn write_test_bam(path: &Path) {
     header.push_record(&sq);
 
     let header_view = HeaderView::from_header(&header);
-    let mut writer = Writer::from_path(path, &header, Format::Bam).expect("failed to open BAM writer");
+    let mut writer =
+        Writer::from_path(path, &header, Format::Bam).expect("failed to open BAM writer");
 
     // Reference is ACGTACGT. This read has one mismatch (A->T).
     let sam_line = b"read1\t0\tchr1\t1\t60\t8M\t*\t0\t0\tACGTTCGT\tIIIIIIII\tNM:i:1";
@@ -34,7 +35,10 @@ fn integration_diagnostics_fixture_bam_produces_expected_outputs() {
     let inconsistencies_tsv = temp_dir.join("inconsistencies.tsv");
     let discounts_tsv = temp_dir.join("discounts.tsv");
 
-    log_line(&log_path, "Starting diagnostics integration test (file output)");
+    log_line(
+        &log_path,
+        "Starting diagnostics integration test (file output)",
+    );
 
     fs::write(&reference_fa, ">chr1\nACGTACGT\n").expect("failed to write reference");
     write_test_bam(&fixture_bam);
@@ -49,13 +53,28 @@ fn integration_diagnostics_fixture_bam_produces_expected_outputs() {
     );
 
     let binary = env!("CARGO_BIN_EXE_tasmanian-diagnostics");
-    log_command(&log_path, binary, &[
-        "-q", "0", "--min-map-quality", "0", "--genomic-threshold", "1",
-        "--genomic-depth-threshold", "1", "--variants-output", &variants_tsv.to_string_lossy(),
-        "--inconsistencies-output", &inconsistencies_tsv.to_string_lossy(),
-        "--discount-output", &discounts_tsv.to_string_lossy(),
-        &fixture_bam.to_string_lossy(), &reference_fa.to_string_lossy(),
-    ]);
+    log_command(
+        &log_path,
+        binary,
+        &[
+            "-q",
+            "0",
+            "--min-map-quality",
+            "0",
+            "--genomic-threshold",
+            "1",
+            "--genomic-depth-threshold",
+            "1",
+            "--variants-output",
+            &variants_tsv.to_string_lossy(),
+            "--inconsistencies-output",
+            &inconsistencies_tsv.to_string_lossy(),
+            "--discount-output",
+            &discounts_tsv.to_string_lossy(),
+            &fixture_bam.to_string_lossy(),
+            &reference_fa.to_string_lossy(),
+        ],
+    );
     let output = Command::new(binary)
         .arg("-q")
         .arg("0")
@@ -78,20 +97,24 @@ fn integration_diagnostics_fixture_bam_produces_expected_outputs() {
     log_line(&log_path, &format!("Command status: {}", output.status));
     log_line(
         &log_path,
-        &format!("Command stdout:\n{}", String::from_utf8_lossy(&output.stdout)),
+        &format!(
+            "Command stdout:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        ),
     );
     log_line(
         &log_path,
-        &format!("Command stderr:\n{}", String::from_utf8_lossy(&output.stderr)),
+        &format!(
+            "Command stderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ),
     );
 
     assert!(output.status.success(), "diagnostics command failed");
 
     let variants = fs::read_to_string(&variants_tsv).expect("failed to read variants output");
     log_line(&log_path, &format!("variants.tsv:\n{}", variants));
-    assert!(
-        variants.contains("chromosome\tposition\treference_base\tmismatch_base\tcount\tdepth")
-    );
+    assert!(variants.contains("chromosome\tposition\treference_base\tmismatch_base\tcount\tdepth"));
     assert!(
         variants.lines().any(|line| line == "chr1\t4\tA\tT\t1\t1"),
         "expected variant row in output, got:\n{}",
@@ -100,7 +123,10 @@ fn integration_diagnostics_fixture_bam_produces_expected_outputs() {
 
     let inconsistencies =
         fs::read_to_string(&inconsistencies_tsv).expect("failed to read inconsistencies output");
-    log_line(&log_path, &format!("inconsistencies.tsv:\n{}", inconsistencies));
+    log_line(
+        &log_path,
+        &format!("inconsistencies.tsv:\n{}", inconsistencies),
+    );
     assert_eq!(
         inconsistencies,
         "read1_position\tread2_position\tdiscordance_type\tcount\n"
@@ -125,20 +151,38 @@ fn integration_diagnostics_can_write_discounts_to_stdout() {
     let variants_tsv = temp_dir.join("variants.tsv");
     let inconsistencies_tsv = temp_dir.join("inconsistencies.tsv");
 
-    log_line(&log_path, "Starting diagnostics integration test (stdout discounts)");
+    log_line(
+        &log_path,
+        "Starting diagnostics integration test (stdout discounts)",
+    );
 
     fs::write(&reference_fa, ">chr1\nACGTACGT\n").expect("failed to write reference");
     write_test_bam(&fixture_bam);
     index::build(&fixture_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
 
     let binary = env!("CARGO_BIN_EXE_tasmanian-diagnostics");
-    log_command(&log_path, binary, &[
-        "-q", "0", "--min-map-quality", "0", "--genomic-threshold", "1",
-        "--genomic-depth-threshold", "1", "--variants-output", &variants_tsv.to_string_lossy(),
-        "--inconsistencies-output", &inconsistencies_tsv.to_string_lossy(),
-        "--discount-output", "-",
-        &fixture_bam.to_string_lossy(), &reference_fa.to_string_lossy(),
-    ]);
+    log_command(
+        &log_path,
+        binary,
+        &[
+            "-q",
+            "0",
+            "--min-map-quality",
+            "0",
+            "--genomic-threshold",
+            "1",
+            "--genomic-depth-threshold",
+            "1",
+            "--variants-output",
+            &variants_tsv.to_string_lossy(),
+            "--inconsistencies-output",
+            &inconsistencies_tsv.to_string_lossy(),
+            "--discount-output",
+            "-",
+            &fixture_bam.to_string_lossy(),
+            &reference_fa.to_string_lossy(),
+        ],
+    );
     let output = Command::new(binary)
         .arg("-q")
         .arg("0")
@@ -161,11 +205,17 @@ fn integration_diagnostics_can_write_discounts_to_stdout() {
     log_line(&log_path, &format!("Command status: {}", output.status));
     log_line(
         &log_path,
-        &format!("Command stdout:\n{}", String::from_utf8_lossy(&output.stdout)),
+        &format!(
+            "Command stdout:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        ),
     );
     log_line(
         &log_path,
-        &format!("Command stderr:\n{}", String::from_utf8_lossy(&output.stderr)),
+        &format!(
+            "Command stderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ),
     );
 
     assert!(output.status.success(), "diagnostics command failed");

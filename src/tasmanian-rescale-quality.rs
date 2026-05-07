@@ -1,9 +1,11 @@
-use rust_htslib::bam::{FetchDefinition, Format, Header, IndexedReader, Read, Reader, Record, Writer};
-use std::collections::HashMap;
-use std::sync::Arc;
-use rustmanian_mismatch::*;
 use clap::Parser;
 use rayon::prelude::*;
+use rust_htslib::bam::{
+    FetchDefinition, Format, Header, IndexedReader, Read, Reader, Record, Writer,
+};
+use rustmanian_mismatch::*;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Parser, Debug)]
 #[command(name = "tasmanian-rescale-quality")]
@@ -175,12 +177,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for record_result in full_reader.records() {
         let mut record = record_result?;
         if record.tid() < 0 {
-            rescale_phred_scores(
-                &mut record,
-                &reference_arc,
-                &tid_to_name_arc,
-                &matrix_arc,
-            );
+            rescale_phred_scores(&mut record, &reference_arc, &tid_to_name_arc, &matrix_arc);
             writer.write(&record)?;
             total_records += 1;
         }
@@ -225,13 +222,7 @@ mod tests {
     #[test]
     fn load_rescaling_matrix_reads_valid_rows_and_skips_short_lines() {
         let path = temp_path("rescaling_matrix", "tsv");
-        let content = [
-            "1\t10\tC\tT\t0.5",
-            "2\t42\tG\tA\t1.25",
-            "bad\tline",
-            "",
-        ]
-        .join("\n");
+        let content = ["1\t10\tC\tT\t0.5", "2\t42\tG\tA\t1.25", "bad\tline", ""].join("\n");
         fs::write(&path, content).expect("failed to write temp matrix file");
 
         let matrix = load_rescaling_matrix(path.to_str().expect("invalid temp path"))
