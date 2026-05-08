@@ -1,8 +1,8 @@
 //! Input helpers for reference FASTA and BAM-derived metadata.
 
-use crate::types::ReferenceGenome;
 use crate::types::{
-    DiscountKey, GenomicMismatchKey, InconsistencyKey, InsertKey, MismatchKey, PositionMode,
+    DiscountKey, GenomicMismatchKey, InconsistencyKey, InsertKey, MismatchKey, PositionMode, ReferenceGenome,
+    RescalingMatrix,
 };
 use bio::io::fasta;
 use rust_htslib::bam::{Read, Reader};
@@ -220,7 +220,7 @@ pub fn write_mismatch_discounts_to_writer<W: Write>(
 /// Load mismatch-rescaling matrix rows from a TSV file.
 pub fn load_rescaling_matrix(
     path: &str,
-) -> Result<HashMap<(u8, u16, char, char), f32>, Box<dyn Error>> {
+) -> Result<RescalingMatrix, Box<dyn Error>> {
     if path == "-" {
         let stdin = std::io::stdin();
         return load_rescaling_matrix_from_reader(stdin.lock());
@@ -233,7 +233,7 @@ pub fn load_rescaling_matrix(
 
 pub fn load_rescaling_matrix_from_reader<R: BufRead>(
     reader: R,
-) -> Result<HashMap<(u8, u16, char, char), f32>, Box<dyn Error>> {
+) -> Result<RescalingMatrix, Box<dyn Error>> {
     let mut matrix = HashMap::new();
 
     for line in reader.lines() {
@@ -431,8 +431,8 @@ pub fn normalize_mismatch_counts(counts: &HashMap<InsertKey, usize>) -> HashMap<
 ///   the conversion formula in the loop.
 pub fn frequencies_to_rescaling_matrix(
     normalized_counts: &HashMap<InsertKey, f64>,
-) -> HashMap<(u8, u16, char, char), f32> {
-    let mut matrix: HashMap<(u8, u16, char, char), f32> = HashMap::new();
+) -> RescalingMatrix {
+    let mut matrix: RescalingMatrix = HashMap::new();
 
     for key in normalized_counts.keys() {
         let Some((ref_part, alt_part)) = key.base_change.split_once('>') else {
@@ -469,7 +469,7 @@ pub fn write_rescaling_matrix_output(
     let normalized = normalize_mismatch_counts(counts);
     let matrix = frequencies_to_rescaling_matrix(&normalized);
 
-    let mut rows: Vec<(&(u8, u16, char, char), &f32)> = matrix.iter().collect();
+    let mut rows: Vec<_> = matrix.iter().collect();
     rows.sort_by(|(a, _), (b, _)| {
         a.0.cmp(&b.0)
             .then(a.1.cmp(&b.1))
