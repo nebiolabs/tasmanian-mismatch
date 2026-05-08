@@ -4,6 +4,11 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 
+/// Mismatches: list of (read_position, reference_base).
+type MdMismatches = Vec<(usize, char)>;
+/// Runs of matching bases: list of (start_position, length).
+type MdMatches = Vec<(usize, usize)>;
+
 /// Return the DNA complement of a nucleotide base.
 ///
 /// # Arguments
@@ -163,7 +168,7 @@ pub fn print_position_table(
 /// * A tuple of `(mismatches, matches)` where:
 ///   - `mismatches` is a `Vec<(usize, char)>` of (read_position, reference_base)
 ///   - `matches` is a `Vec<(usize, usize)>` of (start_position, length)
-pub fn parse_md_tag(md: &str, read_name: &str) -> (Vec<(usize, char)>, Vec<(usize, usize)>) {
+pub fn parse_md_tag(md: &str, read_name: &str) -> (MdMismatches, MdMatches) {
     let mut mismatches = Vec::new();
     let mut matches = Vec::new();
     let mut pos = 0usize;

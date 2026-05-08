@@ -78,16 +78,11 @@ fn main() {
     let total_reads = AtomicUsize::new(0);
     let global_counts: Arc<Mutex<HashMap<InsertKey, usize>>> = Arc::new(Mutex::new(HashMap::new()));
 
-    regions.par_iter().for_each(|(tid, start, end)| {
+    regions.par_iter().for_each(|region| {
         let context = ProcessingContext {
             reference: &reference,
             tid_to_name: &tid_to_name,
             bed_intervals: &[],
-        };
-        let region = GenomicRegion {
-            tid: *tid,
-            start: *start,
-            end: *end,
         };
         let bed_filter = BedFilter {
             regions: bed_for_filtering.as_deref(),
