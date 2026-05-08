@@ -303,16 +303,18 @@ fn main() {
                     get_overlap_region(&info1, &info2, record1, record2)
                 {
                     local_overlap_count += 1;
+                    let mut overlap_counts = OverlapCounts {
+                        local_counts: &mut dummy_mismatch_counts,
+                        overlap_counts: &mut dummy_overlap_mismatch_counts,
+                        inconsistency_counts: &mut inconsistency_region_counts,
+                        genomic_counts: Some(&mut genomic_region_counts),
+                        genomic_depth: Some(&mut genomic_position_depth),
+                    };
                     process_paired_reads_with_overlap(
                         record1,
                         record2,
-                        overlap_start,
-                        overlap_end,
-                        &mut dummy_mismatch_counts,
-                        &mut dummy_overlap_mismatch_counts,
-                        &mut inconsistency_region_counts,
-                        Some(&mut genomic_region_counts),
-                        Some(&mut genomic_position_depth),
+                        (overlap_start, overlap_end),
+                        &mut overlap_counts,
                         &processing_context,
                         processing_config,
                     );

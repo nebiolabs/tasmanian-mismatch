@@ -45,6 +45,20 @@ pub struct ReadContext<'a> {
     pub read_num: u8,
 }
 
+/// Mutable count accumulators used when processing overlapping read pairs.
+pub struct OverlapCounts<'a> {
+    /// Non-overlap mismatch counts.
+    pub local_counts: &'a mut HashMap<MismatchKey, usize>,
+    /// Overlap-only mismatch counts.
+    pub overlap_counts: &'a mut HashMap<MismatchKey, usize>,
+    /// Read-pair inconsistency counts within the overlap.
+    pub inconsistency_counts: &'a mut HashMap<InconsistencyKey, usize>,
+    /// Optional genomic mismatch summary.
+    pub genomic_counts: Option<&'a mut HashMap<GenomicMismatchKey, GenomicMismatchValue>>,
+    /// Optional per-position depth counter.
+    pub genomic_depth: Option<&'a mut HashMap<i64, usize>>,
+}
+
 /// Canonicalize a mismatch by ensuring the reference base is earlier in the A<C<G<T order.
 ///
 /// This ensures complement pairs like C>T and G>A both report as C>T.
@@ -714,28 +728,19 @@ pub fn process_single_record(
 /// # Arguments
 /// * `record1` - First BAM record in the pair.
 /// * `record2` - Second BAM record in the pair.
-/// * `overlap_start` - Inclusive overlap start position.
-/// * `overlap_end` - Exclusive overlap end position.
-/// * `local_counts` - Non-overlap mismatch counts to update.
-/// * `overlap_counts` - Overlap-only mismatch counts to update.
-/// * `inconsistency_counts` - Overlap inconsistency counts to update.
-/// * `genomic_counts` - Optional genomic mismatch summary to update.
-/// * `genomic_depth` - Optional per-position depth counter.
+/// * `overlap` - Inclusive start and exclusive end of the overlap region.
+/// * `counts` - Mutable count accumulators for mismatches, overlaps, and inconsistencies.
 /// * `context` - Shared reference, target-name, and BED context.
 /// * `config` - Shared processing configuration.
 pub fn process_paired_reads_with_overlap(
     record1: &Record,
     record2: &Record,
-    overlap_start: i64,
-    overlap_end: i64,
-    local_counts: &mut HashMap<MismatchKey, usize>,
-    overlap_counts: &mut HashMap<MismatchKey, usize>,
-    inconsistency_counts: &mut HashMap<InconsistencyKey, usize>,
-    mut genomic_counts: Option<&mut HashMap<GenomicMismatchKey, GenomicMismatchValue>>,
-    mut genomic_depth: Option<&mut HashMap<i64, usize>>,
+    overlap: (i64, i64),
+    counts: &mut OverlapCounts,
     context: &ProcessingContext,
     config: ProcessingConfig,
 ) {
+    let (overlap_start, overlap_end) = overlap;
     // Build genome_pos -> (read_pos, base, qual) mapping for overlap detection
     let mut read1_overlap_map: HashMap<usize, (usize, u8, u8)> = HashMap::new();
     let mut read2_overlap_map: HashMap<usize, (usize, u8, u8)> = HashMap::new();
@@ -820,13 +825,13 @@ pub fn process_paired_reads_with_overlap(
                                     r_pos,
                                     genome_pos,
                                     &config,
-                                    overlap_counts,
+                                    counts.overlap_counts,
                                     None, // Don't track genomic counts in overlap
                                     chr_name,
                                 );
 
                                 // Update genomic depth for overlap positions
-                                if let Some(depth) = genomic_depth.as_mut() {
+                                if let Some(depth) = counts.genomic_depth.as_mut() {
                                     // Count both reads covering this position
                                     depth
                                         .entry(genome_pos as i64)
@@ -841,9 +846,9 @@ pub fn process_paired_reads_with_overlap(
                                 r_pos,
                                 genome_pos,
                                 &config,
-                                local_counts,
+                                counts.local_counts,
                                 if is_first_read {
-                                    genomic_counts.as_deref_mut()
+                                    counts.genomic_counts.as_deref_mut()
                                 } else {
                                     None
                                 }, // Only track genomic counts once
@@ -851,7 +856,7 @@ pub fn process_paired_reads_with_overlap(
                             );
 
                             // Update genomic depth
-                            if let Some(depth) = genomic_depth.as_mut() {
+                            if let Some(depth) = counts.genomic_depth.as_mut() {
                                 depth
                                     .entry(genome_pos as i64)
                                     .and_modify(|d| *d += 1)
@@ -870,7 +875,7 @@ pub fn process_paired_reads_with_overlap(
                         *len,
                         &config,
                         context.bed_intervals,
-                        local_counts,
+                        counts.local_counts,
                     );
                     read_pos += *len as usize;
                 }
@@ -900,7 +905,7 @@ pub fn process_paired_reads_with_overlap(
                     read1_position: *r1_pos,
                     read2_position: *r2_pos,
                 };
-                *inconsistency_counts.entry(key).or_insert(0) += 1;
+                *counts.inconsistency_counts.entry(key).or_insert(0) += 1;
             }
         }
     }

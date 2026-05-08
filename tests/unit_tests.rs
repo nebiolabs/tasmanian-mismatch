@@ -821,17 +821,20 @@ mod tests {
             overlap_mode: OverlapMode::Cut,
         };
 
+        let mut counts = OverlapCounts {
+            local_counts: &mut local_counts,
+            overlap_counts: &mut overlap_counts,
+            inconsistency_counts: &mut inconsistency_counts,
+            genomic_counts: Some(&mut genomic_counts),
+            genomic_depth: Some(&mut genomic_depth),
+        };
+
         // Should not panic
         process_paired_reads_with_overlap(
             &read1,
             &read2,
-            110, // overlap_start
-            120, // overlap_end
-            &mut local_counts,
-            &mut overlap_counts,
-            &mut inconsistency_counts,
-            Some(&mut genomic_counts),
-            Some(&mut genomic_depth),
+            (110, 120), // overlap (start, end)
+            &mut counts,
             &context,
             config,
         );
