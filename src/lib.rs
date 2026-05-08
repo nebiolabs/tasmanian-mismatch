@@ -39,7 +39,7 @@ pub use processing::{
     process_paired_reads_with_overlap, process_record, process_region, process_single_record,
     qualifying_softclip_comparisons, read_is_first_in_reference, read_mode_read_position,
     record_read_num, rescale_phred_scores, should_skip_record, should_skip_whole_read_for_bed,
-    softclip_identity, softclip_side_comparisons, ProcessingContext, ReadContext,
+    softclip_identity, softclip_side_comparisons, OverlapCounts, ProcessingContext, ReadContext,
 };
 pub use types::{
     Args, DiscountKey, GenomicMismatchKey, GenomicMismatchValue, GenomicRegion, InconsistencyKey,
