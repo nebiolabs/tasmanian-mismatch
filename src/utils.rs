@@ -69,12 +69,10 @@ pub fn correct_read_len_with_mode(
             2 => (2 * mode_len + 10) - (seq_len - read_pos),
             _ => read_pos,
         }
+    } else if mode_len > 0 && read_pos > seq_len / 2 {
+        read_pos + (mode_len - seq_len)
     } else {
-        if mode_len > 0 && read_pos > seq_len / 2 {
-            read_pos + (mode_len - seq_len)
-        } else {
-            read_pos
-        }
+        read_pos
     }
 }
 
