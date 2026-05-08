@@ -158,22 +158,36 @@ mod tests {
             HashMap::new();
 
         // Test compare_and_count
-        compare_and_count(
-            &record.seq(),
-            record.qual(),
+        let config = ProcessingConfig {
+            softclip_threshold: 0.0,
+            min_base_quality: 20,
+            is_methylation: false,
+            cpg_only: false,
+            mode_len: 0,
+            min_map_quality: 0,
+            required_flags: 0,
+            filter_flags: 0,
+            excl_flags: 0,
+            use_insert_mode: false,
+            position_mode: PositionMode::Read,
+            overlap_mode: OverlapMode::Cut,
+        };
+        let seq = record.seq();
+        let read_ctx = ReadContext {
+            seq: &seq,
+            qual: record.qual(),
             ref_seq,
-            0,     // read position
-            0,     // genome position
-            false, // not reverse
-            1,     // read 1
-            20,    // min base quality
-            false, // not methylation
-            false, // not cpg_only
+            is_reverse: false,
+            read_num: 1,
+        };
+        compare_and_count(
+            &read_ctx,
+            0, // read position
+            0, // genome position
+            &config,
             &mut local_counts,
             Some(&mut genomic_region_counts),
             "chr1",
-            0,     // mode_len
-            false, // use_insert_mode
         );
 
         // Should have one entry in counts
@@ -184,19 +198,41 @@ mod tests {
     fn test_create_mismatch_key() {
         let ref_seq: &[u8] = b"GCGTACGTAC";
 
+        let header = Header::new();
+        let header_view = HeaderView::from_header(&header);
+        let sam_line: &[u8] = b"read1\t0\t*\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII";
+        let record = Record::from_sam(&header_view, sam_line).unwrap();
+
+        let config = ProcessingConfig {
+            softclip_threshold: 0.0,
+            min_base_quality: 0,
+            is_methylation: false,
+            cpg_only: false,
+            mode_len: 0,
+            min_map_quality: 0,
+            required_flags: 0,
+            filter_flags: 0,
+            excl_flags: 0,
+            use_insert_mode: false,
+            position_mode: PositionMode::Read,
+            overlap_mode: OverlapMode::Cut,
+        };
+        let seq = record.seq();
+        let read_ctx = ReadContext {
+            seq: &seq,
+            qual: record.qual(),
+            ref_seq,
+            is_reverse: false,
+            read_num: 1,
+        };
         // Test creating a mismatch key for position 0 (forward strand, no methylation)
         let key = create_mismatch_key(
-            'A',   // read base
-            'G',   // ref base
-            0,     // read position
-            10,    // seq length
-            false, // not reverse
-            1,     // read 1
-            false, // not methylation mode
-            false, // not cpg_only
-            ref_seq, 0,     // genome position
-            0,     // mode_len
-            false, // use_insert_mode
+            'A', // read base
+            'G', // ref base
+            0,   // read position
+            0,   // genome position
+            &read_ctx,
+            &config,
         );
 
         assert_eq!(key.mismatch_type, "G>A");
@@ -412,25 +448,34 @@ mod tests {
         let mut local_counts = HashMap::new();
         let mut inconsistency_counts = HashMap::new();
 
+        let context = ProcessingContext {
+            reference: &reference_genome,
+            tid_to_name: &tid_to_name,
+            bed_intervals: &[],
+        };
+        let config = ProcessingConfig {
+            softclip_threshold: 0.0,
+            min_base_quality: 20,
+            is_methylation: false,
+            cpg_only: false,
+            mode_len: 0,
+            min_map_quality: 0,
+            required_flags: 0,
+            filter_flags: 0,
+            excl_flags: 0,
+            use_insert_mode: false,
+            position_mode: PositionMode::Read,
+            overlap_mode: OverlapMode::Cut,
+        };
+
         process_overlap_region(
             &read1,
             &read2,
-            109, // overlap start
-            109, // overlap end
+            (109, 109), // overlap (start, end)
             &mut local_counts,
             &mut inconsistency_counts,
-            &reference_genome,
-            &tid_to_name,
-            20,                    // min base quality
-            false,                 // not methylation
-            false,                 // not cpg_only
-            0,                     // mode_len
-            0,                     // min_map_quality
-            0,                     // required_flags
-            0,                     // filter_flags
-            0,                     // excl_flags
-            &[] as &[BedInterval], // no bed intervals
-            false,                 // use_insert_mode
+            &context,
+            &config,
         );
 
         // Should have processed the overlap region
@@ -455,25 +500,34 @@ mod tests {
 
         let mut local_counts = HashMap::new();
 
+        let context = ProcessingContext {
+            reference: &reference_genome,
+            tid_to_name: &tid_to_name,
+            bed_intervals: &[],
+        };
+        let config = ProcessingConfig {
+            softclip_threshold: 0.0,
+            min_base_quality: 20,
+            is_methylation: false,
+            cpg_only: false,
+            mode_len: 150,
+            min_map_quality: 0,
+            required_flags: 0,
+            filter_flags: 0,
+            excl_flags: 0,
+            use_insert_mode: false,
+            position_mode: PositionMode::Read,
+            overlap_mode: OverlapMode::Cut,
+        };
+
         // Just verify the function runs without panicking
         process_record(
             &record,
             &mut local_counts,
             None, // no genomic counts
-            &reference_genome,
-            &tid_to_name,
-            0.0,                   // softclip_threshold
-            20,                    // min base quality
-            false,                 // not methylation
-            false,                 // not cpg_only
-            150,                   // read len mode
-            0,                     // min map quality
-            None,                  // no genomic depth
-            0,                     // required_flags
-            0,                     // filter_flags
-            0,                     // excl_flags
-            &[] as &[BedInterval], // no bed intervals
-            false,                 // use_insert_mode
+            &context,
+            &config,
+            None, // no genomic depth
         );
 
         // Function completed successfully (unmapped reads may result in no counts)

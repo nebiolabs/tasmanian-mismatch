@@ -31,6 +31,20 @@ pub struct ProcessingContext<'a> {
     pub bed_intervals: &'a [crate::bed::BedInterval],
 }
 
+/// Per-read state needed when comparing bases against the reference.
+pub struct ReadContext<'a> {
+    /// Encoded read sequence.
+    pub seq: &'a rust_htslib::bam::record::Seq<'a>,
+    /// Base quality scores aligned to `seq`.
+    pub qual: &'a [u8],
+    /// Reference sequence for the current contig.
+    pub ref_seq: &'a [u8],
+    /// Whether the read aligns to the reverse strand.
+    pub is_reverse: bool,
+    /// Read number within the pair (1 or 2).
+    pub read_num: u8,
+}
+
 /// Canonicalize a mismatch by ensuring the reference base is earlier in the A<C<G<T order.
 ///
 /// This ensures complement pairs like C>T and G>A both report as C>T.
@@ -60,15 +74,9 @@ fn canonicalize_mismatch(ref_base: char, read_base: char) -> String {
 /// * `read_base` - Observed base in the read.
 /// * `ref_base` - Reference base at the aligned position.
 /// * `r_pos` - Position within the read.
-/// * `seq_len` - Total read length.
-/// * `is_reverse` - Whether the read aligns to the reverse strand.
-/// * `read_num` - Read number within the pair.
-/// * `is_methylation` - Whether methylation-aware normalization is enabled.
-/// * `cpg_only` - Whether normalization should be restricted to CpG context.
-/// * `ref_seq` - Reference sequence for the current contig.
 /// * `genome_pos` - Genomic position within `ref_seq`.
-/// * `mode_len` - Modal read length for optional position normalization.
-/// * `use_insert_mode` - Whether to use insert position mode (fragment-level) instead of split read mode.
+/// * `read_ctx` - Per-read state (sequence, quality, reference, strand, read number).
+/// * `config` - Shared processing configuration.
 ///
 /// # Returns
 /// * A normalized [`MismatchKey`] suitable for counting.
@@ -76,23 +84,18 @@ pub fn create_mismatch_key(
     read_base: char,
     ref_base: char,
     r_pos: usize,
-    seq_len: usize,
-    is_reverse: bool,
-    read_num: u8,
-    is_methylation: bool,
-    cpg_only: bool,
-    ref_seq: &[u8],
     genome_pos: usize,
-    mode_len: usize,
-    use_insert_mode: bool,
+    read_ctx: &ReadContext,
+    config: &ProcessingConfig,
 ) -> MismatchKey {
+    let seq_len = read_ctx.seq.len();
     // Apply reverse complement if read is mapped to reverse strand
-    let strand_adjusted_read_base = if is_reverse {
+    let strand_adjusted_read_base = if read_ctx.is_reverse {
         complement(read_base)
     } else {
         read_base
     };
-    let strand_adjusted_ref_base = if is_reverse {
+    let strand_adjusted_ref_base = if read_ctx.is_reverse {
         complement(ref_base)
     } else {
         ref_base
@@ -102,19 +105,19 @@ pub fn create_mismatch_key(
     let meth_and_strand_adjusted_read_base = adjust_methylation_base(
         strand_adjusted_read_base,
         strand_adjusted_ref_base,
-        read_num,
-        is_methylation,
-        cpg_only,
-        ref_seq,
+        read_ctx.read_num,
+        config.is_methylation,
+        config.cpg_only,
+        read_ctx.ref_seq,
         genome_pos,
     );
-    let adjusted_r_pos = if is_reverse {
+    let adjusted_r_pos = if read_ctx.is_reverse {
         seq_len - r_pos - 1
     } else {
         r_pos
     };
     let mode_adjusted_r_pos =
-        correct_read_len_with_mode(adjusted_r_pos, seq_len, mode_len, use_insert_mode, read_num);
+        correct_read_len_with_mode(adjusted_r_pos, seq_len, config.mode_len, config.use_insert_mode, read_ctx.read_num);
 
     MismatchKey {
         mismatch_type: format!(
@@ -122,50 +125,35 @@ pub fn create_mismatch_key(
             strand_adjusted_ref_base, meth_and_strand_adjusted_read_base
         ),
         read_position: mode_adjusted_r_pos,
-        read_num,
+        read_num: read_ctx.read_num,
     }
 }
 
 /// Compare a read base to the reference and update mismatch aggregates.
 ///
 /// # Arguments
-/// * `seq` - Encoded read sequence.
-/// * `qual` - Base quality scores aligned to `seq`.
-/// * `ref_seq` - Reference sequence for the current contig.
+/// * `read_ctx` - Per-read state (sequence, quality, reference, strand, read number).
 /// * `r_pos` - Position within the read.
 /// * `genome_pos` - Position within the reference sequence.
-/// * `is_reverse` - Whether the read aligns to the reverse strand.
-/// * `read_num` - Read number within the pair.
-/// * `min_base_quality` - Minimum quality threshold for counting a base.
-/// * `is_methylation` - Whether methylation-aware normalization is enabled.
-/// * `cpg_only` - Whether methylation normalization is limited to CpG context.
+/// * `config` - Shared processing configuration.
 /// * `local_counts` - Per-region mismatch counts to update.
 /// * `genomic_counts` - Optional genomic mismatch summary to update.
 /// * `chromosome` - Chromosome or contig name, used for genomic summaries.
-/// * `mode_len` - Modal read length for optional position normalization.
 ///
 /// # Panics
 /// * This function does not panic intentionally, but it emits errors to stderr
 ///   and returns early when coordinates fall outside the supplied sequence data.
 pub fn compare_and_count(
-    seq: &rust_htslib::bam::record::Seq,
-    qual: &[u8],
-    ref_seq: &[u8],
+    read_ctx: &ReadContext,
     r_pos: usize,
     genome_pos: usize,
-    is_reverse: bool,
-    read_num: u8,
-    min_base_quality: u8,
-    is_methylation: bool,
-    cpg_only: bool,
+    config: &ProcessingConfig,
     local_counts: &mut HashMap<MismatchKey, usize>,
     genomic_counts: Option<&mut HashMap<GenomicMismatchKey, GenomicMismatchValue>>,
     chromosome: &str,
-    mode_len: usize,
-    use_insert_mode: bool,
 ) {
-    let seq_len = seq.len();
-    let ref_len = ref_seq.len();
+    let seq_len = read_ctx.seq.len();
+    let ref_len = read_ctx.ref_seq.len();
 
     if r_pos >= seq_len {
         log::error!(
@@ -184,14 +172,14 @@ pub fn compare_and_count(
     }
 
     // Check base quality score (skip if below threshold)
-    if r_pos >= qual.len() || qual[r_pos] < min_base_quality {
+    if r_pos >= read_ctx.qual.len() || read_ctx.qual[r_pos] < config.min_base_quality {
         return;
     }
 
-    let Some(read_base) = base_to_char(seq[r_pos]) else {
+    let Some(read_base) = base_to_char(read_ctx.seq[r_pos]) else {
         return;
     };
-    let Some(ref_base) = base_to_char(ref_seq[genome_pos]) else {
+    let Some(ref_base) = base_to_char(read_ctx.ref_seq[genome_pos]) else {
         return;
     };
 
@@ -200,27 +188,21 @@ pub fn compare_and_count(
         read_base,
         ref_base,
         r_pos,
-        seq_len,
-        is_reverse,
-        read_num,
-        is_methylation,
-        cpg_only,
-        ref_seq,
         genome_pos,
-        mode_len,
-        use_insert_mode,
+        read_ctx,
+        config,
     );
     *local_counts.entry(key.clone()).or_insert(0) += 1;
 
     // Track genomic position for mismatches only (if genomic_counts is provided)
     if let Some(genomic_counts) = genomic_counts {
         if read_base != ref_base {
-            let strand_adjusted_read_base = if is_reverse {
+            let strand_adjusted_read_base = if read_ctx.is_reverse {
                 complement(read_base)
             } else {
                 read_base
             };
-            let strand_adjusted_ref_base = if is_reverse {
+            let strand_adjusted_ref_base = if read_ctx.is_reverse {
                 complement(ref_base)
             } else {
                 ref_base
@@ -228,10 +210,10 @@ pub fn compare_and_count(
             let meth_adjusted_read_base = adjust_methylation_base(
                 strand_adjusted_read_base,
                 strand_adjusted_ref_base,
-                read_num,
-                is_methylation,
-                cpg_only,
-                ref_seq,
+                read_ctx.read_num,
+                config.is_methylation,
+                config.cpg_only,
+                read_ctx.ref_seq,
                 genome_pos,
             );
 
@@ -338,27 +320,18 @@ fn is_bed_masked(bed_intervals: &[crate::bed::BedInterval], genome_pos: usize) -
 /// Mismatches are only added when the soft-clipped segment meets `softclip_threshold`
 /// match rate against the reference.
 fn count_softclip_mismatches(
-    seq: &rust_htslib::bam::record::Seq,
-    qual: &[u8],
-    ref_seq: &[u8],
+    read_ctx: &ReadContext,
     read_pos: usize,
     ref_pos: usize,
     softclip_len: u32,
-    is_reverse: bool,
-    read_num: u8,
-    min_base_quality: u8,
-    softclip_threshold: f64,
-    is_methylation: bool,
-    cpg_only: bool,
-    mode_len: usize,
+    config: &ProcessingConfig,
     bed_intervals: &[crate::bed::BedInterval],
     local_counts: &mut HashMap<MismatchKey, usize>,
-    use_insert_mode: bool,
 ) {
     let mut total_bases = 0usize;
     let mut matching_bases = 0usize;
     let mut temp_mismatch_keys = Vec::<MismatchKey>::new();
-    let seq_len = seq.len();
+    let seq_len = read_ctx.seq.len();
 
     for i in 0..softclip_len {
         let r_pos = read_pos + i as usize;
@@ -374,7 +347,7 @@ fn count_softclip_mismatches(
             ref_pos + i as usize
         };
 
-        if r_pos >= seq_len || genome_pos >= ref_seq.len() {
+        if r_pos >= seq_len || genome_pos >= read_ctx.ref_seq.len() {
             continue;
         }
 
@@ -382,11 +355,11 @@ fn count_softclip_mismatches(
             continue;
         }
 
-        if r_pos >= qual.len() || qual[r_pos] < min_base_quality {
+        if r_pos >= read_ctx.qual.len() || read_ctx.qual[r_pos] < config.min_base_quality {
             continue;
         }
 
-        let read_base = match seq[r_pos] {
+        let read_base = match read_ctx.seq[r_pos] {
             b'A' => 'A',
             b'C' => 'C',
             b'G' => 'G',
@@ -394,7 +367,7 @@ fn count_softclip_mismatches(
             _ => continue,
         };
 
-        let ref_base = match ref_seq[genome_pos] {
+        let ref_base = match read_ctx.ref_seq[genome_pos] {
             b'A' | b'a' => 'A',
             b'C' | b'c' => 'C',
             b'G' | b'g' => 'G',
@@ -410,21 +383,15 @@ fn count_softclip_mismatches(
                 read_base,
                 ref_base,
                 r_pos,
-                seq_len,
-                is_reverse,
-                read_num,
-                is_methylation,
-                cpg_only,
-                ref_seq,
                 genome_pos,
-                mode_len,
-                use_insert_mode,
+                read_ctx,
+                config,
             );
             temp_mismatch_keys.push(key);
         }
     }
 
-    if total_bases > 0 && (matching_bases as f64 / total_bases as f64) >= softclip_threshold {
+    if total_bases > 0 && (matching_bases as f64 / total_bases as f64) >= config.softclip_threshold {
         for key in temp_mismatch_keys {
             *local_counts.entry(key).or_insert(0) += 1;
         }
@@ -476,37 +443,18 @@ fn should_skip_record_core(
 /// * `overlap_end` - Exclusive overlap end position.
 /// * `local_counts` - Mismatch counts to update.
 /// * `inconsistency_counts` - Overlap inconsistency counts to update.
-/// * `reference` - Reference genome sequences.
-/// * `tid_to_name` - BAM target ID to contig-name mapping.
-/// * `min_base_quality` - Minimum base quality threshold.
-/// * `is_methylation` - Whether methylation-aware normalization is enabled.
-/// * `cpg_only` - Whether methylation normalization is limited to CpG context.
-/// * `mode_len` - Modal read length for optional position normalization.
-/// * `min_map_quality` - Minimum mapping quality threshold.
-/// * `required_flags` - SAM flags that must all be present.
-/// * `filter_flags` - SAM flags that cause an immediate skip if any are present.
-/// * `excl_flags` - SAM flags that cause a skip if all are present.
-/// * `bed_intervals` - BED intervals to mask within the overlap.
+/// * `context` - Shared reference, target-name, and BED context.
+/// * `config` - Shared processing configuration.
 pub fn process_overlap_region(
     record1: &Record,
     record2: &Record,
-    overlap_start: i64,
-    overlap_end: i64,
+    overlap: (i64, i64),
     local_counts: &mut HashMap<MismatchKey, usize>,
     inconsistency_counts: &mut HashMap<InconsistencyKey, usize>,
-    reference: &ReferenceGenome,
-    tid_to_name: &HashMap<i32, String>,
-    min_base_quality: u8,
-    is_methylation: bool,
-    cpg_only: bool,
-    mode_len: usize,
-    min_map_quality: u8,
-    required_flags: u16,
-    filter_flags: u16,
-    excl_flags: u16,
-    bed_intervals: &[crate::bed::BedInterval],
-    use_insert_mode: bool,
+    context: &ProcessingContext,
+    config: &ProcessingConfig,
 ) {
+    let (overlap_start, overlap_end) = overlap;
     // Build genome_pos -> (read_pos, base, qual) mapping for both reads
     let mut read1_map: HashMap<usize, (usize, u8, u8)> = HashMap::new();
     let mut read2_map: HashMap<usize, (usize, u8, u8)> = HashMap::new();
@@ -514,10 +462,10 @@ pub fn process_overlap_region(
     for (record, map) in [(record1, &mut read1_map), (record2, &mut read2_map)] {
         if should_skip_record_core(
             record,
-            min_map_quality,
-            required_flags,
-            filter_flags,
-            excl_flags,
+            config.min_map_quality,
+            config.required_flags,
+            config.filter_flags,
+            config.excl_flags,
             false,
         ) {
             continue;
@@ -541,7 +489,7 @@ pub fn process_overlap_region(
     for (genome_pos, (r1_pos, r1_base, r1_qual)) in read1_map.iter() {
         if let Some((r2_pos, r2_base, r2_qual)) = read2_map.get(genome_pos) {
             // Both reads cover this position - check for inconsistency
-            if r1_qual >= &min_base_quality && r2_qual >= &min_base_quality && r1_base != r2_base {
+            if r1_qual >= &config.min_base_quality && r2_qual >= &config.min_base_quality && r1_base != r2_base {
                 // Bases disagree - record inconsistency
                 let r1_char = base_to_char(*r1_base).unwrap_or('N');
                 let r2_char = base_to_char(*r2_base).unwrap_or('N');
@@ -560,20 +508,20 @@ pub fn process_overlap_region(
     for record in [record1, record2] {
         if should_skip_record_core(
             record,
-            min_map_quality,
-            required_flags,
-            filter_flags,
-            excl_flags,
+            config.min_map_quality,
+            config.required_flags,
+            config.filter_flags,
+            config.excl_flags,
             false,
         ) {
             continue;
         }
 
         let tid = record.tid();
-        let Some(chr_name) = tid_to_name.get(&tid) else {
+        let Some(chr_name) = context.tid_to_name.get(&tid) else {
             continue;
         };
-        let Some(ref_seq) = reference.get(chr_name.as_str()) else {
+        let Some(ref_seq) = context.reference.get(chr_name.as_str()) else {
             continue;
         };
         let seq = record.seq();
@@ -586,31 +534,31 @@ pub fn process_overlap_region(
             1
         };
 
+        let read_ctx = ReadContext {
+            seq: &seq,
+            qual,
+            ref_seq,
+            is_reverse: record.is_reverse(),
+            read_num,
+        };
+
         for_each_aligned_base_in_range(
             record,
             Some((overlap_start as usize, overlap_end as usize)),
             |r_pos, genome_pos| {
                 // Skip if position overlaps BED region (mask mode)
-                if is_bed_masked(bed_intervals, genome_pos) {
+                if is_bed_masked(context.bed_intervals, genome_pos) {
                     return;
                 }
 
                 compare_and_count(
-                    &seq,
-                    qual,
-                    ref_seq,
+                    &read_ctx,
                     r_pos,
                     genome_pos,
-                    record.is_reverse(),
-                    read_num,
-                    min_base_quality,
-                    is_methylation,
-                    cpg_only,
+                    config,
                     local_counts,
                     None,
                     chr_name,
-                    mode_len,
-                    use_insert_mode,
                 );
             },
         );
@@ -626,44 +574,23 @@ pub fn process_overlap_region(
 /// * `record` - BAM record to process.
 /// * `local_counts` - Mismatch counts to update.
 /// * `genomic_counts` - Optional genomic mismatch summary to update.
-/// * `reference` - Reference genome sequences.
-/// * `tid_to_name` - BAM target ID to contig-name mapping.
-/// * `softclip_threshold` - Required soft-clip match fraction.
-/// * `min_base_quality` - Minimum base quality threshold.
-/// * `is_methylation` - Whether methylation-aware normalization is enabled.
-/// * `cpg_only` - Whether methylation normalization is limited to CpG context.
-/// * `mode_len` - Modal read length for optional position normalization.
-/// * `min_map_quality` - Minimum mapping quality threshold.
+/// * `context` - Shared reference, target-name, and BED context.
+/// * `config` - Shared processing configuration.
 /// * `genomic_depth` - Optional per-position depth counter.
-/// * `required_flags` - SAM flags that must all be present.
-/// * `filter_flags` - SAM flags that cause an immediate skip if any are present.
-/// * `excl_flags` - SAM flags that cause a skip if all are present.
-/// * `bed_intervals` - BED intervals to mask during processing.
 pub fn process_record(
     record: &Record,
     local_counts: &mut HashMap<MismatchKey, usize>,
     mut genomic_counts: Option<&mut HashMap<GenomicMismatchKey, GenomicMismatchValue>>,
-    reference: &ReferenceGenome,
-    tid_to_name: &HashMap<i32, String>,
-    softclip_threshold: f64,
-    min_base_quality: u8,
-    is_methylation: bool,
-    cpg_only: bool,
-    mode_len: usize,
-    min_map_quality: u8,
+    context: &ProcessingContext,
+    config: &ProcessingConfig,
     mut genomic_depth: Option<&mut HashMap<i64, usize>>,
-    required_flags: u16,
-    filter_flags: u16,
-    excl_flags: u16,
-    bed_intervals: &[crate::bed::BedInterval],
-    use_insert_mode: bool,
 ) {
     if should_skip_record_core(
         record,
-        min_map_quality,
-        required_flags,
-        filter_flags,
-        excl_flags,
+        config.min_map_quality,
+        config.required_flags,
+        config.filter_flags,
+        config.excl_flags,
         true,
     ) {
         return;
@@ -674,10 +601,10 @@ pub fn process_record(
     if tid < 0 {
         return;
     } // unmapped
-    let Some(chr_name) = tid_to_name.get(&tid) else {
+    let Some(chr_name) = context.tid_to_name.get(&tid) else {
         return;
     };
-    let Some(ref_seq) = reference.get(chr_name.as_str()) else {
+    let Some(ref_seq) = context.reference.get(chr_name.as_str()) else {
         return;
     };
     let ref_start = record.pos() as usize; // (0-based)
@@ -692,6 +619,14 @@ pub fn process_record(
         1
     };
 
+    let read_ctx = ReadContext {
+        seq: &seq,
+        qual,
+        ref_seq,
+        is_reverse: record.is_reverse(),
+        read_num,
+    };
+
     // Single CIGAR pass: handle aligned bases and soft clips together.
     let mut read_pos = 0usize;
     let mut ref_pos = ref_start;
@@ -704,26 +639,18 @@ pub fn process_record(
                     let genome_pos = ref_pos + i as usize;
 
                     // Skip if position overlaps BED region (mask mode)
-                    if is_bed_masked(bed_intervals, genome_pos) {
+                    if is_bed_masked(context.bed_intervals, genome_pos) {
                         continue;
                     }
 
                     compare_and_count(
-                        &seq,
-                        qual,
-                        ref_seq,
+                        &read_ctx,
                         r_pos,
                         genome_pos,
-                        record.is_reverse(),
-                        read_num,
-                        min_base_quality,
-                        is_methylation,
-                        cpg_only,
+                        config,
                         local_counts,
                         genomic_counts.as_deref_mut(),
                         chr_name,
-                        mode_len,
-                        use_insert_mode,
                     );
 
                     // Update genomic depth counts.
@@ -737,22 +664,13 @@ pub fn process_record(
             }
             SoftClip(len) => {
                 count_softclip_mismatches(
-                    &seq,
-                    qual,
-                    ref_seq,
+                    &read_ctx,
                     read_pos,
                     ref_pos,
                     *len,
-                    record.is_reverse(),
-                    read_num,
-                    min_base_quality,
-                    softclip_threshold,
-                    is_methylation,
-                    cpg_only,
-                    mode_len,
-                    bed_intervals,
+                    config,
+                    context.bed_intervals,
                     local_counts,
-                    use_insert_mode,
                 );
                 read_pos += *len as usize;
             }
@@ -781,20 +699,9 @@ pub fn process_single_record(
         record,
         region_counts,
         Some(genomic_region_counts),
-        context.reference,
-        context.tid_to_name,
-        config.softclip_threshold,
-        config.min_base_quality,
-        config.is_methylation,
-        config.cpg_only,
-        config.mode_len,
-        config.min_map_quality,
+        context,
+        &config,
         Some(genomic_position_depth),
-        config.required_flags,
-        config.filter_flags,
-        config.excl_flags,
-        context.bed_intervals,
-        config.use_insert_mode,
     );
 }
 
@@ -872,6 +779,14 @@ pub fn process_paired_reads_with_overlap(
             1
         };
 
+        let read_ctx = ReadContext {
+            seq: &seq,
+            qual,
+            ref_seq,
+            is_reverse: record.is_reverse(),
+            read_num,
+        };
+
         let mut read_pos = 0;
         let mut ref_pos = ref_start;
 
@@ -901,21 +816,13 @@ pub fn process_paired_reads_with_overlap(
                             // Count mismatches in overlap (only process once - use first read)
                             if is_first_read {
                                 compare_and_count(
-                                    &seq,
-                                    qual,
-                                    ref_seq,
+                                    &read_ctx,
                                     r_pos,
                                     genome_pos,
-                                    record.is_reverse(),
-                                    read_num,
-                                    config.min_base_quality,
-                                    config.is_methylation,
-                                    config.cpg_only,
+                                    &config,
                                     overlap_counts,
                                     None, // Don't track genomic counts in overlap
                                     chr_name,
-                                    config.mode_len,
-                                    config.use_insert_mode,
                                 );
 
                                 // Update genomic depth for overlap positions
@@ -930,16 +837,10 @@ pub fn process_paired_reads_with_overlap(
                         } else {
                             // Not in overlap - count normally
                             compare_and_count(
-                                &seq,
-                                qual,
-                                ref_seq,
+                                &read_ctx,
                                 r_pos,
                                 genome_pos,
-                                record.is_reverse(),
-                                read_num,
-                                config.min_base_quality,
-                                config.is_methylation,
-                                config.cpg_only,
+                                &config,
                                 local_counts,
                                 if is_first_read {
                                     genomic_counts.as_deref_mut()
@@ -947,8 +848,6 @@ pub fn process_paired_reads_with_overlap(
                                     None
                                 }, // Only track genomic counts once
                                 chr_name,
-                                config.mode_len,
-                                config.use_insert_mode,
                             );
 
                             // Update genomic depth
@@ -965,22 +864,13 @@ pub fn process_paired_reads_with_overlap(
                 }
                 SoftClip(len) => {
                     count_softclip_mismatches(
-                        &seq,
-                        qual,
-                        ref_seq,
+                        &read_ctx,
                         read_pos,
                         ref_pos,
                         *len,
-                        record.is_reverse(),
-                        read_num,
-                        config.min_base_quality,
-                        config.softclip_threshold,
-                        config.is_methylation,
-                        config.cpg_only,
-                        config.mode_len,
+                        &config,
                         context.bed_intervals,
                         local_counts,
-                        config.use_insert_mode,
                     );
                     read_pos += *len as usize;
                 }
@@ -1218,22 +1108,21 @@ pub fn read_mode_read_position(
 }
 
 pub fn base_position_for_mode(
-    position_mode: PositionMode,
+    config: &ProcessingConfig,
     read_pos: usize,
     seq_len: usize,
     is_reverse: bool,
     is_first_in_reference: bool,
-    max_read_len: usize,
     stretch: bool,
     fragment_len: Option<usize>,
 ) -> usize {
-    match position_mode {
-        PositionMode::Read => read_mode_read_position(read_pos, seq_len, is_reverse, max_read_len),
+    match config.position_mode {
+        PositionMode::Read => read_mode_read_position(read_pos, seq_len, is_reverse, config.mode_len),
         PositionMode::Insert => insert_mode_read_position(
             is_first_in_reference,
             read_pos,
             seq_len,
-            max_read_len,
+            config.mode_len,
             stretch,
             fragment_len,
         ),
@@ -1647,12 +1536,11 @@ pub fn compare_record_to_reference(
                     );
 
                     let base_position = base_position_for_mode(
-                        config.position_mode,
+                        &config,
                         rp,
                         seq_len,
                         record.is_reverse(),
                         is_first_in_reference,
-                        config.mode_len,
                         stretch,
                         estimated_fragment_length(record, mate_end),
                     );
@@ -1697,12 +1585,11 @@ pub fn compare_record_to_reference(
             None,
         );
         let base_position = base_position_for_mode(
-            config.position_mode,
+            &config,
             comparison.read_pos,
             seq_len,
             record.is_reverse(),
             is_first_in_reference,
-            config.mode_len,
             stretch,
             frag_len,
         );
