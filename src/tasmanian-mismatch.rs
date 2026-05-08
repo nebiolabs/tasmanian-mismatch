@@ -4,7 +4,7 @@ use rustmanian_mismatch::{
     apply_external_discounts, build_tid_map_and_regions, compute_read_len_max_from_sample_bam,
     configure_thread_pool, load_discount_table, load_reference_genome, mask_reference_with_bed,
     maybe_parse_bed_file, process_region, write_normalized_output, write_output,
-    write_rescaling_matrix_output, Args, BedFilter, GenomicRegion, InsertKey, PositionMode,
+    write_rescaling_matrix_output, Args, BedFilter, InsertKey, PositionMode,
     ProcessingConfig, ProcessingContext,
 };
 use std::collections::HashMap;
@@ -89,7 +89,7 @@ fn main() {
             filter_whole_reads: bed_filter_whole_reads,
         };
         let (region_counts, region_reads) =
-            process_region(&args.bam_path, &region, &context, config, &bed_filter);
+            process_region(&args.bam_path, region, &context, config, &bed_filter);
 
         if !region_counts.is_empty() {
             let mut counts = global_counts.lock().expect("Lock poisoned");
