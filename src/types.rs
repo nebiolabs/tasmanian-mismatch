@@ -37,6 +37,9 @@ pub struct ReadInfo {
 /// Reference genome sequences keyed by chromosome or contig name.
 pub type ReferenceGenome = HashMap<String, Vec<u8>>;
 
+/// Rescaling matrix mapping (read_group, position, ref_base, alt_base) to a scaling factor.
+pub type RescalingMatrix = HashMap<(u8, u16, char, char), f32>;
+
 /// Key for genomic mismatch aggregation.
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct GenomicMismatchKey {

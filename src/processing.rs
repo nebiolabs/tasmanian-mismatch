@@ -8,12 +8,18 @@ use crate::methylation::adjust_methylation_base;
 use crate::types::{
     GenomicMismatchKey, GenomicMismatchValue, GenomicRegion, InconsistencyKey, InsertKey,
     MismatchKey, OverlapMode, PositionMode, ProcessingConfig, ReadInfo, ReferenceGenome,
-    SoftclipComparison,
+    RescalingMatrix, SoftclipComparison,
 };
 use crate::utils::{base_to_char, calculate_end_pos, complement, correct_read_len_with_mode};
 use rayon;
 use rust_htslib::bam::{record::Aux, FetchDefinition, IndexedReader, Read, Reader, Record};
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+
+/// Maps BAM target ID (tid) to chromosome name.
+type TidNameMap = Arc<HashMap<i32, String>>;
+/// List of contiguous genomic regions to process.
+type RegionList = Vec<GenomicRegion>;
 
 /// Shared references needed while processing records within a region.
 pub struct ProcessingContext<'a> {
@@ -1025,7 +1031,7 @@ pub fn rescale_phred_scores(
     record: &mut Record,
     reference: &ReferenceGenome,
     tid_to_name: &HashMap<i32, String>,
-    rescaling_matrix: &HashMap<(u8, u16, char, char), f32>,
+    rescaling_matrix: &RescalingMatrix,
 ) {
     let tid = record.tid();
     let Some(chr_name) = tid_to_name.get(&tid) else {
@@ -1246,10 +1252,10 @@ pub fn configure_thread_pool(threads: usize) {
 pub fn build_tid_map_and_regions(
     bam_path: &str,
     region_size: usize,
-) -> (std::sync::Arc<HashMap<i32, String>>, Vec<(i32, i64, i64)>) {
+) -> (TidNameMap, RegionList) {
     let bam = Reader::from_path(bam_path).expect("Failed to open BAM file");
 
-    let tid_to_name: std::sync::Arc<HashMap<i32, String>> = std::sync::Arc::new(
+    let tid_to_name: TidNameMap = Arc::new(
         (0..bam.header().target_count())
             .map(|i| {
                 (
@@ -1266,7 +1272,7 @@ pub fn build_tid_map_and_regions(
         let mut start = 0i64;
         while start < chr_len {
             let end = std::cmp::min(start + region_size as i64, chr_len);
-            regions.push((tid, start, end));
+            regions.push(GenomicRegion { tid, start, end });
             start = end;
         }
     }
