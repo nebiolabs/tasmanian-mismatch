@@ -47,15 +47,21 @@ Common options:
 -r, --region-size <BP>            Region size for indexed chunking
 -q, --min-base-quality <QUAL>     Minimum base quality
 -m, --min-map-quality <MAPQ>      Minimum mapping quality
---position-mode <read|insert>     Position mode
+--position-mode <read|insert>     Position mode (default: insert)
 --overlap-mode <cut|stretch>      Overlap handling mode
 --discount-table <TSV>            Discount table from tasmanian-diagnostics
 -b, --bed-file <BED>              BED file for masking/filtering
 --bed-filter-mode <mask|filter>   BED handling mode
+-f <FLAGS>                        SAM flags that must be present
+-F <FLAGS>                        SAM flags that, if present, skip a read
+-G <FLAGS>                        SAM flags that, if all present, skip a read
+--min-fragment-length <LEN>       Minimum fragment length for insert mode
+--max-fragment-length <LEN>       Maximum fragment length for insert mode
 --methylation-mode                Collapse methylation-driven mismatch classes
 --cpg-only                        Restrict methylation collapsing to CpG context
 --normalize                       Write normalized frequencies instead of raw counts
 --emit-rescaling-matrix           Emit matrix rows for tasmanian-rescale-quality
+--plot                            Launch the optional Bokeh visualization
 -o, --output-file <TSV>           Output path
 ```
 
