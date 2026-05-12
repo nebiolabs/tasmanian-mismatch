@@ -123,7 +123,18 @@ def make_renderer_pair(
         marker=marker,
         visible=visible,
     )
-    return line, points
+    bars = p.vbar(
+        x="position",
+        top="y",
+        width=0.8,
+        source=source,
+        fill_color=color,
+        line_color=color,
+        fill_alpha=point_alpha,
+        line_alpha=line_alpha,
+        visible=False,
+    )
+    return line, points, bars
 
 
 def build_button_text_css(font_px: int = 28) -> str:
@@ -166,9 +177,10 @@ def make_large_button(
     )
 
 
-def js_add_visibility_pair(js_parts: list[str], line_key: str, point_key: str, condition: str):
-    js_parts.append(f"{line_key}.visible = !!({condition});")
-    js_parts.append(f"{point_key}.visible = !!({condition});")
+def js_add_visibility_bundle(js_parts: list[str], line_key: str, point_key: str, bar_key: str, condition: str):
+    js_parts.append(f"{line_key}.visible = !!(({condition}) * (!use_bars));")
+    js_parts.append(f"{point_key}.visible = !!(({condition}) * (!use_bars));")
+    js_parts.append(f"{bar_key}.visible = !!(({condition}) * use_bars);")
 
 
 def js_add_aggregate_from_sources(
@@ -230,17 +242,18 @@ def js_add_aggregate_from_sources(
 def build_interaction_code(
     has_read_checkbox: bool,
     source_keys: list[str],
-    aggregate_renderer_keys_individual: list[tuple[int, int, str, str, str]],
-    aggregate_renderer_keys_combined: list[tuple[int, str, str, str]],
-    aggregate_renderer_keys_all_reads_individual: list[tuple[int, str, str, str]],
-    aggregate_renderer_keys_all_reads_combined: tuple[str, str, str],
-    renderer_keys_individual: list[tuple[int, int, int, str, str]],
-    renderer_keys_combined: list[tuple[int, int, str, str]],
+    aggregate_renderer_keys_individual: list[tuple[int, int, str, str, str, str]],
+    aggregate_renderer_keys_combined: list[tuple[int, str, str, str, str]],
+    aggregate_renderer_keys_all_reads_individual: list[tuple[int, str, str, str, str]],
+    aggregate_renderer_keys_all_reads_combined: tuple[str, str, str, str],
+    renderer_keys_individual: list[tuple[int, int, int, str, str, str]],
+    renderer_keys_combined: list[tuple[int, int, str, str, str]],
     reads_available: list[int],
     reference_orders_available: list[Any],
 ) -> str:
     js_parts: list[str] = []
     js_parts.append("var use_norm = norm_cb.active.includes(0);")
+    js_parts.append("var use_bars = plot_mode_cb.active.includes(0);")
     js_parts.append("var sum_mm = sum_mm_cb.active.includes(0);")
     if has_read_checkbox:
         js_parts.append("var sum_reads = sum_rd_cb.active.includes(0);")
@@ -261,7 +274,7 @@ def build_interaction_code(
         js_parts.append(f"{source_key}.change.emit();")
 
     # Build aggregate sources for individual-reference mode.
-    for rn_idx, ref_idx, _, _, src_key_agg in aggregate_renderer_keys_individual:
+    for rn_idx, ref_idx, _, _, _, src_key_agg in aggregate_renderer_keys_individual:
         source_terms = []
         for bc_idx, bc in enumerate(MISMATCHES):
             src_key = f"src_r{reads_available[rn_idx]}_{bc.replace('>','_')}_rf{ref_idx}"
@@ -277,7 +290,7 @@ def build_interaction_code(
         )
 
     # Build aggregate sources for combined-reference mode.
-    for rn_idx, _, _, src_key_agg_c in aggregate_renderer_keys_combined:
+    for rn_idx, _, _, _, src_key_agg_c in aggregate_renderer_keys_combined:
         source_terms = []
         for bc_idx, bc in enumerate(MISMATCHES):
             src_key_comb = f"src_r{reads_available[rn_idx]}_{bc.replace('>','_')}_comb"
@@ -293,7 +306,7 @@ def build_interaction_code(
         )
 
     # Build all-reads aggregate sources for individual-reference mode.
-    for ref_idx, _, _, src_key_all in aggregate_renderer_keys_all_reads_individual:
+    for ref_idx, _, _, _, src_key_all in aggregate_renderer_keys_all_reads_individual:
         source_terms = []
         for rn_idx, rn in enumerate(reads_available):
             src_key_per_read = f"agg_src_r{rn}_rf{ref_idx}"
@@ -312,7 +325,7 @@ def build_interaction_code(
         )
 
     # Build all-reads aggregate source for combined-reference mode.
-    key_l_all_c, key_c_all_c, src_key_all_c = aggregate_renderer_keys_all_reads_combined
+    key_l_all_c, key_c_all_c, key_b_all_c, src_key_all_c = aggregate_renderer_keys_all_reads_combined
     source_terms = []
     for rn_idx, rn in enumerate(reads_available):
         src_key_per_read_comb = f"agg_src_r{rn}_comb"
@@ -331,45 +344,45 @@ def build_interaction_code(
     )
 
     # Individual mismatch renderers visibility.
-    for rn_idx, bc_idx, ref_idx, key_l, key_c in renderer_keys_individual:
+    for rn_idx, bc_idx, ref_idx, key_l, key_c, key_b in renderer_keys_individual:
         if has_read_checkbox:
             cond = f"(!sum_mm) * (!use_combined) * (mm_active.includes({bc_idx})) * (rd_active.includes({rn_idx})) * (ref_active.includes({ref_idx}))"
         else:
             cond = f"(!sum_mm) * (!use_combined) * (mm_active.includes({bc_idx})) * (ref_active.includes({ref_idx}))"
-        js_add_visibility_pair(js_parts, key_l, key_c, cond)
+        js_add_visibility_bundle(js_parts, key_l, key_c, key_b, cond)
 
     # Combined-reference mismatch renderers visibility.
-    for rn_idx, bc_idx, key_l_comb, key_c_comb in renderer_keys_combined:
+    for rn_idx, bc_idx, key_l_comb, key_c_comb, key_b_comb in renderer_keys_combined:
         if has_read_checkbox:
             cond_comb = f"(!sum_mm) * (use_combined) * (mm_active.includes({bc_idx})) * (rd_active.includes({rn_idx}))"
         else:
             cond_comb = f"(!sum_mm) * (use_combined) * (mm_active.includes({bc_idx}))"
-        js_add_visibility_pair(js_parts, key_l_comb, key_c_comb, cond_comb)
+        js_add_visibility_bundle(js_parts, key_l_comb, key_c_comb, key_b_comb, cond_comb)
 
     # Aggregate renderers visibility in individual-reference mode.
-    for rn_idx, ref_idx, key_l_agg, key_c_agg, _ in aggregate_renderer_keys_individual:
+    for rn_idx, ref_idx, key_l_agg, key_c_agg, key_b_agg, _ in aggregate_renderer_keys_individual:
         if has_read_checkbox:
             cond_agg = f"(sum_mm) * (!sum_reads) * (!use_combined) * (mm_active.length !== 0) * (rd_active.includes({rn_idx})) * (ref_active.includes({ref_idx}))"
         else:
             cond_agg = f"(sum_mm) * (!sum_reads) * (!use_combined) * (mm_active.length !== 0) * (ref_active.includes({ref_idx}))"
-        js_add_visibility_pair(js_parts, key_l_agg, key_c_agg, cond_agg)
+        js_add_visibility_bundle(js_parts, key_l_agg, key_c_agg, key_b_agg, cond_agg)
 
     # Aggregate renderers visibility in combined-reference mode.
-    for rn_idx, key_l_agg_c, key_c_agg_c, _ in aggregate_renderer_keys_combined:
+    for rn_idx, key_l_agg_c, key_c_agg_c, key_b_agg_c, _ in aggregate_renderer_keys_combined:
         if has_read_checkbox:
             cond_agg_c = f"(sum_mm) * (!sum_reads) * (use_combined) * (mm_active.length !== 0) * (rd_active.includes({rn_idx}))"
         else:
             cond_agg_c = f"(sum_mm) * (!sum_reads) * (use_combined) * (mm_active.length !== 0)"
-        js_add_visibility_pair(js_parts, key_l_agg_c, key_c_agg_c, cond_agg_c)
+        js_add_visibility_bundle(js_parts, key_l_agg_c, key_c_agg_c, key_b_agg_c, cond_agg_c)
 
     # All-reads aggregate visibility in individual-reference mode.
-    for ref_idx, key_l_all, key_c_all, _ in aggregate_renderer_keys_all_reads_individual:
+    for ref_idx, key_l_all, key_c_all, key_b_all, _ in aggregate_renderer_keys_all_reads_individual:
         cond_all = f"(sum_mm) * (sum_reads) * (!use_combined) * (mm_active.length !== 0) * (ref_active.includes({ref_idx}))"
-        js_add_visibility_pair(js_parts, key_l_all, key_c_all, cond_all)
+        js_add_visibility_bundle(js_parts, key_l_all, key_c_all, key_b_all, cond_all)
 
     # All-reads aggregate visibility in combined-reference mode.
     cond_all_c = "(sum_mm) * (sum_reads) * (use_combined) * (mm_active.length !== 0)"
-    js_add_visibility_pair(js_parts, key_l_all_c, key_c_all_c, cond_all_c)
+    js_add_visibility_bundle(js_parts, key_l_all_c, key_c_all_c, key_b_all_c, cond_all_c)
 
     # Force DataRange1d to recompute bounds after y-values/visibility updates.
     js_parts.append("if (plot.y_range) {")
@@ -473,16 +486,16 @@ def build_render_collections(
     reads_available,
     reference_orders_available,
 ):
-    renderers: dict[Any, dict[str, dict[Any, tuple[Any, Any]]]] = {}
-    renderers_combined: dict[Any, dict[str, tuple[Any, Any]]] = {}
+    renderers: dict[Any, dict[str, dict[Any, tuple[Any, Any, Any]]]] = {}
+    renderers_combined: dict[Any, dict[str, tuple[Any, Any, Any]]] = {}
     aggregate_sources: dict[Any, dict[Any, ColumnDataSource]] = {}
     aggregate_sources_combined: dict[Any, ColumnDataSource] = {}
     aggregate_sources_all_reads: dict[Any, ColumnDataSource] = {}
     aggregate_sources_all_reads_combined: ColumnDataSource | None = None
-    aggregate_renderers: dict[Any, dict[Any, tuple[Any, Any]]] = {}
-    aggregate_renderers_combined: dict[Any, tuple[Any, Any] | None] = {}
-    aggregate_renderers_all_reads: dict[Any, tuple[Any, Any]] = {}
-    aggregate_renderers_all_reads_combined: tuple[Any, Any] | None = None
+    aggregate_renderers: dict[Any, dict[Any, tuple[Any, Any, Any]]] = {}
+    aggregate_renderers_combined: dict[Any, tuple[Any, Any, Any] | None] = {}
+    aggregate_renderers_all_reads: dict[Any, tuple[Any, Any, Any]] = {}
+    aggregate_renderers_all_reads_combined: tuple[Any, Any, Any] | None = None
 
     for rn in reads_available:
         renderers[rn] = {}
@@ -500,7 +513,7 @@ def build_render_collections(
             # Individual renderers for each reference_order.
             for ref_ord in reference_orders_available:
                 show_individual_on_load = len(reference_orders_available) == 1
-                r, c = make_renderer_pair(
+                r, c, b = make_renderer_pair(
                     p=p,
                     source=sources[rn][bc][ref_ord],
                     color=PALETTE[bc],
@@ -510,11 +523,11 @@ def build_render_collections(
                     point_alpha=0.6,
                     visible=show_individual_on_load,
                 )
-                renderers[rn][bc][ref_ord] = (r, c)
+                renderers[rn][bc][ref_ord] = (r, c, b)
 
             # Combined renderers (shown when multiple reference_orders selected).
             show_combined_on_load = len(reference_orders_available) > 1
-            r_comb, c_comb = make_renderer_pair(
+            r_comb, c_comb, b_comb = make_renderer_pair(
                 p=p,
                 source=sources_combined[rn][bc],
                 color=PALETTE[bc],
@@ -524,12 +537,12 @@ def build_render_collections(
                 point_alpha=0.6,
                 visible=show_combined_on_load,
             )
-            renderers_combined[rn][bc] = (r_comb, c_comb)
+            renderers_combined[rn][bc] = (r_comb, c_comb, b_comb)
 
         # Aggregate sources/renderers per selected reference_order.
         for ref_ord in reference_orders_available:
             aggregate_sources[rn][ref_ord] = ColumnDataSource(data=empty_plot_data())
-            agg_line, agg_pts = make_renderer_pair(
+            agg_line, agg_pts, agg_bar = make_renderer_pair(
                 p=p,
                 source=aggregate_sources[rn][ref_ord],
                 color="#111111",
@@ -539,10 +552,10 @@ def build_render_collections(
                 point_alpha=0.7,
                 visible=False,
             )
-            aggregate_renderers[rn][ref_ord] = (agg_line, agg_pts)
+            aggregate_renderers[rn][ref_ord] = (agg_line, agg_pts, agg_bar)
 
         # Aggregate renderer for combined-reference mode.
-        agg_line_comb, agg_pts_comb = make_renderer_pair(
+        agg_line_comb, agg_pts_comb, agg_bar_comb = make_renderer_pair(
             p=p,
             source=aggregate_sources_combined[rn],
             color="#111111",
@@ -552,12 +565,12 @@ def build_render_collections(
             point_alpha=0.7,
             visible=False,
         )
-        aggregate_renderers_combined[rn] = (agg_line_comb, agg_pts_comb)
+        aggregate_renderers_combined[rn] = (agg_line_comb, agg_pts_comb, agg_bar_comb)
 
     # Aggregate renderers for summing selected reads into one curve.
     for ref_ord in reference_orders_available:
         aggregate_sources_all_reads[ref_ord] = ColumnDataSource(data=empty_plot_data())
-        agg_all_line, agg_all_pts = make_renderer_pair(
+        agg_all_line, agg_all_pts, agg_all_bar = make_renderer_pair(
             p=p,
             source=aggregate_sources_all_reads[ref_ord],
             color="#8B0000",
@@ -567,10 +580,10 @@ def build_render_collections(
             point_alpha=0.75,
             visible=False,
         )
-        aggregate_renderers_all_reads[ref_ord] = (agg_all_line, agg_all_pts)
+        aggregate_renderers_all_reads[ref_ord] = (agg_all_line, agg_all_pts, agg_all_bar)
 
     aggregate_sources_all_reads_combined = ColumnDataSource(data=empty_plot_data())
-    agg_all_line_comb, agg_all_pts_comb = make_renderer_pair(
+    agg_all_line_comb, agg_all_pts_comb, agg_all_bar_comb = make_renderer_pair(
         p=p,
         source=aggregate_sources_all_reads_combined,
         color="#8B0000",
@@ -580,7 +593,7 @@ def build_render_collections(
         point_alpha=0.75,
         visible=False,
     )
-    aggregate_renderers_all_reads_combined = (agg_all_line_comb, agg_all_pts_comb)
+    aggregate_renderers_all_reads_combined = (agg_all_line_comb, agg_all_pts_comb, agg_all_bar_comb)
 
     return {
         "renderers": renderers,
@@ -613,24 +626,26 @@ def register_callback_artifacts(
     aggregate_sources_all_reads,
     aggregate_sources_all_reads_combined,
 ):
-    renderer_keys_individual = []  # list of (rn_idx, bc_idx, ref_idx, key_l, key_c)
-    renderer_keys_combined = []    # list of (rn_idx, bc_idx, key_l, key_c)
-    aggregate_renderer_keys_individual = []  # list of (rn_idx, ref_idx, key_l, key_c, src_key)
-    aggregate_renderer_keys_combined = []    # list of (rn_idx, key_l, key_c, src_key)
-    aggregate_renderer_keys_all_reads_individual = []  # list of (ref_idx, key_l, key_c, src_key)
-    aggregate_renderer_keys_all_reads_combined = None  # tuple (key_l, key_c, src_key)
+    renderer_keys_individual = []  # list of (rn_idx, bc_idx, ref_idx, key_l, key_c, key_b)
+    renderer_keys_combined = []    # list of (rn_idx, bc_idx, key_l, key_c, key_b)
+    aggregate_renderer_keys_individual = []  # list of (rn_idx, ref_idx, key_l, key_c, key_b, src_key)
+    aggregate_renderer_keys_combined = []    # list of (rn_idx, key_l, key_c, key_b, src_key)
+    aggregate_renderer_keys_all_reads_individual = []  # list of (ref_idx, key_l, key_c, key_b, src_key)
+    aggregate_renderer_keys_all_reads_combined = None  # tuple (key_l, key_c, key_b, src_key)
     source_keys = []
 
     # Register individual renderers.
     for rn_idx, rn in enumerate(reads_available):
         for bc_idx, bc in enumerate(MISMATCHES):
             for ref_idx, ref_ord in enumerate(reference_orders_available):
-                line_r, circ_r = renderers[rn][bc][ref_ord]
+                line_r, circ_r, bar_r = renderers[rn][bc][ref_ord]
                 key_l = f"r{rn}_{bc.replace('>','_')}_rf{ref_idx}_l"
                 key_c = f"r{rn}_{bc.replace('>','_')}_rf{ref_idx}_c"
+                key_b = f"r{rn}_{bc.replace('>','_')}_rf{ref_idx}_b"
                 cb_args[key_l] = line_r
                 cb_args[key_c] = circ_r
-                renderer_keys_individual.append((rn_idx, bc_idx, ref_idx, key_l, key_c))
+                cb_args[key_b] = bar_r
+                renderer_keys_individual.append((rn_idx, bc_idx, ref_idx, key_l, key_c, key_b))
                 source_key = f"src_r{rn}_{bc.replace('>','_')}_rf{ref_idx}"
                 cb_args[source_key] = sources[rn][bc][ref_ord]
                 source_keys.append(source_key)
@@ -638,12 +653,14 @@ def register_callback_artifacts(
     # Register combined renderers.
     for rn_idx, rn in enumerate(reads_available):
         for bc_idx, bc in enumerate(MISMATCHES):
-            line_r_comb, circ_r_comb = renderers_combined[rn][bc]
+            line_r_comb, circ_r_comb, bar_r_comb = renderers_combined[rn][bc]
             key_l_comb = f"r{rn}_{bc.replace('>','_')}_comb_l"
             key_c_comb = f"r{rn}_{bc.replace('>','_')}_comb_c"
+            key_b_comb = f"r{rn}_{bc.replace('>','_')}_comb_b"
             cb_args[key_l_comb] = line_r_comb
             cb_args[key_c_comb] = circ_r_comb
-            renderer_keys_combined.append((rn_idx, bc_idx, key_l_comb, key_c_comb))
+            cb_args[key_b_comb] = bar_r_comb
+            renderer_keys_combined.append((rn_idx, bc_idx, key_l_comb, key_c_comb, key_b_comb))
             source_key_comb = f"src_r{rn}_{bc.replace('>','_')}_comb"
             cb_args[source_key_comb] = sources_combined[rn][bc]
             source_keys.append(source_key_comb)
@@ -651,46 +668,54 @@ def register_callback_artifacts(
     # Register aggregate renderers/sources for individual reference_order mode.
     for rn_idx, rn in enumerate(reads_available):
         for ref_idx, ref_ord in enumerate(reference_orders_available):
-            line_r_agg, circ_r_agg = aggregate_renderers[rn][ref_ord]
+            line_r_agg, circ_r_agg, bar_r_agg = aggregate_renderers[rn][ref_ord]
             key_l_agg = f"agg_r{rn}_rf{ref_idx}_l"
             key_c_agg = f"agg_r{rn}_rf{ref_idx}_c"
+            key_b_agg = f"agg_r{rn}_rf{ref_idx}_b"
             src_key_agg = f"agg_src_r{rn}_rf{ref_idx}"
             cb_args[key_l_agg] = line_r_agg
             cb_args[key_c_agg] = circ_r_agg
+            cb_args[key_b_agg] = bar_r_agg
             cb_args[src_key_agg] = aggregate_sources[rn][ref_ord]
-            aggregate_renderer_keys_individual.append((rn_idx, ref_idx, key_l_agg, key_c_agg, src_key_agg))
+            aggregate_renderer_keys_individual.append((rn_idx, ref_idx, key_l_agg, key_c_agg, key_b_agg, src_key_agg))
 
     # Register aggregate renderers/sources for combined-reference mode.
     for rn_idx, rn in enumerate(reads_available):
-        line_r_agg_c, circ_r_agg_c = aggregate_renderers_combined[rn]
+        line_r_agg_c, circ_r_agg_c, bar_r_agg_c = aggregate_renderers_combined[rn]
         key_l_agg_c = f"agg_r{rn}_comb_l"
         key_c_agg_c = f"agg_r{rn}_comb_c"
+        key_b_agg_c = f"agg_r{rn}_comb_b"
         src_key_agg_c = f"agg_src_r{rn}_comb"
         cb_args[key_l_agg_c] = line_r_agg_c
         cb_args[key_c_agg_c] = circ_r_agg_c
+        cb_args[key_b_agg_c] = bar_r_agg_c
         cb_args[src_key_agg_c] = aggregate_sources_combined[rn]
-        aggregate_renderer_keys_combined.append((rn_idx, key_l_agg_c, key_c_agg_c, src_key_agg_c))
+        aggregate_renderer_keys_combined.append((rn_idx, key_l_agg_c, key_c_agg_c, key_b_agg_c, src_key_agg_c))
 
     # Register all-reads aggregate renderers/sources for individual reference_order mode.
     for ref_idx, ref_ord in enumerate(reference_orders_available):
-        line_r_all, circ_r_all = aggregate_renderers_all_reads[ref_ord]
+        line_r_all, circ_r_all, bar_r_all = aggregate_renderers_all_reads[ref_ord]
         key_l_all = f"agg_all_rf{ref_idx}_l"
         key_c_all = f"agg_all_rf{ref_idx}_c"
+        key_b_all = f"agg_all_rf{ref_idx}_b"
         src_key_all = f"agg_all_src_rf{ref_idx}"
         cb_args[key_l_all] = line_r_all
         cb_args[key_c_all] = circ_r_all
+        cb_args[key_b_all] = bar_r_all
         cb_args[src_key_all] = aggregate_sources_all_reads[ref_ord]
-        aggregate_renderer_keys_all_reads_individual.append((ref_idx, key_l_all, key_c_all, src_key_all))
+        aggregate_renderer_keys_all_reads_individual.append((ref_idx, key_l_all, key_c_all, key_b_all, src_key_all))
 
     # Register all-reads aggregate renderer/source for combined-reference mode.
-    line_r_all_c, circ_r_all_c = aggregate_renderers_all_reads_combined
+    line_r_all_c, circ_r_all_c, bar_r_all_c = aggregate_renderers_all_reads_combined
     key_l_all_c = "agg_all_comb_l"
     key_c_all_c = "agg_all_comb_c"
+    key_b_all_c = "agg_all_comb_b"
     src_key_all_c = "agg_all_src_comb"
     cb_args[key_l_all_c] = line_r_all_c
     cb_args[key_c_all_c] = circ_r_all_c
+    cb_args[key_b_all_c] = bar_r_all_c
     cb_args[src_key_all_c] = aggregate_sources_all_reads_combined
-    aggregate_renderer_keys_all_reads_combined = (key_l_all_c, key_c_all_c, src_key_all_c)
+    aggregate_renderer_keys_all_reads_combined = (key_l_all_c, key_c_all_c, key_b_all_c, src_key_all_c)
 
     return {
         "renderer_keys_individual": renderer_keys_individual,
@@ -706,6 +731,7 @@ def register_callback_artifacts(
 def build_controls_layout(
     has_read_checkbox: bool,
     size_panel,
+    plot_mode_panel,
     sum_panel,
     normalization_panel,
     reference_order_panel,
@@ -740,6 +766,8 @@ def build_controls_layout(
         return row(
             size_panel,
             Spacer(width=20),
+            plot_mode_panel,
+            Spacer(width=20),
             agg_stack,
             Spacer(width=30),
             read_panel,
@@ -753,6 +781,8 @@ def build_controls_layout(
 
     return row(
         size_panel,
+        Spacer(width=20),
+        plot_mode_panel,
         Spacer(width=20),
         agg_stack,
         Spacer(width=20),
@@ -989,6 +1019,7 @@ def build_plot(df: pd.DataFrame, output_path: str | None = None):
     )
 
     normalize_checkbox = make_checkbox_group(labels=["Normalize counts"], active=[])
+    plot_mode_checkbox = make_checkbox_group(labels=["Bar mode"], active=[])
 
     sum_mismatch_checkbox = make_checkbox_group(
         labels=["Sum shown mismatches into one curve"],
@@ -1000,6 +1031,7 @@ def build_plot(df: pd.DataFrame, output_path: str | None = None):
         "mismatch_cb": mismatch_checkbox,
         "ref_order_cb": reference_order_checkbox,
         "norm_cb": normalize_checkbox,
+        "plot_mode_cb": plot_mode_checkbox,
         "sum_mm_cb": sum_mismatch_checkbox,
         "plot": p,
         "raw_label": y_raw_field.replace("_", " ").title(),
@@ -1065,6 +1097,7 @@ def build_plot(df: pd.DataFrame, output_path: str | None = None):
     mismatch_checkbox.js_on_change("active", interaction_cb)
     reference_order_checkbox.js_on_change("active", interaction_cb)
     normalize_checkbox.js_on_change("active", interaction_cb)
+    plot_mode_checkbox.js_on_change("active", interaction_cb)
     sum_mismatch_checkbox.js_on_change("active", interaction_cb)
     if has_read_checkbox:
         sum_reads_checkbox.js_on_change("active", interaction_cb)
@@ -1079,7 +1112,7 @@ def build_plot(df: pd.DataFrame, output_path: str | None = None):
     legend_items = []
     for bc in MISMATCHES:
         rn = reads_available[0]
-        line_r, _ = renderers_combined[rn][bc]
+        line_r, _, _ = renderers_combined[rn][bc]
         legend_items.append(LegendItem(label=bc, renderers=[line_r]))
     legend = Legend(items=legend_items, click_policy="none", location="top_right")
     legend.label_text_font_size = "13pt"
@@ -1106,6 +1139,13 @@ def build_plot(df: pd.DataFrame, output_path: str | None = None):
     normalization_panel = make_titled_panel(
         "Y Scale",
         normalize_checkbox,
+        width=220,
+        styles=panel_text_style,
+    )
+
+    plot_mode_panel = make_titled_panel(
+        "Plot Style",
+        plot_mode_checkbox,
         width=220,
         styles=panel_text_style,
     )
@@ -1165,6 +1205,7 @@ def build_plot(df: pd.DataFrame, output_path: str | None = None):
     controls = build_controls_layout(
         has_read_checkbox=has_read_checkbox,
         size_panel=size_panel,
+        plot_mode_panel=plot_mode_panel,
         sum_panel=sum_panel,
         normalization_panel=normalization_panel,
         reference_order_panel=reference_order_panel,
