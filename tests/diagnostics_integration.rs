@@ -25,6 +25,32 @@ fn write_test_bam(path: &Path) {
     writer.write(&record).expect("failed to write BAM record");
 }
 
+fn write_paired_test_bam(path: &Path) {
+    let mut header = Header::new();
+    let mut sq = HeaderRecord::new(b"SQ");
+    sq.push_tag(b"SN", "chr1");
+    sq.push_tag(b"LN", 32);
+    header.push_record(&sq);
+
+    let header_view = HeaderView::from_header(&header);
+    let mut writer =
+        Writer::from_path(path, &header, Format::Bam).expect("failed to open BAM writer");
+
+    let read1 = Record::from_sam(
+        &header_view,
+        b"pair1\t99\tchr1\t1\t60\t8M\t=\t5\t12\tACGTACGT\tIIIIIIII\tMC:Z:8M",
+    )
+    .expect("failed to parse read1 SAM line");
+    let read2 = Record::from_sam(
+        &header_view,
+        b"pair1\t147\tchr1\t5\t60\t8M\t=\t1\t-12\tACGTACGT\tIIIIIIII\tMC:Z:8M",
+    )
+    .expect("failed to parse read2 SAM line");
+
+    writer.write(&read1).expect("failed to write read1");
+    writer.write(&read2).expect("failed to write read2");
+}
+
 #[test]
 fn integration_diagnostics_fixture_bam_produces_expected_outputs() {
     let temp_dir = unique_temp_dir("diagnostics_integration");
@@ -231,4 +257,58 @@ fn integration_diagnostics_can_write_discounts_to_stdout() {
         "expected discount row in stdout, got:\n{}",
         stdout
     );
+}
+
+#[test]
+fn integration_diagnostics_processes_paired_reads() {
+    let temp_dir = unique_temp_dir("diagnostics_paired_integration");
+    let log_path = repo_log_path("diagnostics_paired_integration");
+    let fixture_bam = temp_dir.join("paired_input.bam");
+    let reference_fa = temp_dir.join("reference.fa");
+    let variants_tsv = temp_dir.join("variants.tsv");
+    let inconsistencies_tsv = temp_dir.join("inconsistencies.tsv");
+    let discounts_tsv = temp_dir.join("discounts.tsv");
+
+    log_line(
+        &log_path,
+        "Starting diagnostics integration test (paired read branch)",
+    );
+
+    fs::write(&reference_fa, ">chr1\nACGTACGTACGTACGTACGTACGTACGTACGT\n")
+        .expect("failed to write reference");
+    write_paired_test_bam(&fixture_bam);
+    index::build(&fixture_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
+
+    let binary = env!("CARGO_BIN_EXE_tasmanian-diagnostics");
+    let output = Command::new(binary)
+        .arg("-q")
+        .arg("0")
+        .arg("--min-map-quality")
+        .arg("0")
+        .arg("--genomic-threshold")
+        .arg("1")
+        .arg("--genomic-depth-threshold")
+        .arg("1")
+        .arg("--variants-output")
+        .arg(&variants_tsv)
+        .arg("--inconsistencies-output")
+        .arg(&inconsistencies_tsv)
+        .arg("--discount-output")
+        .arg(&discounts_tsv)
+        .arg(&fixture_bam)
+        .arg(&reference_fa)
+        .output()
+        .expect("failed to execute diagnostics binary");
+
+    assert!(output.status.success(), "diagnostics command failed");
+
+    let variants = fs::read_to_string(&variants_tsv).expect("failed to read variants output");
+    assert!(variants.contains("chromosome\tposition\treference_base\tmismatch_base\tcount\tdepth"));
+
+    let inconsistencies =
+        fs::read_to_string(&inconsistencies_tsv).expect("failed to read inconsistencies output");
+    assert!(inconsistencies.starts_with("read1_position\tread2_position\tdiscordance_type\tcount\n"));
+
+    let discounts = fs::read_to_string(&discounts_tsv).expect("failed to read discounts output");
+    assert!(discounts.contains("mismatch_type\tread_num\tread_position\tdiscount_count"));
 }

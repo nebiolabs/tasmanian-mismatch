@@ -6,6 +6,7 @@ use rustmanian_mismatch::*;
 mod tests {
     use super::*;
     use rust_htslib::bam::{Format, Header, HeaderView, Record, Writer};
+    use rust_htslib::bam::header::HeaderRecord;
     use std::collections::HashMap;
     use std::io::Cursor;
 
@@ -38,6 +39,9 @@ mod tests {
 
         // No correction for first half even with mode
         assert_eq!(correct_read_len_with_mode(40, 100, 150, false, 1), 40);
+
+        // Insert mode, read 2: (2*100+10) - (90-30) = 150
+        assert_eq!(correct_read_len_with_mode(30, 90, 100, true, 2), 150);
     }
 
     #[test]
@@ -422,28 +426,32 @@ mod tests {
 
     #[test]
     fn test_process_overlap_region() {
-        // Create header
-        let header = Header::new();
+        // Use a named contig so records aren't treated as unmapped.
+        let mut header = Header::new();
+        let mut sq = HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", "chr1");
+        sq.push_tag(b"LN", 1000);
+        header.push_record(&sq);
         let header_view = HeaderView::from_header(&header);
 
-        // Create overlapping paired reads with a mismatch
-        // Read1: forward, pos 100
-        let sam_line1: &[u8] =
-            b"read1\t99\t*\t101\t60\t10M\t*\t111\t20\tACGTACGTAC\tIIIIIIIIII\tMD:Z:10";
-        let read1 = Record::from_sam(&header_view, sam_line1).unwrap();
+        // Read1: forward, positions 1-10 (0-based 0-9).
+        let read1 = Record::from_sam(
+            &header_view,
+            b"read1\t99\tchr1\t1\t60\t10M\t=\t6\t15\tACGTACGTAC\tIIIIIIIIII",
+        )
+        .unwrap();
+        // Read2: reverse, positions 6-15 (0-based 5-14). Overlaps read1 at 5-9.
+        let read2 = Record::from_sam(
+            &header_view,
+            b"read1\t147\tchr1\t6\t60\t10M\t=\t1\t-15\tGTACGTACGT\tIIIIIIIIII",
+        )
+        .unwrap();
 
-        // Read2: reverse, pos 110, overlaps last base of read1
-        let sam_line2: &[u8] =
-            b"read1\t147\t*\t111\t60\t10M\t*\t101\t-20\tGTACGTACGT\tIIIIIIIIII\tMD:Z:10";
-        let read2 = Record::from_sam(&header_view, sam_line2).unwrap();
-
-        // Create reference genome (tid -1 for unmapped)
         let mut reference_genome = HashMap::new();
-        reference_genome.insert("*".to_string(), b"ACGTACGTACGTACGTACGT".to_vec());
+        reference_genome.insert("chr1".to_string(), b"ACGTACGTACGTACGTACGT".to_vec());
 
-        // Create tid_to_name mapping
         let mut tid_to_name = HashMap::new();
-        tid_to_name.insert(-1i32, "*".to_string());
+        tid_to_name.insert(0i32, "chr1".to_string());
 
         let mut local_counts = HashMap::new();
         let mut inconsistency_counts = HashMap::new();
@@ -455,10 +463,10 @@ mod tests {
         };
         let config = ProcessingConfig {
             softclip_threshold: 0.0,
-            min_base_quality: 20,
+            min_base_quality: 0,
             is_methylation: false,
             cpg_only: false,
-            mode_len: 0,
+            mode_len: 10,
             min_map_quality: 0,
             required_flags: 0,
             filter_flags: 0,
@@ -468,18 +476,19 @@ mod tests {
             overlap_mode: OverlapMode::Cut,
         };
 
+        // Overlap region [5, 10): 5 bases shared by both reads.
         process_overlap_region(
             &read1,
             &read2,
-            (109, 109), // overlap (start, end)
+            (5, 10),
             &mut local_counts,
             &mut inconsistency_counts,
             &context,
             &config,
         );
 
-        // Should have processed the overlap region
-        // The exact counts depend on the sequence alignment
+        // Both reads covered positions 5-9; mismatch counts must be non-empty.
+        assert!(local_counts.values().sum::<usize>() > 0);
     }
 
     #[test]
@@ -1130,5 +1139,830 @@ mod tests {
         assert_eq!(matrix.get(&(1, 4, 'A', 'T')), Some(&1.0f32));
 
         std::fs::remove_file(output_path).unwrap();
+    }
+
+    // ── print_position_table / print_main_output ────────────────────────────
+
+    #[test]
+    fn test_print_position_table_writes_expected_csv() {
+        let mut position_map: HashMap<(u8, usize), HashMap<String, usize>> = HashMap::new();
+        position_map
+            .entry((1, 3))
+            .or_default()
+            .insert("A>G".to_string(), 2);
+        position_map
+            .entry((1, 3))
+            .or_default()
+            .insert("C>T".to_string(), 1);
+        position_map
+            .entry((2, 5))
+            .or_default()
+            .insert("C>T".to_string(), 3);
+
+        let path = "test_print_position_table.csv";
+        print_position_table(&position_map, Some(path)).unwrap();
+
+        let contents = std::fs::read_to_string(path).unwrap();
+        std::fs::remove_file(path).unwrap();
+
+        // Columns are sorted; rows are sorted by (read, position).
+        assert!(contents.starts_with("Read,Position,A>G,C>T\n"));
+        assert!(contents.contains("1,3,2,1\n"));
+        assert!(contents.contains("2,5,0,3\n"));
+    }
+
+    #[test]
+    fn test_print_main_output_writes_expected_csv() {
+        let mut position_map: HashMap<(u8, usize), HashMap<String, usize>> = HashMap::new();
+        position_map
+            .entry((1, 0))
+            .or_default()
+            .insert("G>T".to_string(), 5);
+
+        let path = "test_print_main_output.csv";
+        print_main_output(&position_map, Some(path)).unwrap();
+
+        let contents = std::fs::read_to_string(path).unwrap();
+        std::fs::remove_file(path).unwrap();
+
+        assert!(contents.contains("G>T"));
+        assert!(contents.contains("1,0,5\n"));
+    }
+
+    // ── methylation branches ────────────────────────────────────────────────
+
+    #[test]
+    fn test_adjust_methylation_base_cpg_context_read2_and_bounds() {
+        // Read 2, CpG-only mode: G>A collapses when next base is C/c.
+        let ref_seq = b"ACGT";
+        // genome_pos=0 ('A'), next=C: not a G ref, no collapse.
+        assert_eq!(adjust_methylation_base('A', 'A', 2, true, true, ref_seq, 0), 'A');
+        // genome_pos=0, ref G, read A, next base is C → collapse to G.
+        let ref_seq2 = b"GCA";
+        assert_eq!(adjust_methylation_base('A', 'G', 2, true, true, ref_seq2, 0), 'G');
+        // genome_pos=0, ref G, read A, next base is 'c' (lowercase) → collapse to G.
+        let ref_seq3 = b"GcA";
+        assert_eq!(adjust_methylation_base('A', 'G', 2, true, true, ref_seq3, 0), 'G');
+        // genome_pos=0, ref G, read A, next base is 'T' (not C) → keep A.
+        let ref_seq4 = b"GTA";
+        assert_eq!(adjust_methylation_base('A', 'G', 2, true, true, ref_seq4, 0), 'A');
+        // genome_pos at last position (boundary): genome_pos + 1 >= len → keep read_base.
+        let ref_seq5 = b"G";
+        assert_eq!(adjust_methylation_base('A', 'G', 2, true, true, ref_seq5, 0), 'A');
+    }
+
+    #[test]
+    fn test_adjust_methylation_base_non_cpg_mode_branches() {
+        let ref_seq = b"ACGT";
+        // Non-CpG, read 2, G ref, A read → collapse to G.
+        assert_eq!(adjust_methylation_base('A', 'G', 2, true, false, ref_seq, 0), 'G');
+        // Non-CpG, read 1, C ref, T read → collapse to C.
+        assert_eq!(adjust_methylation_base('T', 'C', 1, true, false, ref_seq, 0), 'C');
+        // Non-CpG, default fallthrough (read 1, A ref, T read) → passthrough.
+        assert_eq!(adjust_methylation_base('T', 'A', 1, true, false, ref_seq, 0), 'T');
+    }
+
+    // ── processing helpers ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_processing_position_helpers() {
+        // insert_mode_read_position: non-stretch, first read.
+        assert_eq!(insert_mode_read_position(true, 0, 10, 10, false, None), 1);
+        assert_eq!(insert_mode_read_position(true, 9, 10, 10, false, None), 10);
+        // second read, non-stretch.
+        assert_eq!(insert_mode_read_position(false, 8, 10, 12, false, None), 23);
+
+        // read_mode_read_position: forward, first half.
+        assert_eq!(read_mode_read_position(2, 10, false, 10), 3);
+        // forward, second half.
+        assert_eq!(read_mode_read_position(7, 10, false, 10), 8);
+        // reverse.
+        assert_eq!(read_mode_read_position(2, 10, true, 10), 8);
+
+        // base_position_for_mode with Read mode.
+        let config = ProcessingConfig {
+            softclip_threshold: 0.0,
+            min_base_quality: 0,
+            is_methylation: false,
+            cpg_only: false,
+            mode_len: 10,
+            min_map_quality: 0,
+            required_flags: 0,
+            filter_flags: 0,
+            excl_flags: 0,
+            use_insert_mode: false,
+            position_mode: PositionMode::Read,
+            overlap_mode: OverlapMode::Cut,
+        };
+        let pos = base_position_for_mode(&config, 2, 10, false, true, false, None);
+        assert_eq!(pos, read_mode_read_position(2, 10, false, 10));
+    }
+
+    #[test]
+    fn test_processing_parsing_and_identity_helpers() {
+        // cigar_reference_span
+        assert_eq!(cigar_reference_span("10M"), Some(10));
+        assert_eq!(cigar_reference_span("5M2D3M"), Some(10));
+        assert_eq!(cigar_reference_span("5M3I2M"), Some(7));
+        assert_eq!(cigar_reference_span(""), Some(0));
+        assert_eq!(cigar_reference_span("10?"), None);
+
+        // softclip_identity
+        use rustmanian_mismatch::SoftclipComparison;
+        let comps = vec![
+            SoftclipComparison { read_pos: 0, ref_pos: 0, read_base: 'A', ref_base: 'A' },
+            SoftclipComparison { read_pos: 1, ref_pos: 1, read_base: 'C', ref_base: 'T' },
+        ];
+        assert!((softclip_identity(&comps).unwrap() - 0.5).abs() < 1e-9);
+        assert!(softclip_identity(&[]).is_none());
+    }
+
+    #[test]
+    fn test_build_base_change_modes() {
+        // Non-methylation: simple strand-adjusted change.
+        assert_eq!(build_base_change(1, 'C', 'T', false, false, None), "C>T");
+        assert_eq!(build_base_change(1, 'A', 'G', true, false, None), "T>C");
+
+        // Methylation, non-CpG: C>T on read 1 collapses to C>C.
+        assert_eq!(build_base_change(1, 'C', 'T', false, true, None), "C>C");
+        // Methylation, G>A on read 2 collapses to G>G.
+        assert_eq!(build_base_change(2, 'G', 'A', false, true, None), "G>G");
+        // Methylation, no collapse: A>G stays A>G.
+        assert_eq!(build_base_change(1, 'A', 'G', false, true, None), "A>G");
+        // Methylation mode, CpG context passed as Some('G'): still collapses.
+        assert_eq!(build_base_change(1, 'C', 'T', false, true, Some('G')), "C>C");
+        // The current implementation collapses this case as well.
+        assert_eq!(build_base_change(2, 'G', 'A', false, true, Some('A')), "G>G");
+    }
+
+    #[test]
+    fn test_processing_mate_and_overlap_helpers() {
+        let mut header = Header::new();
+        let mut sq = HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", "chr1");
+        sq.push_tag(b"LN", 1000);
+        header.push_record(&sq);
+        let header_view = HeaderView::from_header(&header);
+
+        let paired = Record::from_sam(
+            &header_view,
+            b"read1\t99\tchr1\t1\t60\t8M\t=\t5\t12\tACGTACGT\tIIIIIIII\tMC:Z:8M",
+        )
+        .unwrap();
+        let no_mc = Record::from_sam(
+            &header_view,
+            b"read1\t99\tchr1\t1\t60\t8M\t=\t5\t12\tACGTACGT\tIIIIIIII",
+        )
+        .unwrap();
+        let unpaired = Record::from_sam(
+            &header_view,
+            b"read1\t0\tchr1\t1\t60\t8M\t*\t0\t0\tACGTACGT\tIIIIIIII\tMC:Z:8M",
+        )
+        .unwrap();
+
+        let mate_end = mc_mate_end(&paired).unwrap();
+        assert_eq!(mate_end, 12);
+        assert_eq!(overlap_interval(&paired, Some(mate_end)), Some((4, 8)));
+        assert_eq!(estimated_fragment_length(&paired, Some(mate_end)), Some(12));
+
+        assert_eq!(mc_mate_end(&no_mc), None);
+        assert_eq!(mc_mate_end(&unpaired), None);
+        assert_eq!(estimated_fragment_length(&paired, None), None);
+
+        // record_read_num: flag 0x40 = first in template.
+        let r1 = Record::from_sam(
+            &header_view,
+            b"r\t67\tchr1\t1\t60\t5M\t=\t6\t10\tACGTA\tIIIII",
+        )
+        .unwrap();
+        assert_eq!(record_read_num(&r1), 1);
+
+        // read_is_first_in_reference: unpaired returns true.
+        assert!(read_is_first_in_reference(&unpaired));
+    }
+
+    #[test]
+    fn test_compare_record_to_reference_counts_mismatches() {
+        let mut header = Header::new();
+        let mut sq = HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", "chr1");
+        sq.push_tag(b"LN", 100);
+        header.push_record(&sq);
+        let header_view = HeaderView::from_header(&header);
+
+        // 4M: bases ACGT vs ref ACCT → position 2 is G vs C (mismatch).
+        let record = Record::from_sam(
+            &header_view,
+            b"r1\t0\tchr1\t1\t60\t4M\t*\t0\t0\tACGT\tIIII",
+        )
+        .unwrap();
+
+        let mut reference = HashMap::new();
+        reference.insert("chr1".to_string(), b"ACCTACGT".to_vec());
+        let mut tid_to_name = HashMap::new();
+        tid_to_name.insert(0i32, "chr1".to_string());
+
+        let context = ProcessingContext {
+            reference: &reference,
+            tid_to_name: &tid_to_name,
+            bed_intervals: &[],
+        };
+        let config = ProcessingConfig {
+            softclip_threshold: 0.0,
+            min_base_quality: 0,
+            is_methylation: false,
+            cpg_only: false,
+            mode_len: 4,
+            min_map_quality: 0,
+            required_flags: 0,
+            filter_flags: 0,
+            excl_flags: 0,
+            use_insert_mode: false,
+            position_mode: PositionMode::Read,
+            overlap_mode: OverlapMode::Cut,
+        };
+
+        let mut counts: HashMap<InsertKey, usize> = HashMap::new();
+        compare_record_to_reference(&record, &context, config, None, &mut counts);
+
+        let total: usize = counts.values().sum();
+        assert!(total > 0);
+
+        // There should be a C>G (or strand-equivalent) mismatch key.
+        let has_mismatch = counts.keys().any(|k| k.base_change.contains('>') && &k.base_change[0..1] != &k.base_change[2..3]);
+        assert!(has_mismatch);
+    }
+
+    #[test]
+    fn test_should_skip_record_branches() {
+        let mut header = Header::new();
+        let mut sq = HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", "chr1");
+        sq.push_tag(b"LN", 100);
+        header.push_record(&sq);
+        let header_view = HeaderView::from_header(&header);
+
+        let make_record = |flags: u16| {
+            Record::from_sam(
+                &header_view,
+                &format!("r\t{flags}\tchr1\t1\t60\t4M\t*\t0\t0\tACGT\tIIII")
+                    .into_bytes(),
+            )
+            .unwrap()
+        };
+
+        let base_config = ProcessingConfig {
+            softclip_threshold: 0.0,
+            min_base_quality: 0,
+            is_methylation: false,
+            cpg_only: false,
+            mode_len: 4,
+            min_map_quality: 0,
+            required_flags: 0,
+            filter_flags: 0,
+            excl_flags: 0,
+            use_insert_mode: false,
+            position_mode: PositionMode::Read,
+            overlap_mode: OverlapMode::Cut,
+        };
+
+        // No filters → not skipped.
+        assert!(!should_skip_record(&make_record(0), base_config));
+
+        // required_flags = 0x1 (paired), record flag = 0 → skipped.
+        let mut cfg = base_config;
+        cfg.required_flags = 0x1;
+        assert!(should_skip_record(&make_record(0), cfg));
+
+        // required_flags satisfied (flag includes 0x1) → not skipped.
+        assert!(!should_skip_record(&make_record(0x1), cfg));
+
+        // filter_flags = 0x4 (unmapped). Flag 0x4 set → skipped (is_unmapped() also true).
+        let mut cfg2 = base_config;
+        cfg2.filter_flags = 0x4;
+        assert!(should_skip_record(&make_record(0x4), cfg2));
+
+        // excl_flags: skipped if all bits match.
+        let mut cfg3 = base_config;
+        cfg3.excl_flags = 0x3;
+        assert!(should_skip_record(&make_record(0x3), cfg3));
+        assert!(!should_skip_record(&make_record(0x1), cfg3));
+    }
+
+    #[test]
+    fn test_should_skip_whole_read_for_bed_cursor_advances() {
+        let mut header = Header::new();
+        let mut sq = HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", "chr1");
+        sq.push_tag(b"LN", 1000);
+        header.push_record(&sq);
+        let header_view = HeaderView::from_header(&header);
+
+        // Record at position 50-58 (8M).
+        let record = Record::from_sam(
+            &header_view,
+            b"r\t0\tchr1\t51\t60\t8M\t*\t0\t0\tACGTACGT\tIIIIIIII",
+        )
+        .unwrap();
+
+        // BED interval that covers 45-65 → read should be skipped.
+        let intervals = vec![
+            BedInterval { start: 10, end: 20 },
+            BedInterval { start: 45, end: 65 },
+        ];
+        let mut cursor = 0usize;
+        assert!(should_skip_whole_read_for_bed(&record, true, &intervals, &mut cursor));
+        // Cursor should have advanced past the first interval.
+        assert!(cursor >= 1);
+    }
+
+    #[test]
+    fn test_process_record_with_bed_mask_and_depth() {
+        let mut header = Header::new();
+        let mut sq = HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", "chr1");
+        sq.push_tag(b"LN", 100);
+        header.push_record(&sq);
+        let header_view = HeaderView::from_header(&header);
+
+        // 4M: positions 0-3.
+        let record = Record::from_sam(
+            &header_view,
+            b"r\t0\tchr1\t1\t60\t4M\t*\t0\t0\tACGT\tIIII",
+        )
+        .unwrap();
+
+        let mut reference = HashMap::new();
+        reference.insert("chr1".to_string(), b"ACGTACGT".to_vec());
+        let mut tid_to_name = HashMap::new();
+        tid_to_name.insert(0i32, "chr1".to_string());
+
+        // Mask positions 2 and 3 (0-based).
+        let bed_intervals = vec![
+            BedInterval { start: 2, end: 4 },
+        ];
+
+        let context = ProcessingContext {
+            reference: &reference,
+            tid_to_name: &tid_to_name,
+            bed_intervals: &bed_intervals,
+        };
+        let config = ProcessingConfig {
+            softclip_threshold: 0.0,
+            min_base_quality: 0,
+            is_methylation: false,
+            cpg_only: false,
+            mode_len: 4,
+            min_map_quality: 0,
+            required_flags: 0,
+            filter_flags: 0,
+            excl_flags: 0,
+            use_insert_mode: false,
+            position_mode: PositionMode::Read,
+            overlap_mode: OverlapMode::Cut,
+        };
+
+        let mut local_counts: HashMap<MismatchKey, usize> = HashMap::new();
+        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> = HashMap::new();
+        let mut depth: HashMap<i64, usize> = HashMap::new();
+
+        process_record(
+            &record,
+            &mut local_counts,
+            Some(&mut genomic_counts),
+            &context,
+            &config,
+            Some(&mut depth),
+        );
+
+        // Only positions 0 and 1 should be in depth (2 and 3 masked).
+        assert_eq!(depth.len(), 2);
+        assert!(depth.contains_key(&0));
+        assert!(depth.contains_key(&1));
+        assert!(!depth.contains_key(&2));
+
+        // Total count entries should be 2 (one per unmasked position).
+        let total: usize = local_counts.values().sum();
+        assert_eq!(total, 2);
+    }
+
+    #[test]
+    fn test_process_paired_reads_with_overlap_updates_overlap_and_inconsistency() {
+        let mut header = Header::new();
+        let mut sq = HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", "chr1");
+        sq.push_tag(b"LN", 200);
+        header.push_record(&sq);
+        let header_view = HeaderView::from_header(&header);
+
+        // read1: pos 1-8 (0-based 0-7), read2: pos 5-12 (0-based 4-11). Overlap 4-7.
+        let read1 = Record::from_sam(
+            &header_view,
+            b"r\t99\tchr1\t1\t60\t8M\t=\t5\t12\tACGTACGT\tIIIIIIII\tMC:Z:8M",
+        )
+        .unwrap();
+        let read2 = Record::from_sam(
+            &header_view,
+            b"r\t147\tchr1\t5\t60\t8M\t=\t1\t-12\tACGTACGT\tIIIIIIII\tMC:Z:8M",
+        )
+        .unwrap();
+
+        let mut reference = HashMap::new();
+        reference.insert("chr1".to_string(), b"ACGTACGTACGTACGTACGT".to_vec());
+        let mut tid_to_name = HashMap::new();
+        tid_to_name.insert(0i32, "chr1".to_string());
+
+        let context = ProcessingContext {
+            reference: &reference,
+            tid_to_name: &tid_to_name,
+            bed_intervals: &[],
+        };
+        let config = ProcessingConfig {
+            softclip_threshold: 0.0,
+            min_base_quality: 0,
+            is_methylation: false,
+            cpg_only: false,
+            mode_len: 8,
+            min_map_quality: 0,
+            required_flags: 0,
+            filter_flags: 0,
+            excl_flags: 0,
+            use_insert_mode: false,
+            position_mode: PositionMode::Read,
+            overlap_mode: OverlapMode::Cut,
+        };
+
+        let mut local_counts: HashMap<MismatchKey, usize> = HashMap::new();
+        let mut overlap_counts: HashMap<MismatchKey, usize> = HashMap::new();
+        let mut inconsistency_counts: HashMap<InconsistencyKey, usize> = HashMap::new();
+        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> = HashMap::new();
+        let mut depth: HashMap<i64, usize> = HashMap::new();
+
+        let mut counts = OverlapCounts {
+            local_counts: &mut local_counts,
+            overlap_counts: &mut overlap_counts,
+            inconsistency_counts: &mut inconsistency_counts,
+            genomic_counts: Some(&mut genomic_counts),
+            genomic_depth: Some(&mut depth),
+        };
+
+        process_paired_reads_with_overlap(&read1, &read2, (4, 8), &mut counts, &context, config);
+
+        // Overlap positions (4-7) are counted in overlap_counts.
+        let overlap_total: usize = overlap_counts.values().sum();
+        assert!(overlap_total > 0);
+        // Non-overlap positions counted in local_counts.
+        let local_total: usize = local_counts.values().sum();
+        assert!(local_total > 0);
+        // Depth map should have entries.
+        assert!(!depth.is_empty());
+    }
+
+    #[test]
+    fn test_softclip_qualification_and_side_bounds() {
+        let mut header = Header::new();
+        let mut sq = HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", "chr1");
+        sq.push_tag(b"LN", 1000);
+        header.push_record(&sq);
+        let header_view = HeaderView::from_header(&header);
+
+        let record = Record::from_sam(
+            &header_view,
+            b"read1\t0\tchr1\t3\t60\t2S6M2S\t*\t0\t0\tAACCCCGGGG\tIIIIIIIIII",
+        )
+        .unwrap();
+
+        let ref_seq = b"AATTTTTTAA";
+        let qualifying = qualifying_softclip_comparisons(&record, ref_seq, 0.66);
+
+        // Left soft-clip (AA vs AA) qualifies; right soft-clip (GG vs AA) does not.
+        assert_eq!(qualifying.len(), 2);
+        assert_eq!(qualifying[0].read_pos, 0);
+        assert_eq!(qualifying[0].ref_pos, 0);
+        assert_eq!(qualifying[1].read_pos, 1);
+        assert_eq!(qualifying[1].ref_pos, 1);
+
+        // Out-of-bounds soft-clip extraction returns an empty comparison set.
+        let out_of_bounds = softclip_side_comparisons(&record, ref_seq, 9, 4, 8);
+        assert!(out_of_bounds.is_empty());
+    }
+
+    #[test]
+    fn test_mate_end_overlap_and_fragment_helpers() {
+        let mut header = Header::new();
+        let mut sq = HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", "chr1");
+        sq.push_tag(b"LN", 1000);
+        header.push_record(&sq);
+        let header_view = HeaderView::from_header(&header);
+
+        let paired = Record::from_sam(
+            &header_view,
+            b"read1\t99\tchr1\t1\t60\t8M\t=\t5\t12\tACGTACGT\tIIIIIIII\tMC:Z:8M",
+        )
+        .unwrap();
+        let no_mc = Record::from_sam(
+            &header_view,
+            b"read1\t99\tchr1\t1\t60\t8M\t=\t5\t12\tACGTACGT\tIIIIIIII",
+        )
+        .unwrap();
+        let unpaired = Record::from_sam(
+            &header_view,
+            b"read1\t0\tchr1\t1\t60\t8M\t*\t0\t0\tACGTACGT\tIIIIIIII\tMC:Z:8M",
+        )
+        .unwrap();
+
+        let mate_end = mc_mate_end(&paired).unwrap();
+        assert_eq!(mate_end, 12);
+        assert_eq!(overlap_interval(&paired, Some(mate_end)), Some((4, 8)));
+        assert_eq!(estimated_fragment_length(&paired, Some(mate_end)), Some(12));
+
+        assert_eq!(mc_mate_end(&no_mc), None);
+        assert_eq!(mc_mate_end(&unpaired), None);
+        assert_eq!(estimated_fragment_length(&paired, None), None);
+    }
+
+    #[test]
+    fn test_process_record_skips_secondary_records() {
+        let mut header = Header::new();
+        let mut sq = HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", "chr1");
+        sq.push_tag(b"LN", 1000);
+        header.push_record(&sq);
+        let header_view = HeaderView::from_header(&header);
+
+        // Flag 256 = secondary alignment.
+        let secondary = Record::from_sam(
+            &header_view,
+            b"read1\t256\tchr1\t1\t60\t4M\t*\t0\t0\tACGT\tIIII",
+        )
+        .unwrap();
+
+        let mut reference = HashMap::new();
+        reference.insert("chr1".to_string(), b"ACGTACGT".to_vec());
+        let mut tid_to_name = HashMap::new();
+        tid_to_name.insert(0i32, "chr1".to_string());
+
+        let context = ProcessingContext {
+            reference: &reference,
+            tid_to_name: &tid_to_name,
+            bed_intervals: &[],
+        };
+        let config = ProcessingConfig {
+            softclip_threshold: 0.0,
+            min_base_quality: 0,
+            is_methylation: false,
+            cpg_only: false,
+            mode_len: 4,
+            min_map_quality: 0,
+            required_flags: 0,
+            filter_flags: 0,
+            excl_flags: 0,
+            use_insert_mode: false,
+            position_mode: PositionMode::Read,
+            overlap_mode: OverlapMode::Cut,
+        };
+
+        let mut local_counts: HashMap<MismatchKey, usize> = HashMap::new();
+        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> = HashMap::new();
+        let mut depth: HashMap<i64, usize> = HashMap::new();
+
+        process_record(
+            &secondary,
+            &mut local_counts,
+            Some(&mut genomic_counts),
+            &context,
+            &config,
+            Some(&mut depth),
+        );
+
+        assert!(local_counts.is_empty());
+        assert!(genomic_counts.is_empty());
+        assert!(depth.is_empty());
+    }
+
+    #[test]
+    fn test_compare_record_cut_vs_stretch_for_read2_overlap() {
+        let mut header = Header::new();
+        let mut sq = HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", "chr1");
+        sq.push_tag(b"LN", 1000);
+        header.push_record(&sq);
+        let header_view = HeaderView::from_header(&header);
+
+        // read2 (flag 0x93 = 0x80|0x10|0x2|0x1), positions 5-12 (0-based 4-11).
+        // Mate is at pos 1-8. Overlap region [4, 8).
+        let read2 = Record::from_sam(
+            &header_view,
+            b"r\t147\tchr1\t5\t60\t8M\t=\t1\t-12\tACGTACGT\tIIIIIIII\tMC:Z:8M",
+        )
+        .unwrap();
+
+        let mut reference = HashMap::new();
+        reference.insert("chr1".to_string(), b"ACGTACGTACGTACGTACGT".to_vec());
+        let mut tid_to_name = HashMap::new();
+        tid_to_name.insert(0i32, "chr1".to_string());
+
+        let context = ProcessingContext {
+            reference: &reference,
+            tid_to_name: &tid_to_name,
+            bed_intervals: &[],
+        };
+
+        let mate_end = mc_mate_end(&read2);
+
+        // Cut mode: read2 skips overlap bases → fewer (or no overlap) counts.
+        let config_cut = ProcessingConfig {
+            softclip_threshold: 0.0,
+            min_base_quality: 0,
+            is_methylation: false,
+            cpg_only: false,
+            mode_len: 8,
+            min_map_quality: 0,
+            required_flags: 0,
+            filter_flags: 0,
+            excl_flags: 0,
+            use_insert_mode: false,
+            position_mode: PositionMode::Read,
+            overlap_mode: OverlapMode::Cut,
+        };
+
+        let mut cut_counts: HashMap<InsertKey, usize> = HashMap::new();
+        compare_record_to_reference(&read2, &context, config_cut, mate_end, &mut cut_counts);
+        let cut_total: usize = cut_counts.values().sum();
+
+        // Stretch mode: no bases are dropped.
+        let config_stretch = ProcessingConfig {
+            overlap_mode: OverlapMode::Stretch,
+            ..config_cut
+        };
+        let mut stretch_counts: HashMap<InsertKey, usize> = HashMap::new();
+        compare_record_to_reference(&read2, &context, config_stretch, mate_end, &mut stretch_counts);
+        let stretch_total: usize = stretch_counts.values().sum();
+
+        // Stretch should have >= Cut (overlap bases not dropped).
+        assert!(stretch_total >= cut_total);
+    }
+
+    #[test]
+    fn test_compare_record_to_reference_cpg_collapse() {
+        let mut header = Header::new();
+        let mut sq = HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", "chr1");
+        sq.push_tag(b"LN", 100);
+        header.push_record(&sq);
+        let header_view = HeaderView::from_header(&header);
+
+        // Sequence: T at position 0 vs reference C at position 0.
+        // Reference: CG... so next base is G → CpG context.
+        // With cpg_only=true, methylation=true: C>T should collapse to C>C.
+        let record = Record::from_sam(
+            &header_view,
+            b"r1\t0\tchr1\t1\t60\t2M\t*\t0\t0\tTG\tII",
+        )
+        .unwrap();
+
+        let mut reference = HashMap::new();
+        reference.insert("chr1".to_string(), b"CGTACGT".to_vec());
+        let mut tid_to_name = HashMap::new();
+        tid_to_name.insert(0i32, "chr1".to_string());
+
+        let context = ProcessingContext {
+            reference: &reference,
+            tid_to_name: &tid_to_name,
+            bed_intervals: &[],
+        };
+        let config = ProcessingConfig {
+            softclip_threshold: 0.0,
+            min_base_quality: 0,
+            is_methylation: true,
+            cpg_only: true,
+            mode_len: 2,
+            min_map_quality: 0,
+            required_flags: 0,
+            filter_flags: 0,
+            excl_flags: 0,
+            use_insert_mode: false,
+            position_mode: PositionMode::Read,
+            overlap_mode: OverlapMode::Cut,
+        };
+
+        let mut counts: HashMap<InsertKey, usize> = HashMap::new();
+        compare_record_to_reference(&record, &context, config, None, &mut counts);
+
+        // The C>T at a CpG site should have been collapsed to C>C.
+        let has_cpg_collapse = counts.keys().any(|k| k.base_change == "C>C");
+        assert!(has_cpg_collapse, "Expected C>C key for CpG collapse, got: {:?}", counts);
+    }
+
+    #[test]
+    fn test_should_skip_whole_read_for_bed_early_returns() {
+        let mut header = Header::new();
+        let mut sq = HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", "chr1");
+        sq.push_tag(b"LN", 1000);
+        header.push_record(&sq);
+        let header_view = HeaderView::from_header(&header);
+
+        let record = Record::from_sam(
+            &header_view,
+            b"read1\t0\tchr1\t21\t60\t8M\t*\t0\t0\tACGTACGT\tIIIIIIII",
+        )
+        .unwrap();
+
+        let mut cursor = 0usize;
+        // filter_whole_reads=false → always false.
+        assert!(!should_skip_whole_read_for_bed(&record, false, &[], &mut cursor));
+        // empty BED → always false.
+        assert!(!should_skip_whole_read_for_bed(&record, true, &[], &mut cursor));
+    }
+
+    // ── count_softclip_mismatches (via process_record) ──────────────────────
+
+    #[test]
+    fn test_count_softclip_mismatches_via_process_record() {
+        let mut header = Header::new();
+        let mut sq = HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", "chr1");
+        sq.push_tag(b"LN", 100);
+        header.push_record(&sq);
+        let header_view = HeaderView::from_header(&header);
+
+        // pos=3 (1-based) → ref_pos=2 (0-based). Left clip 2 → genome 0,1 (AA).
+        // 6M at ref 2-7 (CCCCGG). Right clip 2 → genome 8,9 (TT).
+        let record = Record::from_sam(
+            &header_view,
+            b"read1\t0\tchr1\t3\t60\t2S6M2S\t*\t0\t0\tAACCCCGGTT\tIIIIIIIIII",
+        )
+        .unwrap();
+
+        let mut reference = HashMap::new();
+        reference.insert("chr1".to_string(), b"AACCCCGGTT".to_vec());
+        let mut tid_to_name = HashMap::new();
+        tid_to_name.insert(0i32, "chr1".to_string());
+
+        let context = ProcessingContext {
+            reference: &reference,
+            tid_to_name: &tid_to_name,
+            bed_intervals: &[],
+        };
+        let config = ProcessingConfig {
+            softclip_threshold: 0.5,
+            min_base_quality: 0,
+            is_methylation: false,
+            cpg_only: false,
+            mode_len: 10,
+            min_map_quality: 0,
+            required_flags: 0,
+            filter_flags: 0,
+            excl_flags: 0,
+            use_insert_mode: false,
+            position_mode: PositionMode::Read,
+            overlap_mode: OverlapMode::Cut,
+        };
+
+        let mut local_counts: HashMap<MismatchKey, usize> = HashMap::new();
+        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> = HashMap::new();
+        let mut depth: HashMap<i64, usize> = HashMap::new();
+
+        process_record(
+            &record,
+            &mut local_counts,
+            Some(&mut genomic_counts),
+            &context,
+            &config,
+            Some(&mut depth),
+        );
+
+        // All bases match → no cross-base substitutions.
+        let has_substitution = local_counts
+            .keys()
+            .any(|k| k.mismatch_type.len() == 3 && &k.mismatch_type[0..1] != &k.mismatch_type[2..3]);
+        assert!(!has_substitution, "unexpected substitution mismatches: {:?}", local_counts);
+
+        // Right clip CC vs TT → 0% match → below threshold → not added.
+        let record2 = Record::from_sam(
+            &header_view,
+            b"read2\t0\tchr1\t3\t60\t2S6M2S\t*\t0\t0\tAACCCCGGCC\tIIIIIIIIII",
+        )
+        .unwrap();
+
+        let mut local2: HashMap<MismatchKey, usize> = HashMap::new();
+        let mut genomic2: HashMap<GenomicMismatchKey, GenomicMismatchValue> = HashMap::new();
+        let mut depth2: HashMap<i64, usize> = HashMap::new();
+
+        process_record(
+            &record2,
+            &mut local2,
+            Some(&mut genomic2),
+            &context,
+            &config,
+            Some(&mut depth2),
+        );
+        let has_sub2 = local2
+            .keys()
+            .any(|k| k.mismatch_type.len() == 3 && &k.mismatch_type[0..1] != &k.mismatch_type[2..3]);
+        assert!(!has_sub2, "unexpected substitution mismatches: {:?}", local2);
     }
 }
