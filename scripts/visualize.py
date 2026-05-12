@@ -1197,7 +1197,7 @@ def build_plot(df: pd.DataFrame, output_path: str | None = None):
     CONTROLS_STYLE = {
         "gap": "32px",
         "padding": "16px 20px",
-        "border-bottom": "2px solid rgba(19,31,50,0.12)",
+        "border-bottom": "none",
         "background": "rgba(240,242,245,0.4)",
         "overflow-x": "auto",
     }
