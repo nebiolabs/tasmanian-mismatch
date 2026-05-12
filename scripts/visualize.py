@@ -1165,24 +1165,24 @@ def build_plot(df: pd.DataFrame, output_path: str | None = None):
         height=620,
     )
 
-    PRESETS = [
-        ("Small",    960,  520),
-        ("Medium",  1280,  620),
-        ("Large",   1600,  860),
-        ("Fit View",1080,  540),
-    ]
-    size_buttons = [make_large_button(label, "default", 160, 40, button_text_css) for label, _, _ in PRESETS]
-    for btn, (_, w, h) in zip(size_buttons, PRESETS):
-        btn.js_on_click(CustomJS(
-            args={"c": plot_container},
-            code=f"c.width = {w}; c.height = {h}; c.change.emit();",
-        ))
-
     size_panel = make_titled_panel(
         "Plot Size",
-        column(*size_buttons, spacing=8),
-        Div(text="<span style='font-size:13px;color:#51637d;margin-top:8px;display:block;'>Drag &#x2198; grip to resize</span>"),
-        width=500,
+        Div(
+            text=(
+                "<div id='tm-plot-grip' style='width:54px;height:54px;display:flex;align-items:center;"
+                "justify-content:center;cursor:nwse-resize;font-size:34px;color:#30445f;font-weight:800;"
+                "background:rgba(255,255,255,0.95);border:2px solid rgba(19,31,50,0.25);"
+                "border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,0.10);user-select:none;"
+                "pointer-events:auto;touch-action:none;'>"
+                "&#x2198;"
+                "</div>"
+                "<div style='font-size:15px;line-height:1.35;color:#354861;margin-top:6px;'>"
+                "Drag to resize plot"
+                "</div>"
+            ),
+            css_classes=["tm-resize-grip-panel"],
+        ),
+        width=220,
     )
 
     if has_read_checkbox:
@@ -1230,22 +1230,28 @@ def build_plot(df: pd.DataFrame, output_path: str | None = None):
     var retryCount = 0;
     var maxRetries = 40;
 
-    // Create the grip element immediately - always visible
-    var grip = document.createElement('div');
-    grip.id = 'tm-plot-grip';
-    grip.innerHTML = '&#x2198;';
-    grip.style.cssText = 'position:fixed;right:16px;bottom:16px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;cursor:nwse-resize;z-index:9999;opacity:0.8;font-size:26px;color:#30445f;font-weight:bold;background:rgba(255,255,255,0.95);border:2px solid rgba(19,31,50,0.25);border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.18);user-select:none;';
-    document.body.appendChild(grip);
+    function deepFind(root, selector) {{
+        var found = root.querySelector(selector);
+        if (found) return found;
+        var all = root.querySelectorAll('*');
+        for (var i = 0; i < all.length; i++) {{
+            if (all[i].shadowRoot) {{
+                var r = deepFind(all[i].shadowRoot, selector);
+                if (r) return r;
+            }}
+        }}
+        return null;
+    }}
+
+    function findGrip() {{
+        return deepFind(document, '#tm-plot-grip');
+    }}
 
     // Bokeh buttons render in shadow roots. Force larger label text for specific controls.
     function enforceButtonFonts() {{
         var targetLabels = {{
             'Select All': true,
             'Deselect All': true,
-            'Small': true,
-            'Medium': true,
-            'Large': true,
-            'Fit View': true,
         }};
         var changed = 0;
         var all = document.querySelectorAll('*');
@@ -1287,18 +1293,34 @@ def build_plot(df: pd.DataFrame, output_path: str | None = None):
         retryCount++;
         var model = getModel();
         if (!model) {{
-            if (retryCount < maxRetries) setTimeout(wireGrip, 200);
-            else console.error('[TM] Could not find Bokeh model', CID);
-            return;
+            if (retryCount < maxRetries) {{
+                setTimeout(wireGrip, 200);
+                return;
+            }} else {{
+                console.error('[TM] Could not find Bokeh model', CID, 'after', retryCount, 'retries');
+                return;
+            }}
         }}
-        console.log('[TM] Model found, wiring drag. Initial size:', model.width, 'x', model.height);
+        
+        var grip = findGrip();
+        if (!grip) {{
+            if (retryCount < maxRetries) {{
+                setTimeout(wireGrip, 200);
+                return;
+            }} else {{
+                console.error('[TM] Could not find grip after', retryCount, 'retries.');
+                return;
+            }}
+        }}
+        
+        console.log('[TM] Grip found, wiring drag. Initial plot size:', model.width, 'x', model.height);
 
         grip.style.opacity = '0.8';
         grip.onmouseenter = function() {{ grip.style.opacity = '1'; grip.style.transform = 'scale(1.15)'; }};
         grip.onmouseleave = function() {{ grip.style.opacity = '0.8'; grip.style.transform = ''; }};
 
         grip.addEventListener('mousedown', function(evt) {{
-            // Read starting dimensions directly from the Bokeh model - no DOM element needed
+            console.log('[TM] Mousedown on grip');
             var startX = evt.clientX;
             var startY = evt.clientY;
             var startW = model.width  || 1280;
@@ -1310,7 +1332,6 @@ def build_plot(df: pd.DataFrame, output_path: str | None = None):
             function onMove(e) {{
                 var newW = Math.max(600, startW + (e.clientX - startX));
                 var newH = Math.max(350, startH + (e.clientY - startY));
-                // Set model dimensions and emit - same as the size preset buttons do
                 model.width  = newW;
                 model.height = newH;
                 model.change.emit();
@@ -1323,7 +1344,7 @@ def build_plot(df: pd.DataFrame, output_path: str | None = None):
             document.addEventListener('mousemove', onMove);
             document.addEventListener('mouseup', onUp);
         }});
-        console.log('[TM] Drag listener attached');
+        console.log('[TM] Drag listener attached to grip element');
     }}
     wireGrip();
 }})();
