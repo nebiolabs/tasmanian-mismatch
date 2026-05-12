@@ -226,4 +226,9 @@ pub struct Args {
     /// suitable for piping into tasmanian-rescale-quality.
     #[arg(long, default_value_t = false)]
     pub emit_rescaling_matrix: bool,
+
+    /// Launch an interactive Bokeh plot after writing output.
+    /// Requires python3 with bokeh and pandas installed.
+    #[arg(long, default_value_t = false)]
+    pub plot: bool,
 }

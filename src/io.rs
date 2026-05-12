@@ -544,6 +544,61 @@ pub fn write_output(
     })
 }
 
+/// Launch the embedded Bokeh visualization script on the given TSV file.
+/// Writes the Python script to a temp file and invokes `python3` on it.
+pub fn launch_visualization(tsv_path: &str) -> std::io::Result<()> {
+    let script = if std::path::Path::new("scripts/visualize.py").exists() {
+        match std::fs::read_to_string("scripts/visualize.py") {
+            Ok(s) => {
+                log::info!("Using live visualization script from scripts/visualize.py");
+                s
+            }
+            Err(e) => {
+                log::warn!(
+                    "Could not read scripts/visualize.py ({}), using embedded fallback",
+                    e
+                );
+                include_str!("../scripts/visualize.py").to_string()
+            }
+        }
+    } else {
+        include_str!("../scripts/visualize.py").to_string()
+    };
+    let tmp_dir = std::env::temp_dir();
+    let script_path = tmp_dir.join("tasmanian_visualize.py");
+    std::fs::write(&script_path, script)?;
+
+    let html_path = format!("{}.html", tsv_path.trim_end_matches(".tsv").trim_end_matches(".csv"));
+
+    log::info!("Launching visualization: {} -> {}", tsv_path, html_path);
+
+    let status = std::process::Command::new("python3")
+        .arg(&script_path)
+        .arg(tsv_path)
+        .arg("-o")
+        .arg(&html_path)
+        .status();
+
+    match status {
+        Ok(s) if s.success() => {
+            log::info!("Visualization saved to {}", html_path);
+            Ok(())
+        }
+        Ok(s) => {
+            log::warn!("Visualization script exited with {}", s);
+            Ok(())
+        }
+        Err(e) => {
+            log::warn!(
+                "Could not launch visualization (python3 not found or failed): {}. \
+                 Install bokeh and pandas: pip install bokeh pandas",
+                e
+            );
+            Ok(())
+        }
+    }
+}
+
 pub fn write_normalized_output(
     counts: &HashMap<InsertKey, usize>,
     output_file: Option<&str>,

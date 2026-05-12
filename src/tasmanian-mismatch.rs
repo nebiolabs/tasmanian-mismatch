@@ -2,9 +2,9 @@ use clap::Parser;
 use rayon::prelude::*;
 use rustmanian_mismatch::{
     apply_external_discounts, build_tid_map_and_regions, compute_read_len_max_from_sample_bam,
-    configure_thread_pool, load_discount_table, load_reference_genome, mask_reference_with_bed,
-    maybe_parse_bed_file, process_region, write_normalized_output, write_output,
-    write_rescaling_matrix_output, Args, BedFilter, InsertKey, PositionMode,
+    configure_thread_pool, launch_visualization, load_discount_table, load_reference_genome,
+    mask_reference_with_bed, maybe_parse_bed_file, process_region, write_normalized_output,
+    write_output, write_rescaling_matrix_output, Args, BedFilter, InsertKey, PositionMode,
     ProcessingConfig, ProcessingContext,
 };
 use std::collections::HashMap;
@@ -139,5 +139,28 @@ fn main() {
     } else {
         write_output(&counts, args.output_file.as_deref(), args.position_mode)
             .expect("Failed to write output");
+    }
+
+    if args.plot {
+        if args.emit_rescaling_matrix {
+            log::warn!("--plot is not supported with --emit-rescaling-matrix; skipping.");
+        } else {
+            // If -o was given, use that file; otherwise write a temp TSV for the visualizer
+            let tsv_path = if let Some(ref p) = args.output_file {
+                p.clone()
+            } else {
+                let tmp = std::env::temp_dir().join("tasmanian_output.tsv");
+                let tmp_str = tmp.to_str().expect("temp path not valid UTF-8").to_string();
+                if args.normalize {
+                    write_normalized_output(&counts, Some(&tmp_str), args.position_mode)
+                        .expect("Failed to write temp TSV for visualization");
+                } else {
+                    write_output(&counts, Some(&tmp_str), args.position_mode)
+                        .expect("Failed to write temp TSV for visualization");
+                }
+                tmp_str
+            };
+            launch_visualization(&tsv_path).expect("Visualization failed");
+        }
     }
 }
