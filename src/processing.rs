@@ -427,7 +427,7 @@ fn should_skip_record_core(
     }
 
     // Standard read quality/status filtering
-    if record.is_unmapped() || record.mapq() <= min_map_quality {
+    if record.is_unmapped() || record.mapq() < min_map_quality {
         return true;
     }
     if skip_secondary_and_supplementary && (record.is_secondary() || record.is_supplementary()) {
