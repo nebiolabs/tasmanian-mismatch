@@ -1,8 +1,8 @@
 //! Input helpers for reference FASTA and BAM-derived metadata.
 
 use crate::types::{
-    DiscountKey, GenomicMismatchKey, InconsistencyKey, InsertKey, MismatchKey, PositionMode, ReferenceGenome,
-    RescalingMatrix,
+    DiscountKey, GenomicMismatchKey, InconsistencyKey, InsertKey, MismatchKey, PositionMode,
+    ReferenceGenome, RescalingMatrix,
 };
 use bio::io::fasta;
 use rust_htslib::bam::{Read, Reader};
@@ -218,9 +218,7 @@ pub fn write_mismatch_discounts_to_writer<W: Write>(
 }
 
 /// Load mismatch-rescaling matrix rows from a TSV file.
-pub fn load_rescaling_matrix(
-    path: &str,
-) -> Result<RescalingMatrix, Box<dyn Error>> {
+pub fn load_rescaling_matrix(path: &str) -> Result<RescalingMatrix, Box<dyn Error>> {
     if path == "-" {
         let stdin = std::io::stdin();
         return load_rescaling_matrix_from_reader(stdin.lock());
@@ -568,7 +566,10 @@ pub fn launch_visualization(tsv_path: &str) -> std::io::Result<()> {
     let script_path = tmp_dir.join("tasmanian_visualize.py");
     std::fs::write(&script_path, script)?;
 
-    let html_path = format!("{}.html", tsv_path.trim_end_matches(".tsv").trim_end_matches(".csv"));
+    let html_path = format!(
+        "{}.html",
+        tsv_path.trim_end_matches(".tsv").trim_end_matches(".csv")
+    );
 
     log::info!("Launching visualization: {} -> {}", tsv_path, html_path);
 

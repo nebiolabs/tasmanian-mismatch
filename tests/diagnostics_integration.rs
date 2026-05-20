@@ -307,7 +307,9 @@ fn integration_diagnostics_processes_paired_reads() {
 
     let inconsistencies =
         fs::read_to_string(&inconsistencies_tsv).expect("failed to read inconsistencies output");
-    assert!(inconsistencies.starts_with("read1_position\tread2_position\tdiscordance_type\tcount\n"));
+    assert!(
+        inconsistencies.starts_with("read1_position\tread2_position\tdiscordance_type\tcount\n")
+    );
 
     let discounts = fs::read_to_string(&discounts_tsv).expect("failed to read discounts output");
     assert!(discounts.contains("mismatch_type\tread_num\tread_position\tdiscount_count"));

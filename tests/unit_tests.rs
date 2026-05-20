@@ -5,8 +5,8 @@ use rustmanian_mismatch::*;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust_htslib::bam::{Format, Header, HeaderView, Record, Writer};
     use rust_htslib::bam::header::HeaderRecord;
+    use rust_htslib::bam::{Format, Header, HeaderView, Record, Writer};
     use std::collections::HashMap;
     use std::io::Cursor;
 
@@ -235,8 +235,7 @@ mod tests {
             'G', // ref base
             0,   // read position
             0,   // genome position
-            &read_ctx,
-            &config,
+            &read_ctx, &config,
         );
 
         assert_eq!(key.mismatch_type, "G>A");
@@ -1196,30 +1195,54 @@ mod tests {
         // Read 2, CpG-only mode: G>A collapses when next base is C/c.
         let ref_seq = b"ACGT";
         // genome_pos=0 ('A'), next=C: not a G ref, no collapse.
-        assert_eq!(adjust_methylation_base('A', 'A', 2, true, true, ref_seq, 0), 'A');
+        assert_eq!(
+            adjust_methylation_base('A', 'A', 2, true, true, ref_seq, 0),
+            'A'
+        );
         // genome_pos=0, ref G, read A, next base is C → collapse to G.
         let ref_seq2 = b"GCA";
-        assert_eq!(adjust_methylation_base('A', 'G', 2, true, true, ref_seq2, 0), 'G');
+        assert_eq!(
+            adjust_methylation_base('A', 'G', 2, true, true, ref_seq2, 0),
+            'G'
+        );
         // genome_pos=0, ref G, read A, next base is 'c' (lowercase) → collapse to G.
         let ref_seq3 = b"GcA";
-        assert_eq!(adjust_methylation_base('A', 'G', 2, true, true, ref_seq3, 0), 'G');
+        assert_eq!(
+            adjust_methylation_base('A', 'G', 2, true, true, ref_seq3, 0),
+            'G'
+        );
         // genome_pos=0, ref G, read A, next base is 'T' (not C) → keep A.
         let ref_seq4 = b"GTA";
-        assert_eq!(adjust_methylation_base('A', 'G', 2, true, true, ref_seq4, 0), 'A');
+        assert_eq!(
+            adjust_methylation_base('A', 'G', 2, true, true, ref_seq4, 0),
+            'A'
+        );
         // genome_pos at last position (boundary): genome_pos + 1 >= len → keep read_base.
         let ref_seq5 = b"G";
-        assert_eq!(adjust_methylation_base('A', 'G', 2, true, true, ref_seq5, 0), 'A');
+        assert_eq!(
+            adjust_methylation_base('A', 'G', 2, true, true, ref_seq5, 0),
+            'A'
+        );
     }
 
     #[test]
     fn test_adjust_methylation_base_non_cpg_mode_branches() {
         let ref_seq = b"ACGT";
         // Non-CpG, read 2, G ref, A read → collapse to G.
-        assert_eq!(adjust_methylation_base('A', 'G', 2, true, false, ref_seq, 0), 'G');
+        assert_eq!(
+            adjust_methylation_base('A', 'G', 2, true, false, ref_seq, 0),
+            'G'
+        );
         // Non-CpG, read 1, C ref, T read → collapse to C.
-        assert_eq!(adjust_methylation_base('T', 'C', 1, true, false, ref_seq, 0), 'C');
+        assert_eq!(
+            adjust_methylation_base('T', 'C', 1, true, false, ref_seq, 0),
+            'C'
+        );
         // Non-CpG, default fallthrough (read 1, A ref, T read) → passthrough.
-        assert_eq!(adjust_methylation_base('T', 'A', 1, true, false, ref_seq, 0), 'T');
+        assert_eq!(
+            adjust_methylation_base('T', 'A', 1, true, false, ref_seq, 0),
+            'T'
+        );
     }
 
     // ── processing helpers ──────────────────────────────────────────────────
@@ -1270,8 +1293,18 @@ mod tests {
         // softclip_identity
         use rustmanian_mismatch::SoftclipComparison;
         let comps = vec![
-            SoftclipComparison { read_pos: 0, ref_pos: 0, read_base: 'A', ref_base: 'A' },
-            SoftclipComparison { read_pos: 1, ref_pos: 1, read_base: 'C', ref_base: 'T' },
+            SoftclipComparison {
+                read_pos: 0,
+                ref_pos: 0,
+                read_base: 'A',
+                ref_base: 'A',
+            },
+            SoftclipComparison {
+                read_pos: 1,
+                ref_pos: 1,
+                read_base: 'C',
+                ref_base: 'T',
+            },
         ];
         assert!((softclip_identity(&comps).unwrap() - 0.5).abs() < 1e-9);
         assert!(softclip_identity(&[]).is_none());
@@ -1290,9 +1323,15 @@ mod tests {
         // Methylation, no collapse: A>G stays A>G.
         assert_eq!(build_base_change(1, 'A', 'G', false, true, None), "A>G");
         // Methylation mode, CpG context passed as Some('G'): still collapses.
-        assert_eq!(build_base_change(1, 'C', 'T', false, true, Some('G')), "C>C");
+        assert_eq!(
+            build_base_change(1, 'C', 'T', false, true, Some('G')),
+            "C>C"
+        );
         // The current implementation collapses this case as well.
-        assert_eq!(build_base_change(2, 'G', 'A', false, true, Some('A')), "G>G");
+        assert_eq!(
+            build_base_change(2, 'G', 'A', false, true, Some('A')),
+            "G>G"
+        );
     }
 
     #[test]
@@ -1351,11 +1390,8 @@ mod tests {
         let header_view = HeaderView::from_header(&header);
 
         // 4M: bases ACGT vs ref ACCT → position 2 is G vs C (mismatch).
-        let record = Record::from_sam(
-            &header_view,
-            b"r1\t0\tchr1\t1\t60\t4M\t*\t0\t0\tACGT\tIIII",
-        )
-        .unwrap();
+        let record =
+            Record::from_sam(&header_view, b"r1\t0\tchr1\t1\t60\t4M\t*\t0\t0\tACGT\tIIII").unwrap();
 
         let mut reference = HashMap::new();
         reference.insert("chr1".to_string(), b"ACCTACGT".to_vec());
@@ -1389,7 +1425,9 @@ mod tests {
         assert!(total > 0);
 
         // There should be a C>G (or strand-equivalent) mismatch key.
-        let has_mismatch = counts.keys().any(|k| k.base_change.contains('>') && &k.base_change[0..1] != &k.base_change[2..3]);
+        let has_mismatch = counts
+            .keys()
+            .any(|k| k.base_change.contains('>') && &k.base_change[0..1] != &k.base_change[2..3]);
         assert!(has_mismatch);
     }
 
@@ -1405,8 +1443,7 @@ mod tests {
         let make_record = |flags: u16| {
             Record::from_sam(
                 &header_view,
-                &format!("r\t{flags}\tchr1\t1\t60\t4M\t*\t0\t0\tACGT\tIIII")
-                    .into_bytes(),
+                &format!("r\t{flags}\tchr1\t1\t60\t4M\t*\t0\t0\tACGT\tIIII").into_bytes(),
             )
             .unwrap()
         };
@@ -1471,7 +1508,12 @@ mod tests {
             BedInterval { start: 45, end: 65 },
         ];
         let mut cursor = 0usize;
-        assert!(should_skip_whole_read_for_bed(&record, true, &intervals, &mut cursor));
+        assert!(should_skip_whole_read_for_bed(
+            &record,
+            true,
+            &intervals,
+            &mut cursor
+        ));
         // Cursor should have advanced past the first interval.
         assert!(cursor >= 1);
     }
@@ -1486,11 +1528,8 @@ mod tests {
         let header_view = HeaderView::from_header(&header);
 
         // 4M: positions 0-3.
-        let record = Record::from_sam(
-            &header_view,
-            b"r\t0\tchr1\t1\t60\t4M\t*\t0\t0\tACGT\tIIII",
-        )
-        .unwrap();
+        let record =
+            Record::from_sam(&header_view, b"r\t0\tchr1\t1\t60\t4M\t*\t0\t0\tACGT\tIIII").unwrap();
 
         let mut reference = HashMap::new();
         reference.insert("chr1".to_string(), b"ACGTACGT".to_vec());
@@ -1498,9 +1537,7 @@ mod tests {
         tid_to_name.insert(0i32, "chr1".to_string());
 
         // Mask positions 2 and 3 (0-based).
-        let bed_intervals = vec![
-            BedInterval { start: 2, end: 4 },
-        ];
+        let bed_intervals = vec![BedInterval { start: 2, end: 4 }];
 
         let context = ProcessingContext {
             reference: &reference,
@@ -1798,7 +1835,13 @@ mod tests {
             ..config_cut
         };
         let mut stretch_counts: HashMap<InsertKey, usize> = HashMap::new();
-        compare_record_to_reference(&read2, &context, config_stretch, mate_end, &mut stretch_counts);
+        compare_record_to_reference(
+            &read2,
+            &context,
+            config_stretch,
+            mate_end,
+            &mut stretch_counts,
+        );
         let stretch_total: usize = stretch_counts.values().sum();
 
         // Stretch should have >= Cut (overlap bases not dropped).
@@ -1817,11 +1860,8 @@ mod tests {
         // Sequence: T at position 0 vs reference C at position 0.
         // Reference: CG... so next base is G → CpG context.
         // With cpg_only=true, methylation=true: C>T should collapse to C>C.
-        let record = Record::from_sam(
-            &header_view,
-            b"r1\t0\tchr1\t1\t60\t2M\t*\t0\t0\tTG\tII",
-        )
-        .unwrap();
+        let record =
+            Record::from_sam(&header_view, b"r1\t0\tchr1\t1\t60\t2M\t*\t0\t0\tTG\tII").unwrap();
 
         let mut reference = HashMap::new();
         reference.insert("chr1".to_string(), b"CGTACGT".to_vec());
@@ -1853,7 +1893,11 @@ mod tests {
 
         // The C>T at a CpG site should have been collapsed to C>C.
         let has_cpg_collapse = counts.keys().any(|k| k.base_change == "C>C");
-        assert!(has_cpg_collapse, "Expected C>C key for CpG collapse, got: {:?}", counts);
+        assert!(
+            has_cpg_collapse,
+            "Expected C>C key for CpG collapse, got: {:?}",
+            counts
+        );
     }
 
     #[test]
@@ -1873,9 +1917,19 @@ mod tests {
 
         let mut cursor = 0usize;
         // filter_whole_reads=false → always false.
-        assert!(!should_skip_whole_read_for_bed(&record, false, &[], &mut cursor));
+        assert!(!should_skip_whole_read_for_bed(
+            &record,
+            false,
+            &[],
+            &mut cursor
+        ));
         // empty BED → always false.
-        assert!(!should_skip_whole_read_for_bed(&record, true, &[], &mut cursor));
+        assert!(!should_skip_whole_read_for_bed(
+            &record,
+            true,
+            &[],
+            &mut cursor
+        ));
     }
 
     // ── count_softclip_mismatches (via process_record) ──────────────────────
@@ -1936,10 +1990,14 @@ mod tests {
         );
 
         // All bases match → no cross-base substitutions.
-        let has_substitution = local_counts
-            .keys()
-            .any(|k| k.mismatch_type.len() == 3 && &k.mismatch_type[0..1] != &k.mismatch_type[2..3]);
-        assert!(!has_substitution, "unexpected substitution mismatches: {:?}", local_counts);
+        let has_substitution = local_counts.keys().any(|k| {
+            k.mismatch_type.len() == 3 && &k.mismatch_type[0..1] != &k.mismatch_type[2..3]
+        });
+        assert!(
+            !has_substitution,
+            "unexpected substitution mismatches: {:?}",
+            local_counts
+        );
 
         // Right clip CC vs TT → 0% match → below threshold → not added.
         let record2 = Record::from_sam(
@@ -1960,9 +2018,13 @@ mod tests {
             &config,
             Some(&mut depth2),
         );
-        let has_sub2 = local2
-            .keys()
-            .any(|k| k.mismatch_type.len() == 3 && &k.mismatch_type[0..1] != &k.mismatch_type[2..3]);
-        assert!(!has_sub2, "unexpected substitution mismatches: {:?}", local2);
+        let has_sub2 = local2.keys().any(|k| {
+            k.mismatch_type.len() == 3 && &k.mismatch_type[0..1] != &k.mismatch_type[2..3]
+        });
+        assert!(
+            !has_sub2,
+            "unexpected substitution mismatches: {:?}",
+            local2
+        );
     }
 }

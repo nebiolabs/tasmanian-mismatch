@@ -130,8 +130,13 @@ pub fn create_mismatch_key(
     } else {
         r_pos
     };
-    let mode_adjusted_r_pos =
-        correct_read_len_with_mode(adjusted_r_pos, seq_len, config.mode_len, config.use_insert_mode, read_ctx.read_num);
+    let mode_adjusted_r_pos = correct_read_len_with_mode(
+        adjusted_r_pos,
+        seq_len,
+        config.mode_len,
+        config.use_insert_mode,
+        read_ctx.read_num,
+    );
 
     MismatchKey {
         mismatch_type: format!(
@@ -198,14 +203,7 @@ pub fn compare_and_count(
     };
 
     // Count both matches and mismatches
-    let key = create_mismatch_key(
-        read_base,
-        ref_base,
-        r_pos,
-        genome_pos,
-        read_ctx,
-        config,
-    );
+    let key = create_mismatch_key(read_base, ref_base, r_pos, genome_pos, read_ctx, config);
     *local_counts.entry(key.clone()).or_insert(0) += 1;
 
     // Track genomic position for mismatches only (if genomic_counts is provided)
@@ -393,19 +391,13 @@ fn count_softclip_mismatches(
         if read_base == ref_base {
             matching_bases += 1;
         } else {
-            let key = create_mismatch_key(
-                read_base,
-                ref_base,
-                r_pos,
-                genome_pos,
-                read_ctx,
-                config,
-            );
+            let key = create_mismatch_key(read_base, ref_base, r_pos, genome_pos, read_ctx, config);
             temp_mismatch_keys.push(key);
         }
     }
 
-    if total_bases > 0 && (matching_bases as f64 / total_bases as f64) >= config.softclip_threshold {
+    if total_bases > 0 && (matching_bases as f64 / total_bases as f64) >= config.softclip_threshold
+    {
         for key in temp_mismatch_keys {
             *local_counts.entry(key).or_insert(0) += 1;
         }
@@ -503,7 +495,10 @@ pub fn process_overlap_region(
     for (genome_pos, (r1_pos, r1_base, r1_qual)) in read1_map.iter() {
         if let Some((r2_pos, r2_base, r2_qual)) = read2_map.get(genome_pos) {
             // Both reads cover this position - check for inconsistency
-            if r1_qual >= &config.min_base_quality && r2_qual >= &config.min_base_quality && r1_base != r2_base {
+            if r1_qual >= &config.min_base_quality
+                && r2_qual >= &config.min_base_quality
+                && r1_base != r2_base
+            {
                 // Bases disagree - record inconsistency
                 let r1_char = base_to_char(*r1_base).unwrap_or('N');
                 let r2_char = base_to_char(*r2_base).unwrap_or('N');
@@ -1122,7 +1117,9 @@ pub fn base_position_for_mode(
     fragment_len: Option<usize>,
 ) -> usize {
     match config.position_mode {
-        PositionMode::Read => read_mode_read_position(read_pos, seq_len, is_reverse, config.mode_len),
+        PositionMode::Read => {
+            read_mode_read_position(read_pos, seq_len, is_reverse, config.mode_len)
+        }
         PositionMode::Insert => insert_mode_read_position(
             is_first_in_reference,
             read_pos,
@@ -1143,10 +1140,7 @@ pub fn configure_thread_pool(threads: usize) {
     }
 }
 
-pub fn build_tid_map_and_regions(
-    bam_path: &str,
-    region_size: usize,
-) -> (TidNameMap, RegionList) {
+pub fn build_tid_map_and_regions(bam_path: &str, region_size: usize) -> (TidNameMap, RegionList) {
     let bam = Reader::from_path(bam_path).expect("Failed to open BAM file");
 
     let tid_to_name: TidNameMap = Arc::new(
