@@ -289,7 +289,7 @@ mod tests {
                 base_change: "C>A".to_string(),
                 read_num: 1,
                 base_position: 10,
-                reference_order: 1,
+                reference_order: ReferenceOrder::First,
             },
             2,
         );
@@ -298,7 +298,7 @@ mod tests {
                 base_change: "C>T".to_string(),
                 read_num: 1,
                 base_position: 10,
-                reference_order: 1,
+                reference_order: ReferenceOrder::First,
             },
             3,
         );
@@ -307,7 +307,7 @@ mod tests {
                 base_change: "C>C".to_string(),
                 read_num: 1,
                 base_position: 10,
-                reference_order: 1,
+                reference_order: ReferenceOrder::First,
             },
             5,
         );
@@ -318,7 +318,7 @@ mod tests {
                 base_change: "T>A".to_string(),
                 read_num: 1,
                 base_position: 10,
-                reference_order: 1,
+                reference_order: ReferenceOrder::First,
             },
             4,
         );
@@ -327,7 +327,7 @@ mod tests {
                 base_change: "T>T".to_string(),
                 read_num: 1,
                 base_position: 10,
-                reference_order: 1,
+                reference_order: ReferenceOrder::First,
             },
             6,
         );
@@ -338,19 +338,19 @@ mod tests {
             base_change: "C>T".to_string(),
             read_num: 1,
             base_position: 10,
-            reference_order: 1,
+            reference_order: ReferenceOrder::First,
         };
         let c_to_a = InsertKey {
             base_change: "C>A".to_string(),
             read_num: 1,
             base_position: 10,
-            reference_order: 1,
+            reference_order: ReferenceOrder::First,
         };
         let t_to_a = InsertKey {
             base_change: "T>A".to_string(),
             read_num: 1,
             base_position: 10,
-            reference_order: 1,
+            reference_order: ReferenceOrder::First,
         };
 
         // C group denominator: 2 + 3 + 5 = 10.0
@@ -369,7 +369,7 @@ mod tests {
                 base_change: "C>T".to_string(),
                 read_num: 1,
                 base_position: 7,
-                reference_order: 1,
+                reference_order: ReferenceOrder::First,
             },
             4,
         );
@@ -378,7 +378,7 @@ mod tests {
                 base_change: "C>C".to_string(),
                 read_num: 1,
                 base_position: 7,
-                reference_order: 1,
+                reference_order: ReferenceOrder::First,
             },
             6,
         );
@@ -388,7 +388,7 @@ mod tests {
                 base_change: "C>T".to_string(),
                 read_num: 2,
                 base_position: 7,
-                reference_order: 1,
+                reference_order: ReferenceOrder::First,
             },
             1,
         );
@@ -397,7 +397,7 @@ mod tests {
                 base_change: "C>C".to_string(),
                 read_num: 2,
                 base_position: 7,
-                reference_order: 1,
+                reference_order: ReferenceOrder::First,
             },
             3,
         );
@@ -408,13 +408,13 @@ mod tests {
             base_change: "C>T".to_string(),
             read_num: 1,
             base_position: 7,
-            reference_order: 1,
+            reference_order: ReferenceOrder::First,
         };
         let r2_c_to_t = InsertKey {
             base_change: "C>T".to_string(),
             read_num: 2,
             base_position: 7,
-            reference_order: 1,
+            reference_order: ReferenceOrder::First,
         };
 
         // R1 C group denominator: 4 + 6 = 10.0
@@ -1146,7 +1146,7 @@ mod tests {
                 base_change: "A>T".to_string(),
                 read_num: 1,
                 base_position: 4,
-                reference_order: 1,
+                reference_order: ReferenceOrder::First,
             },
             3,
         );
@@ -1155,7 +1155,7 @@ mod tests {
                 base_change: "A>A".to_string(),
                 read_num: 1,
                 base_position: 4,
-                reference_order: 1,
+                reference_order: ReferenceOrder::First,
             },
             7,
         );
@@ -1281,10 +1281,10 @@ mod tests {
     #[test]
     fn test_processing_position_helpers() {
         // insert_mode_read_position: non-stretch, first read.
-        assert_eq!(insert_mode_read_position(true, 0, 10, 10, false, None), 1);
-        assert_eq!(insert_mode_read_position(true, 9, 10, 10, false, None), 10);
+        assert_eq!(insert_mode_read_position(ReferenceOrder::First, 0, 10, 10, false, None), 1);
+        assert_eq!(insert_mode_read_position(ReferenceOrder::First, 9, 10, 10, false, None), 10);
         // second read, non-stretch.
-        assert_eq!(insert_mode_read_position(false, 8, 10, 12, false, None), 23);
+        assert_eq!(insert_mode_read_position(ReferenceOrder::Second, 8, 10, 12, false, None), 23);
 
         // read_mode_read_position: forward, first half.
         assert_eq!(read_mode_read_position(2, 10, false, 10), 3);
@@ -1308,7 +1308,7 @@ mod tests {
             position_mode: PositionMode::Read,
             overlap_mode: OverlapMode::Cut,
         };
-        let pos = base_position_for_mode(&config, 2, 10, false, true, false, None);
+        let pos = base_position_for_mode(&config, 2, 10, false, ReferenceOrder::First, false, None);
         assert_eq!(pos, read_mode_read_position(2, 10, false, 10));
     }
 
@@ -1408,7 +1408,7 @@ mod tests {
         assert_eq!(record_read_num(&r1), 1);
 
         // read_is_first_in_reference: unpaired returns true.
-        assert!(read_is_first_in_reference(&unpaired));
+        assert_eq!(read_is_first_in_reference(&unpaired), ReferenceOrder::First);
     }
 
     #[test]

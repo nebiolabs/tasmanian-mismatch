@@ -8,7 +8,7 @@ use crate::methylation::adjust_methylation_base;
 use crate::types::{
     GenomicMismatchKey, GenomicMismatchValue, GenomicRegion, InconsistencyKey, InsertKey,
     MismatchKey, OverlapMode, PositionMode, ProcessingConfig, ReadInfo, ReferenceGenome,
-    RescalingMatrix, SoftclipComparison,
+    ReferenceOrder, RescalingMatrix, SoftclipComparison,
 };
 use crate::utils::{base_to_char, calculate_end_pos, complement, correct_read_len_with_mode};
 use rayon;
@@ -1056,7 +1056,7 @@ pub fn merge_reads_into_insert_position_mode(
 }
 
 pub fn insert_mode_read_position(
-    is_first: bool,
+    order: ReferenceOrder,
     read_pos: usize,
     seq_len: usize,
     max_read_len: usize,
@@ -1067,8 +1067,9 @@ pub fn insert_mode_read_position(
     let trailing_bases = seq_len - (read_pos + 1);
 
     if stretch && seq_len > 1 {
-        // Cubic smooth-step: s = t^2(3 - 2t), maps [0,1] to [0,1].
-        if is_first {
+        if order == ReferenceOrder::First {
+
+            // Cubic smooth-step: s = t^2(3 - 2t), maps [0,1] to [0,1].let t = read_pos as f64 / (seq_len - 1) as f64;
             let t = read_pos as f64 / (seq_len - 1) as f64;
             let s = t * t * (3.0 - 2.0 * t);
             1 + (s * (max_read_len - 1) as f64).round() as usize
@@ -1078,7 +1079,7 @@ pub fn insert_mode_read_position(
             let s = t * t * (3.0 - 2.0 * t);
             2 * max_read_len - (s * (max_read_len - 1) as f64).round() as usize
         }
-    } else if is_first {
+    } else if order == ReferenceOrder::First {
         if read_pos >= seq_len / 2 && short_fragment {
             2 * max_read_len - trailing_bases
         } else {
@@ -1112,7 +1113,7 @@ pub fn base_position_for_mode(
     read_pos: usize,
     seq_len: usize,
     is_reverse: bool,
-    is_first_in_reference: bool,
+    reference_order: ReferenceOrder,
     stretch: bool,
     fragment_len: Option<usize>,
 ) -> usize {
@@ -1121,7 +1122,7 @@ pub fn base_position_for_mode(
             read_mode_read_position(read_pos, seq_len, is_reverse, config.mode_len)
         }
         PositionMode::Insert => insert_mode_read_position(
-            is_first_in_reference,
+            reference_order,
             read_pos,
             seq_len,
             config.mode_len,
@@ -1382,20 +1383,22 @@ pub fn record_read_num(record: &Record) -> u8 {
     }
 }
 
-pub fn read_is_first_in_reference(record: &Record) -> bool {
+pub fn read_is_first_in_reference(record: &Record) -> ReferenceOrder {
     if !record.is_paired() || record.is_mate_unmapped() {
-        return true;
+        return ReferenceOrder::First;
     }
 
     let read_coord = (record.tid(), record.pos());
     let mate_coord = (record.mtid(), record.mpos());
 
     if read_coord < mate_coord {
-        true
+        ReferenceOrder::First
     } else if read_coord > mate_coord {
-        false
+        ReferenceOrder::Second
+    } else if record_read_num(record) == 1 {
+        ReferenceOrder::First
     } else {
-        record_read_num(record) == 1
+        ReferenceOrder::Second
     }
 }
 
@@ -1472,7 +1475,7 @@ pub fn compare_record_to_reference(
     let qual = record.qual();
     let seq_len = seq.len();
     let read_num = record_read_num(record);
-    let is_first_in_reference = read_is_first_in_reference(record);
+    let reference_order = read_is_first_in_reference(record);
     let overlap = overlap_interval(record, mate_end);
     let softclip_comparisons = qualifying_softclip_comparisons(record, ref_seq, 0.66);
     let stretch = config.overlap_mode == OverlapMode::Stretch;
@@ -1510,8 +1513,6 @@ pub fn compare_record_to_reference(
                         continue;
                     };
 
-                    let reference_order = if is_first_in_reference { 1u8 } else { 2u8 };
-
                     let next_base_for_cpg_mode = if config.cpg_only {
                         if record.is_reverse() {
                             gp.checked_sub(1)
@@ -1539,7 +1540,7 @@ pub fn compare_record_to_reference(
                         rp,
                         seq_len,
                         record.is_reverse(),
-                        is_first_in_reference,
+                        reference_order,
                         stretch,
                         estimated_fragment_length(record, mate_end),
                     );
@@ -1567,7 +1568,6 @@ pub fn compare_record_to_reference(
         }
     }
 
-    let reference_order = if is_first_in_reference { 1u8 } else { 2u8 };
     let frag_len = estimated_fragment_length(record, mate_end);
     for comparison in softclip_comparisons {
         if comparison.read_pos >= qual.len() || qual[comparison.read_pos] < config.min_base_quality
@@ -1588,7 +1588,7 @@ pub fn compare_record_to_reference(
             comparison.read_pos,
             seq_len,
             record.is_reverse(),
-            is_first_in_reference,
+            reference_order,
             stretch,
             frag_len,
         );

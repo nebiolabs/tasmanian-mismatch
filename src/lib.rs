@@ -45,7 +45,7 @@ pub use processing::{
 pub use types::{
     Args, DiscountKey, GenomicMismatchKey, GenomicMismatchValue, GenomicRegion, InconsistencyKey,
     InsertKey, MismatchKey, OverlapMode, PositionMode, ProcessingConfig, ReadInfo, ReferenceGenome,
-    SoftclipComparison,
+    ReferenceOrder, SoftclipComparison,
 };
 pub use utils::{
     base_to_char, calculate_end_pos, complement, correct_read_len_with_mode, parse_md_tag,

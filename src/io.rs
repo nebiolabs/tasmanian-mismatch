@@ -2,7 +2,7 @@
 
 use crate::types::{
     DiscountKey, GenomicMismatchKey, InconsistencyKey, InsertKey, MismatchKey, PositionMode,
-    ReferenceGenome, RescalingMatrix,
+    ReferenceGenome, ReferenceOrder, RescalingMatrix,
 };
 use bio::io::fasta;
 use rust_htslib::bam::{Read, Reader};
@@ -332,13 +332,13 @@ pub fn apply_external_discounts(
             base_change: discount_key.base_change.clone(),
             read_num: discount_key.read_num,
             base_position: discount_key.base_position,
-            reference_order: 1,
+            reference_order: ReferenceOrder::First,
         };
         let k2 = InsertKey {
             base_change: discount_key.base_change,
             read_num: discount_key.read_num,
             base_position: discount_key.base_position,
-            reference_order: 2,
+            reference_order: ReferenceOrder::Second,
         };
 
         let c1 = counts.get(&k1).copied().unwrap_or(0);
@@ -358,7 +358,7 @@ pub fn apply_external_discounts(
         }
 
         if remaining > 0 {
-            let second_key = if first_key.reference_order == 1 {
+            let second_key = if first_key.reference_order == ReferenceOrder::First {
                 &k2
             } else {
                 &k1

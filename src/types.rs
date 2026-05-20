@@ -60,13 +60,27 @@ pub struct GenomicMismatchValue {
     pub count: usize, // Total count (should match mismatch_keys.len())
 }
 
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Ord, PartialOrd)]
+pub enum ReferenceOrder {
+    First,
+    Second,
+}
+
+impl std::fmt::Display for ReferenceOrder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReferenceOrder::First => write!(f, "1"),
+            ReferenceOrder::Second => write!(f, "2"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct InsertKey {
     pub base_change: String,
     pub read_num: u8,
     pub base_position: usize,
-    /// 1 = first read in reference coordinates, 2 = second
-    pub reference_order: u8,
+    pub reference_order: ReferenceOrder,
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
