@@ -1068,7 +1068,6 @@ pub fn insert_mode_read_position(
 
     if stretch && seq_len > 1 {
         if order == ReferenceOrder::First {
-
             // Cubic smooth-step: s = t^2(3 - 2t), maps [0,1] to [0,1].let t = read_pos as f64 / (seq_len - 1) as f64;
             let t = read_pos as f64 / (seq_len - 1) as f64;
             let s = t * t * (3.0 - 2.0 * t);

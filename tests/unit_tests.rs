@@ -1281,10 +1281,19 @@ mod tests {
     #[test]
     fn test_processing_position_helpers() {
         // insert_mode_read_position: non-stretch, first read.
-        assert_eq!(insert_mode_read_position(ReferenceOrder::First, 0, 10, 10, false, None), 1);
-        assert_eq!(insert_mode_read_position(ReferenceOrder::First, 9, 10, 10, false, None), 10);
+        assert_eq!(
+            insert_mode_read_position(ReferenceOrder::First, 0, 10, 10, false, None),
+            1
+        );
+        assert_eq!(
+            insert_mode_read_position(ReferenceOrder::First, 9, 10, 10, false, None),
+            10
+        );
         // second read, non-stretch.
-        assert_eq!(insert_mode_read_position(ReferenceOrder::Second, 8, 10, 12, false, None), 23);
+        assert_eq!(
+            insert_mode_read_position(ReferenceOrder::Second, 8, 10, 12, false, None),
+            23
+        );
 
         // read_mode_read_position: forward, first half.
         assert_eq!(read_mode_read_position(2, 10, false, 10), 3);
