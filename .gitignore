@@ -6,12 +6,14 @@
 tasmanian/tests/*html
 tasmanian/tests/new_test.table.csv
 tasmanian_venv*
-*pyc 
-*table 
-*metrics 
-*html
+*pyc
+*table
+*metrics
 *summary
 *bam
 tasmanian/test_suite/Damage-estimator
 target/*
 test_output/*
+# pixi environments
+.pixi/*
+!.pixi/config.toml

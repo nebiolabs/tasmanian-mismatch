@@ -1,10 +1,18 @@
 # Rustmanian-Mismatch
 
-Rustmanian-Mismatch is a Rust toolkit for mismatch analysis on indexed BAM files against a reference FASTA. The repository currently builds three binaries:
+Tasmanian-Mismatch is a toolkit for mismatch analysis on indexed BAM files against a reference FASTA. The repository currently builds three binaries:
 
 - `tasmanian-mismatch`: count mismatches by read position or fragment position
 - `tasmanian-diagnostics`: report genomic mismatch sites, overlap inconsistencies, and read-position discount tables
 - `tasmanian-rescale-quality`: rescale BAM quality scores from a tab-delimited matrix
+
+## Example Visualization
+![Visualization](test_data_visualization.png)
+[Interactive version](test_data_visualization.html)
+Create this using
+```bash
+pixi run python scripts/visualize.py tests/fixtures/test_data.tsv
+```
 
 ## Build
 
@@ -309,5 +317,4 @@ cargo test --all-targets
 - `reference_order` in mismatch output indicates which read in a pair appears first in reference coordinates.
 
 ## License
-
 AGPL v3

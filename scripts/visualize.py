@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 from typing import Any, Literal
 
-import pandas as pd
+import polars as pl
 from bokeh.embed import file_html
 from bokeh.layouts import column, row
 from bokeh.models import (
@@ -34,6 +34,8 @@ from bokeh.models import (
     HoverTool,
     Legend,
     LegendItem,
+    MultiChoice,
+    RadioGroup,
     Spacer,
     InlineStyleSheet,
 )
@@ -79,13 +81,13 @@ PAGE_TEMPLATE = """\
 """
 
 
-def load_data(path: str) -> pd.DataFrame:
-    df = pd.read_csv(path, sep="\t")
+def load_data(path: str) -> pl.DataFrame:
+    df = pl.read_csv(path, separator="\t")
     pos_col = [c for c in df.columns if c in ("read_position", "fragment_position")]
     if not pos_col:
-        sys.exit(f"Expected 'read_position' or 'fragment_position' column. Got: {list(df.columns)}")
-    df = df.rename(columns={pos_col[0]: "position"})
-    df["is_insert_mode"] = pos_col[0] == "fragment_position"
+        sys.exit(f"Expected 'read_position' or 'fragment_position' column. Got: {df.columns}")
+    df = df.rename({pos_col[0]: "position"})
+    df = df.with_columns(pl.lit(pos_col[0] == "fragment_position").alias("is_insert_mode"))
     return df
 
 
@@ -113,7 +115,7 @@ def make_renderer_pair(
 ):
     line = p.line(
         "position", "y", source=source,
-        line_width=8, color=color, alpha=line_alpha,
+        line_width=2, color=color, alpha=line_alpha,
         line_dash=dash,
         visible=visible,
     )
@@ -178,9 +180,9 @@ def make_large_button(
 
 
 def js_add_visibility_bundle(js_parts: list[str], line_key: str, point_key: str, bar_key: str, condition: str):
-    js_parts.append(f"{line_key}.visible = !!(({condition}) * (!use_bars));")
-    js_parts.append(f"{point_key}.visible = !!(({condition}) * (!use_bars));")
-    js_parts.append(f"{bar_key}.visible = !!(({condition}) * use_bars);")
+    js_parts.append(f"{line_key}.visible = !!(({condition}) * show_line);")
+    js_parts.append(f"{point_key}.visible = !!(({condition}) * show_points);")
+    js_parts.append(f"{bar_key}.visible = !!(({condition}) * show_bars);")
 
 
 def js_add_aggregate_from_sources(
@@ -253,14 +255,18 @@ def build_interaction_code(
 ) -> str:
     js_parts: list[str] = []
     js_parts.append("var use_norm = norm_cb.active.includes(0);")
-    js_parts.append("var use_bars = plot_mode_cb.active.includes(0);")
+    js_parts.append("var plot_mode = plot_mode_cb.active;")
+    js_parts.append("var show_bars   = (plot_mode === 0);")
+    js_parts.append("var show_points = (plot_mode === 1) || (plot_mode === 3);")
+    js_parts.append("var show_line   = (plot_mode === 2) || (plot_mode === 3);")
     js_parts.append("var sum_mm = sum_mm_cb.active.includes(0);")
     if has_read_checkbox:
         js_parts.append("var sum_reads = sum_rd_cb.active.includes(0);")
     else:
         js_parts.append("var sum_reads = false;")
-    js_parts.append("var mm_active = mismatch_cb.active;")
-    js_parts.append("var ref_active = ref_order_cb.active;")
+    js_parts.append("var mm_active = mismatch_cb.value;")
+    ref_all_js = "[" + ", ".join(str(i) for i in range(len(reference_orders_available))) + "]"
+    js_parts.append(f"var ref_active = {ref_all_js};")
     if has_read_checkbox:
         js_parts.append("var rd_active = read_cb.active;")
 
@@ -278,7 +284,8 @@ def build_interaction_code(
         source_terms = []
         for bc_idx, bc in enumerate(MISMATCHES):
             src_key = f"src_r{reads_available[rn_idx]}_{bc.replace('>','_')}_rf{ref_idx}"
-            source_terms.append((f"mm_active.includes({bc_idx})", src_key))
+            bc_key = bc.replace('>', '_')
+            source_terms.append((f"mm_active.includes('{bc_key}')", src_key))
         js_add_aggregate_from_sources(
             js_parts=js_parts,
             out_src_key=src_key_agg,
@@ -294,7 +301,8 @@ def build_interaction_code(
         source_terms = []
         for bc_idx, bc in enumerate(MISMATCHES):
             src_key_comb = f"src_r{reads_available[rn_idx]}_{bc.replace('>','_')}_comb"
-            source_terms.append((f"mm_active.includes({bc_idx})", src_key_comb))
+            bc_key = bc.replace('>', '_')
+            source_terms.append((f"mm_active.includes('{bc_key}')", src_key_comb))
         js_add_aggregate_from_sources(
             js_parts=js_parts,
             out_src_key=src_key_agg_c,
@@ -345,18 +353,20 @@ def build_interaction_code(
 
     # Individual mismatch renderers visibility.
     for rn_idx, bc_idx, ref_idx, key_l, key_c, key_b in renderer_keys_individual:
+        bc_key = MISMATCHES[bc_idx].replace('>', '_')
         if has_read_checkbox:
-            cond = f"(!sum_mm) * (!use_combined) * (mm_active.includes({bc_idx})) * (rd_active.includes({rn_idx})) * (ref_active.includes({ref_idx}))"
+            cond = f"(!sum_mm) * (!use_combined) * (mm_active.includes('{bc_key}')) * (rd_active.includes({rn_idx})) * (ref_active.includes({ref_idx}))"
         else:
-            cond = f"(!sum_mm) * (!use_combined) * (mm_active.includes({bc_idx})) * (ref_active.includes({ref_idx}))"
+            cond = f"(!sum_mm) * (!use_combined) * (mm_active.includes('{bc_key}')) * (ref_active.includes({ref_idx}))"
         js_add_visibility_bundle(js_parts, key_l, key_c, key_b, cond)
 
     # Combined-reference mismatch renderers visibility.
     for rn_idx, bc_idx, key_l_comb, key_c_comb, key_b_comb in renderer_keys_combined:
+        bc_key = MISMATCHES[bc_idx].replace('>', '_')
         if has_read_checkbox:
-            cond_comb = f"(!sum_mm) * (use_combined) * (mm_active.includes({bc_idx})) * (rd_active.includes({rn_idx}))"
+            cond_comb = f"(!sum_mm) * (use_combined) * (mm_active.includes('{bc_key}')) * (rd_active.includes({rn_idx}))"
         else:
-            cond_comb = f"(!sum_mm) * (use_combined) * (mm_active.includes({bc_idx}))"
+            cond_comb = f"(!sum_mm) * (use_combined) * (mm_active.includes('{bc_key}'))"
         js_add_visibility_bundle(js_parts, key_l_comb, key_c_comb, key_b_comb, cond_comb)
 
     # Aggregate renderers visibility in individual-reference mode.
@@ -394,31 +404,38 @@ def build_interaction_code(
     return "\n".join(js_parts)
 
 
-def prepare_plot_data(df: pd.DataFrame):
-    is_insert = df["is_insert_mode"].iloc[0]
+def prepare_plot_data(df: pl.DataFrame):
+    is_insert = df["is_insert_mode"][0]
     y_raw_field = "count" if "count" in df.columns else "normalized_frequency"
 
-    df_all = df.copy()
-    df_all["source_base"] = df_all["base_change"].str.split(">").str[0]
+    df_all = df.with_columns(
+        pl.col("base_change").str.split(">").list.first().alias("source_base")
+    )
 
     # Per read/reference_order/position/source_base denominator includes self-matches.
-    denom_individual = df_all.groupby(
-        ["read_num", "reference_order", "position", "source_base"], dropna=False
-    )[y_raw_field].transform("sum")
-    df_all["normalized_count"] = df_all[y_raw_field] / denom_individual.where(denom_individual != 0)
-    df_all["normalized_count"] = df_all["normalized_count"].fillna(0.0)
+    df_all = df_all.with_columns(
+        pl.when(
+            pl.col(y_raw_field).sum().over(["read_num", "reference_order", "position", "source_base"]) != 0
+        )
+        .then(
+            pl.col(y_raw_field)
+            / pl.col(y_raw_field).sum().over(["read_num", "reference_order", "position", "source_base"])
+        )
+        .otherwise(0.0)
+        .alias("normalized_count")
+    )
 
     # Keep only mismatches (drop self-matches like A>A) for plotting.
-    df_mm = df_all[df_all["base_change"].isin(MISMATCHES)].copy()
-    reads_available = sorted(df_mm["read_num"].unique())
-    reference_orders_available = sorted(df_mm["reference_order"].unique())
+    df_mm = df_all.filter(pl.col("base_change").is_in(MISMATCHES))
+    reads_available = sorted(df_mm["read_num"].unique().to_list())
+    reference_orders_available = sorted(df_mm["reference_order"].unique().to_list())
 
     return is_insert, y_raw_field, df_mm, df_all, reads_available, reference_orders_available
 
 
 def build_base_sources(
-    df_mm: pd.DataFrame,
-    df_all: pd.DataFrame,
+    df_mm: pl.DataFrame,
+    df_all: pl.DataFrame,
     reads_available,
     reference_orders_available,
     y_raw_field: str,
@@ -433,44 +450,52 @@ def build_base_sources(
             sources[rn][bc] = {}
 
             for ref_ord in reference_orders_available:
-                sub = df_mm[
-                    (df_mm["read_num"] == rn)
-                    & (df_mm["base_change"] == bc)
-                    & (df_mm["reference_order"] == ref_ord)
-                ].sort_values("position")
+                sub = df_mm.filter(
+                    (pl.col("read_num") == rn)
+                    & (pl.col("base_change") == bc)
+                    & (pl.col("reference_order") == ref_ord)
+                ).sort("position")
                 sources[rn][bc][ref_ord] = ColumnDataSource(data=dict(
-                    position=sub["position"].tolist(),
-                    y=sub[y_raw_field].tolist(),
-                    y_count=sub[y_raw_field].tolist(),
-                    y_norm=sub["normalized_count"].tolist(),
+                    position=sub["position"].to_list(),
+                    y=sub[y_raw_field].to_list(),
+                    y_count=sub[y_raw_field].to_list(),
+                    y_norm=sub["normalized_count"].to_list(),
                     base_change=[bc] * len(sub),
                     read_num=[rn] * len(sub),
                     reference_order=[ref_ord] * len(sub),
                 ))
 
             # Combined source: sum all reference_orders for this read and mismatch.
-            sub_num = df_mm[(df_mm["read_num"] == rn) & (df_mm["base_change"] == bc)].groupby(
-                "position", as_index=False
-            )[y_raw_field].sum()
-
-            sub_den = df_all[df_all["read_num"] == rn].copy()
-            sub_den["source_base"] = sub_den["base_change"].str.split(">").str[0]
-            sub_den = sub_den.groupby(["position", "source_base"], as_index=False)[y_raw_field].sum()
-            source_base = bc.split(">")[0]
-            sub_den = sub_den[sub_den["source_base"] == source_base][["position", y_raw_field]]
-            sub_den = sub_den.rename(columns={y_raw_field: "denom"})
-
-            sub_combined = sub_num.merge(sub_den, on="position", how="left")
-            sub_combined["y_norm"] = sub_combined[y_raw_field] / sub_combined["denom"].where(
-                sub_combined["denom"] != 0
+            sub_num = (
+                df_mm.filter((pl.col("read_num") == rn) & (pl.col("base_change") == bc))
+                .group_by("position")
+                .agg(pl.col(y_raw_field).sum())
+                .sort("position")
             )
-            sub_combined["y_norm"] = sub_combined["y_norm"].fillna(0.0)
+
+            source_base = bc.split(">")[0]
+            sub_den = (
+                df_all.filter((pl.col("read_num") == rn) & (pl.col("source_base") == source_base))
+                .group_by("position")
+                .agg(pl.col(y_raw_field).sum().alias("denom"))
+            )
+
+            sub_combined = (
+                sub_num.join(sub_den, on="position", how="left")
+                .sort("position")
+                .with_columns(
+                    pl.when((pl.col("denom").is_not_null()) & (pl.col("denom") != 0))
+                    .then(pl.col(y_raw_field) / pl.col("denom"))
+                    .otherwise(0.0)
+                    .alias("y_norm")
+                )
+            )
 
             sources_combined[rn][bc] = ColumnDataSource(data=dict(
-                position=sub_combined["position"].tolist(),
-                y=sub_combined[y_raw_field].tolist(),
-                y_count=sub_combined[y_raw_field].tolist(),
-                y_norm=sub_combined["y_norm"].tolist(),
+                position=sub_combined["position"].to_list(),
+                y=sub_combined[y_raw_field].to_list(),
+                y_count=sub_combined[y_raw_field].to_list(),
+                y_norm=sub_combined["y_norm"].to_list(),
                 base_change=[bc] * len(sub_combined),
                 read_num=[rn] * len(sub_combined),
                 reference_order=["combined"] * len(sub_combined),
@@ -734,7 +759,6 @@ def build_controls_layout(
     plot_mode_panel,
     sum_panel,
     normalization_panel,
-    reference_order_panel,
     mismatch_panel,
     controls_style: dict[str, str],
     panel_text_style: dict[str, str | None],
@@ -750,7 +774,6 @@ def build_controls_layout(
     agg_stack = column(
         *agg_children,
         spacing=12,
-        width=340,
         css_classes=["tm-agg-stack"],
     )
 
@@ -758,7 +781,6 @@ def build_controls_layout(
         read_panel = make_titled_panel(
             "Reads",
             read_checkbox,
-            width=200,
             styles=panel_text_style,
         )
         if interaction_cb is not None:
@@ -772,8 +794,6 @@ def build_controls_layout(
             Spacer(width=30),
             read_panel,
             Spacer(width=20),
-            reference_order_panel,
-            Spacer(width=20),
             mismatch_panel,
             sizing_mode="stretch_width",
             styles=controls_style,
@@ -786,8 +806,6 @@ def build_controls_layout(
         Spacer(width=20),
         agg_stack,
         Spacer(width=20),
-        reference_order_panel,
-        Spacer(width=20),
         mismatch_panel,
         sizing_mode="stretch_width",
         styles=controls_style,
@@ -795,11 +813,13 @@ def build_controls_layout(
 
 
 def create_plot_figure(is_insert: bool, y_raw_field: str):
-    x_label = "Fragment position" if is_insert else "Read position"
+
+    x_label = "Normalized Position in Fragment" if is_insert else "Normalized Position in Read"
+
     p: Any = figure(
-        title="Tasmanian-mismatch profile",
+        title="Mismatch Profile",
         x_axis_label=x_label,
-        y_axis_label=y_raw_field.replace("_", " ").title(),
+        y_axis_label="Num Observations",
         sizing_mode="stretch_both",
         min_width=760,
         min_height=420,
@@ -890,6 +910,7 @@ def write_plot_html(layout, output_path: str | None = None, extra_js: str = ""):
         "  line-height: 1.35;"
         "}"
         ".bk-root input[type='checkbox'] { accent-color: var(--tm-accent); }"
+        ".choices__list--dropdown { z-index: 99999 !important; }"
         ".bk-root .bk-slider-title {"
         "  color: var(--tm-title);"
         "  font-weight: 650;"
@@ -963,7 +984,7 @@ def write_plot_html(layout, output_path: str | None = None, extra_js: str = ""):
     webbrowser.open(f"file://{tmp.name}")
 
 
-def build_plot(df: pd.DataFrame, output_path: str | None = None):
+def build_plot(df: pl.DataFrame, output_path: str | None = None):
     is_insert, y_raw_field, df, df_all, reads_available, reference_orders_available = prepare_plot_data(df)
     sources, sources_combined = build_base_sources(
         df_mm=df,
@@ -994,47 +1015,43 @@ def build_plot(df: pd.DataFrame, output_path: str | None = None):
     aggregate_renderers_all_reads = render_data["aggregate_renderers_all_reads"]
     aggregate_renderers_all_reads_combined = render_data["aggregate_renderers_all_reads_combined"]
 
-    # ---- Mismatch checkbox group with Select All / Deselect All -----------
-    mismatch_checkbox = make_checkbox_group(
-        labels=MISMATCHES,
-        active=list(range(len(MISMATCHES))),
+    # ---- Mismatch MultiChoice with Select All / Deselect All buttons ------
+    _mm_keys = [bc.replace('>', '_') for bc in MISMATCHES]
+    _mc_stylesheet = InlineStyleSheet(css="""
+:host { overflow: visible !important; }
+.choices, .choices__inner { overflow: visible !important; }
+.choices__list--dropdown { z-index: 99999 !important; }
+""")
+    mismatch_checkbox = MultiChoice(
+        options=list(zip(_mm_keys, MISMATCHES)),
+        value=list(_mm_keys),
+        width=400,
+        stylesheets=[_mc_stylesheet],
     )
-    button_text_css = build_button_text_css(font_px=28)
-    select_all_btn = make_large_button("Select All", "primary", 180, 40, button_text_css)
-    deselect_all_btn = make_large_button("Deselect All", "default", 190, 40, button_text_css)
-    # JS to select / deselect all mismatches (no arrow functions - Bokeh escapes > to &gt;)
-    select_all_btn.js_on_click(CustomJS(args={"cb": mismatch_checkbox}, code=
-        "cb.active = Array.from({length: cb.labels.length}, function(_, i) { return i; });"))
-    deselect_all_btn.js_on_click(CustomJS(args={"cb": mismatch_checkbox}, code=
-        "cb.active = [];"))
+    select_all_btn = Button(label="Select All", button_type="primary", width=120, height=32)
+    deselect_all_btn = Button(label="Deselect All", button_type="default", width=130, height=32)
 
     # ---- Build unified interaction callback --------------------------------
-    # Reference-order selection can switch between individual and combined-reference mode.
-    # Optional mismatch-sum mode collapses selected mismatch types into one curve.
-
-    # Create reference_order checkbox
-    reference_order_checkbox = make_checkbox_group(
-        labels=[str(ro) for ro in reference_orders_available],
-        active=list(range(len(reference_orders_available))),
+    normalize_checkbox = make_checkbox_group(labels=["Normalized counts"], active=[])
+    plot_mode_checkbox = RadioGroup(
+        labels=["Bars", "Points", "Line", "Points + Line"],
+        active=3,
+        styles=CHECKBOX_TEXT_STYLE,
     )
 
-    normalize_checkbox = make_checkbox_group(labels=["Normalize counts"], active=[])
-    plot_mode_checkbox = make_checkbox_group(labels=["Bar mode"], active=[])
-
     sum_mismatch_checkbox = make_checkbox_group(
-        labels=["Sum shown mismatches into one curve"],
+        labels=["Sum all mismatch types"],
         active=[],
     )
 
     # Collect all renderer references into a flat JS-accessible structure.
     cb_args = {
         "mismatch_cb": mismatch_checkbox,
-        "ref_order_cb": reference_order_checkbox,
         "norm_cb": normalize_checkbox,
         "plot_mode_cb": plot_mode_checkbox,
         "sum_mm_cb": sum_mismatch_checkbox,
         "plot": p,
-        "raw_label": y_raw_field.replace("_", " ").title(),
+        "raw_label": "Num Observations",
         "norm_label": "Normalized Count",
     }
 
@@ -1094,19 +1111,18 @@ def build_plot(df: pd.DataFrame, output_path: str | None = None):
     interaction_cb = CustomJS(args=cb_args, code=interaction_code)
 
     # Wire all checkboxes to the same callback.
-    mismatch_checkbox.js_on_change("active", interaction_cb)
-    reference_order_checkbox.js_on_change("active", interaction_cb)
+    mismatch_checkbox.js_on_change("value", interaction_cb)
     normalize_checkbox.js_on_change("active", interaction_cb)
     plot_mode_checkbox.js_on_change("active", interaction_cb)
     sum_mismatch_checkbox.js_on_change("active", interaction_cb)
     if has_read_checkbox:
         sum_reads_checkbox.js_on_change("active", interaction_cb)
-    # Select/deselect all — no arrow functions (=> uses >)
+    # Select/deselect all mismatches via MultiChoice value (encoded keys, no > chars)
+    _all_keys_js = "['" + "', '".join(_mm_keys) + "']"
     select_all_btn.js_on_click(CustomJS(args=cb_args, code=
-        "mismatch_cb.active = Array.from({length: mismatch_cb.labels.length}, function(_, i) { return i; });\n"
-        + interaction_code))
+        f"mismatch_cb.value = {_all_keys_js};\n" + interaction_code))
     deselect_all_btn.js_on_click(CustomJS(args=cb_args, code=
-        "mismatch_cb.active = [];\n" + interaction_code))
+        "mismatch_cb.value = [];\n" + interaction_code))
 
     # ---- Color legend (non-interactive, just for reference) ----------------
     legend_items = []
@@ -1125,35 +1141,24 @@ def build_plot(df: pd.DataFrame, output_path: str | None = None):
         "Mismatch types",
         row(select_all_btn, deselect_all_btn),
         mismatch_checkbox,
-        width=320,
-        styles=panel_text_style,
-    )
-
-    reference_order_panel = make_titled_panel(
-        "Reference Order",
-        reference_order_checkbox,
-        width=280,
         styles=panel_text_style,
     )
 
     normalization_panel = make_titled_panel(
         "Y Scale",
         normalize_checkbox,
-        width=220,
         styles=panel_text_style,
     )
 
     plot_mode_panel = make_titled_panel(
         "Plot Style",
         plot_mode_checkbox,
-        width=220,
         styles=panel_text_style,
     )
 
     sum_panel = make_titled_panel(
         "Mismatch Agg.",
         sum_mismatch_checkbox,
-        width=200,
         styles=panel_text_style,
     )
 
@@ -1182,14 +1187,12 @@ def build_plot(df: pd.DataFrame, output_path: str | None = None):
             ),
             css_classes=["tm-resize-grip-panel"],
         ),
-        width=220,
     )
 
     if has_read_checkbox:
         sum_reads_panel = make_titled_panel(
             "Read Agg.",
             sum_reads_checkbox,
-            width=200,
             styles=panel_text_style,
         )
 
@@ -1199,7 +1202,7 @@ def build_plot(df: pd.DataFrame, output_path: str | None = None):
         "padding": "16px 20px",
         "border-bottom": "none",
         "background": "rgba(240,242,245,0.4)",
-        "overflow-x": "auto",
+        "overflow": "visible",
     }
 
     controls = build_controls_layout(
@@ -1208,7 +1211,6 @@ def build_plot(df: pd.DataFrame, output_path: str | None = None):
         plot_mode_panel=plot_mode_panel,
         sum_panel=sum_panel,
         normalization_panel=normalization_panel,
-        reference_order_panel=reference_order_panel,
         mismatch_panel=mismatch_panel,
         controls_style=CONTROLS_STYLE,
         panel_text_style=panel_text_style,
@@ -1249,10 +1251,7 @@ def build_plot(df: pd.DataFrame, output_path: str | None = None):
 
     // Bokeh buttons render in shadow roots. Force larger label text for specific controls.
     function enforceButtonFonts() {{
-        var targetLabels = {{
-            'Select All': true,
-            'Deselect All': true,
-        }};
+        var targetLabels = {{}};
         var changed = 0;
         var all = document.querySelectorAll('*');
         for (var i = 0; i < all.length; i++) {{
@@ -1301,7 +1300,7 @@ def build_plot(df: pd.DataFrame, output_path: str | None = None):
                 return;
             }}
         }}
-        
+
         var grip = findGrip();
         if (!grip) {{
             if (retryCount < maxRetries) {{
@@ -1312,7 +1311,7 @@ def build_plot(df: pd.DataFrame, output_path: str | None = None):
                 return;
             }}
         }}
-        
+
         console.log('[TM] Grip found, wiring drag. Initial plot size:', model.width, 'x', model.height);
 
         grip.style.opacity = '0.8';
