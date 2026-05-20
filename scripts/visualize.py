@@ -755,7 +755,6 @@ def register_callback_artifacts(
 
 def build_controls_layout(
     has_read_checkbox: bool,
-    size_panel,
     plot_mode_panel,
     sum_panel,
     normalization_panel,
@@ -786,8 +785,6 @@ def build_controls_layout(
         if interaction_cb is not None:
             read_checkbox.js_on_change("active", interaction_cb)
         return row(
-            size_panel,
-            Spacer(width=20),
             plot_mode_panel,
             Spacer(width=20),
             agg_stack,
@@ -800,8 +797,6 @@ def build_controls_layout(
         )
 
     return row(
-        size_panel,
-        Spacer(width=20),
         plot_mode_panel,
         Spacer(width=20),
         agg_stack,
@@ -929,34 +924,6 @@ def write_plot_html(layout, output_path: str | None = None, extra_js: str = ""):
         "  background: rgba(255,255,255,0.82);"
         "  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.3);"
         "  box-sizing: border-box;"
-        "}"
-        ".bk-root .tm-resizable-plot::after {"
-        "  content: '↙';"
-        "  position: absolute;"
-        "  right: 6px;"
-        "  bottom: 6px;"
-        "  width: 30px;"
-        "  height: 30px;"
-        "  display: flex;"
-        "  align-items: center;"
-        "  justify-content: center;"
-        "  cursor: se-resize;"
-        "  z-index: 50;"
-        "  opacity: 0.6;"
-        "  transition: opacity 120ms, transform 120ms;"
-        "  font-size: 22px;"
-        "  color: #30445f;"
-        "  font-weight: bold;"
-        "  user-select: none;"
-        "  pointer-events: auto;"
-        "  background: rgba(255,255,255,0.85);"
-        "  border: 1px solid rgba(19,31,50,0.16);"
-        "  border-radius: 6px;"
-        "  box-shadow: 0 2px 6px rgba(0,0,0,0.12);"
-        "}"
-        ".bk-root .tm-resizable-plot::after:hover {"
-        "  opacity: 0.95;"
-        "  transform: scale(1.08);"
         "}"
         "@media (max-width: 960px) {"
         "  .bk-root { padding: 8px; border-radius: 10px; }"
@@ -1170,25 +1137,6 @@ def build_plot(df: pl.DataFrame, output_path: str | None = None):
         height=620,
     )
 
-    size_panel = make_titled_panel(
-        "Plot Size",
-        Div(
-            text=(
-                "<div id='tm-plot-grip' style='width:54px;height:54px;display:flex;align-items:center;"
-                "justify-content:center;cursor:nwse-resize;font-size:34px;color:#30445f;font-weight:800;"
-                "background:rgba(255,255,255,0.95);border:2px solid rgba(19,31,50,0.25);"
-                "border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,0.10);user-select:none;"
-                "pointer-events:auto;touch-action:none;'>"
-                "&#x2198;"
-                "</div>"
-                "<div style='font-size:15px;line-height:1.35;color:#354861;margin-top:6px;'>"
-                "Drag to resize plot"
-                "</div>"
-            ),
-            css_classes=["tm-resize-grip-panel"],
-        ),
-    )
-
     if has_read_checkbox:
         sum_reads_panel = make_titled_panel(
             "Read Agg.",
@@ -1207,7 +1155,6 @@ def build_plot(df: pl.DataFrame, output_path: str | None = None):
 
     controls = build_controls_layout(
         has_read_checkbox=has_read_checkbox,
-        size_panel=size_panel,
         plot_mode_panel=plot_mode_panel,
         sum_panel=sum_panel,
         normalization_panel=normalization_panel,
@@ -1222,15 +1169,12 @@ def build_plot(df: pl.DataFrame, output_path: str | None = None):
     # Keep controls above the plot to guarantee visibility in standalone HTML.
     layout = column(controls, plot_container, sizing_mode="stretch_width")
 
-    # Inject a deterministic in-plot resize grip and keep Bokeh model dimensions
-    # synchronized with container size changes.
     container_id = plot_container.id
     resize_js = f"""
 <script>
 (function() {{
     var CID = '{container_id}';
-    var retryCount = 0;
-    var maxRetries = 40;
+    var retryCount = 0, maxRetries = 40;
 
     function deepFind(root, selector) {{
         var found = root.querySelector(selector);
@@ -1243,36 +1187,6 @@ def build_plot(df: pl.DataFrame, output_path: str | None = None):
             }}
         }}
         return null;
-    }}
-
-    function findGrip() {{
-        return deepFind(document, '#tm-plot-grip');
-    }}
-
-    // Bokeh buttons render in shadow roots. Force larger label text for specific controls.
-    function enforceButtonFonts() {{
-        var targetLabels = {{}};
-        var changed = 0;
-        var all = document.querySelectorAll('*');
-        for (var i = 0; i < all.length; i++) {{
-            var host = all[i];
-            if (!host.shadowRoot) continue;
-            var btns = host.shadowRoot.querySelectorAll('button, .bk-btn');
-            for (var j = 0; j < btns.length; j++) {{
-                var b = btns[j];
-                var txt = (b.textContent || '').trim();
-                if (!targetLabels[txt]) continue;
-                b.style.fontSize = '28px';
-                b.style.fontWeight = '800';
-                b.style.lineHeight = '1.05';
-                changed++;
-            }}
-        }}
-        if (changed > 0) console.log('[TM] Button font overrides applied to', changed, 'buttons');
-    }}
-    // Run multiple times because Bokeh mounts widgets asynchronously.
-    for (var pass = 0; pass < 12; pass++) {{
-        (function(delay) {{ setTimeout(enforceButtonFonts, delay); }})(pass * 200);
     }}
 
     function getModel() {{
@@ -1288,64 +1202,59 @@ def build_plot(df: pl.DataFrame, output_path: str | None = None):
         return null;
     }}
 
-    function wireGrip() {{
+    function wireResize() {{
         retryCount++;
         var model = getModel();
         if (!model) {{
-            if (retryCount < maxRetries) {{
-                setTimeout(wireGrip, 200);
-                return;
-            }} else {{
-                console.error('[TM] Could not find Bokeh model', CID, 'after', retryCount, 'retries');
-                return;
-            }}
+            if (retryCount < maxRetries) {{ setTimeout(wireResize, 200); return; }}
+            return;
+        }}
+        var el = deepFind(document, '.tm-resizable-plot');
+        if (!el) {{
+            if (retryCount < maxRetries) {{ setTimeout(wireResize, 200); return; }}
+            return;
         }}
 
-        var grip = findGrip();
-        if (!grip) {{
-            if (retryCount < maxRetries) {{
-                setTimeout(wireGrip, 200);
-                return;
-            }} else {{
-                console.error('[TM] Could not find grip after', retryCount, 'retries.');
-                return;
-            }}
+        // Append grip to body so it sits above the Bokeh canvas (fixed positioning,
+        // z-index above the canvas, no shadow-DOM or overflow-clip issues).
+        var grip = document.createElement('div');
+        grip.title = 'Drag to resize plot';
+        grip.style.cssText = 'position:fixed;width:22px;height:22px;cursor:nwse-resize;'
+            + 'z-index:999999;background:rgba(19,31,50,0.15);border-radius:4px 0 0 0;'
+            + 'border-top:2px solid rgba(19,31,50,0.40);border-left:2px solid rgba(19,31,50,0.40);'
+            + 'box-sizing:border-box;';
+        document.body.appendChild(grip);
+
+        function placeGrip() {{
+            var r = el.getBoundingClientRect();
+            grip.style.left = (r.right - 22) + 'px';
+            grip.style.top  = (r.bottom - 22) + 'px';
         }}
-
-        console.log('[TM] Grip found, wiring drag. Initial plot size:', model.width, 'x', model.height);
-
-        grip.style.opacity = '0.8';
-        grip.onmouseenter = function() {{ grip.style.opacity = '1'; grip.style.transform = 'scale(1.15)'; }};
-        grip.onmouseleave = function() {{ grip.style.opacity = '0.8'; grip.style.transform = ''; }};
+        placeGrip();
 
         grip.addEventListener('mousedown', function(evt) {{
-            console.log('[TM] Mousedown on grip');
-            var startX = evt.clientX;
-            var startY = evt.clientY;
+            evt.preventDefault();
+            var startX = evt.clientX, startY = evt.clientY;
             var startW = model.width  || 1280;
             var startH = model.height || 620;
-            console.log('[TM] Drag start:', startW, 'x', startH);
-            evt.preventDefault();
-            evt.stopPropagation();
-
             function onMove(e) {{
-                var newW = Math.max(600, startW + (e.clientX - startX));
-                var newH = Math.max(350, startH + (e.clientY - startY));
-                model.width  = newW;
-                model.height = newH;
+                model.width  = Math.max(400, startW + (e.clientX - startX));
+                model.height = Math.max(300, startH + (e.clientY - startY));
                 model.change.emit();
+                placeGrip();
             }}
             function onUp() {{
-                console.log('[TM] Drag end:', model.width, 'x', model.height);
                 document.removeEventListener('mousemove', onMove);
                 document.removeEventListener('mouseup', onUp);
             }}
             document.addEventListener('mousemove', onMove);
             document.addEventListener('mouseup', onUp);
         }});
-        console.log('[TM] Drag listener attached to grip element');
+
+        window.addEventListener('scroll', placeGrip, {{passive: true}});
+        window.addEventListener('resize', placeGrip, {{passive: true}});
     }}
-    wireGrip();
+    wireResize();
 }})();
 </script>"""
 
