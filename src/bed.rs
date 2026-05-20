@@ -109,6 +109,26 @@ pub fn parse_bed_file(bed_path: &str) -> Result<BedRegions, Box<dyn std::error::
         }
     }
 
+    // Merge overlapping, nested, or adjacent intervals to enforce non-overlapping invariant.
+    // This allows binary search in position_overlaps_intervals to be correct and fast.
+    for intervals in regions.values_mut() {
+        if intervals.is_empty() {
+            continue;
+        }
+        let mut merged = Vec::with_capacity(intervals.len());
+        merged.push(intervals[0].clone());
+        for next in intervals.iter().skip(1) {
+            let last = merged.last_mut().unwrap();
+            if next.start <= last.end {
+                // Overlapping or adjacent, merge them
+                last.end = last.end.max(next.end);
+            } else {
+                merged.push(next.clone());
+            }
+        }
+        *intervals = merged;
+    }
+
     let total_intervals: usize = regions.values().map(|v| v.len()).sum();
     log::info!(
         "Loaded {} BED intervals across {} chromosomes",

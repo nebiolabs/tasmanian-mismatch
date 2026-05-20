@@ -403,9 +403,14 @@ pub fn normalize_mismatch_counts(counts: &HashMap<InsertKey, usize>) -> HashMap<
         .filter_map(|(key, &count)| {
             let ref_base = ref_base_of(key)?;
             let total = *group_totals.get(&(key.read_num, key.base_position, ref_base))?;
-            // +1.0 guards against NaN when apply_external_discounts has reduced
-            // every count in a group to zero.
-            Some((key.clone(), count as f64 / (total as f64 + 1.0)))
+            // If total is 0 (which can occur if apply_external_discounts has reduced
+            // every count in a group to zero), return 0.0 to guard against NaN.
+            let frequency = if total == 0 {
+                0.0
+            } else {
+                count as f64 / total as f64
+            };
+            Some((key.clone(), frequency))
         })
         .collect()
 }

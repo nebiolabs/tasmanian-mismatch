@@ -353,11 +353,11 @@ mod tests {
             reference_order: 1,
         };
 
-        // C group denominator: (2 + 3 + 5) + 1.0 = 11.0
-        // T group denominator: (4 + 6) + 1.0 = 11.0
-        assert!((normalized[&c_to_t] - (3.0 / 11.0)).abs() < 1e-9);
-        assert!((normalized[&c_to_a] - (2.0 / 11.0)).abs() < 1e-9);
-        assert!((normalized[&t_to_a] - (4.0 / 11.0)).abs() < 1e-9);
+        // C group denominator: 2 + 3 + 5 = 10.0
+        // T group denominator: 4 + 6 = 10.0
+        assert!((normalized[&c_to_t] - (3.0 / 10.0)).abs() < 1e-9);
+        assert!((normalized[&c_to_a] - (2.0 / 10.0)).abs() < 1e-9);
+        assert!((normalized[&t_to_a] - (4.0 / 10.0)).abs() < 1e-9);
     }
 
     #[test]
@@ -417,10 +417,10 @@ mod tests {
             reference_order: 1,
         };
 
-        // R1 C group denominator: (4 + 6) + 1.0 = 11.0
-        // R2 C group denominator: (1 + 3) + 1.0 = 5.0
-        assert!((normalized[&r1_c_to_t] - (4.0 / 11.0)).abs() < 1e-9);
-        assert!((normalized[&r2_c_to_t] - (1.0 / 5.0)).abs() < 1e-9);
+        // R1 C group denominator: 4 + 6 = 10.0
+        // R2 C group denominator: 1 + 3 = 4.0
+        assert!((normalized[&r1_c_to_t] - (4.0 / 10.0)).abs() < 1e-9);
+        assert!((normalized[&r2_c_to_t] - (1.0 / 4.0)).abs() < 1e-9);
     }
 
     #[test]
@@ -720,6 +720,37 @@ mod tests {
         assert_eq!(chr1_intervals[0].start, 100);
         assert_eq!(chr1_intervals[1].start, 300);
         assert_eq!(chr1_intervals[2].start, 1000);
+
+        // Clean up
+        std::fs::remove_file(bed_path).unwrap();
+    }
+
+    #[test]
+    fn test_parse_bed_file_overlapping_and_nested_intervals() {
+        // Create a BED file with overlapping and nested regions on the same contig
+        let bed_path = "test_overlap.bed";
+        let bed_content = "chr1\t10\t100\nchr1\t20\t30\nchr1\t90\t120\nchr1\t130\t140\n";
+
+        std::fs::write(bed_path, bed_content).unwrap();
+
+        let bed_regions = parse_bed_file(bed_path).unwrap();
+
+        let chr1_intervals = bed_regions.get("chr1").unwrap();
+        // Intervals: [10, 100) and [20, 30) overlap. Also [90, 120) overlaps with [10, 100).
+        // So [10, 100), [20, 30), and [90, 120) should merge into [10, 120).
+        // [130, 140) does not overlap.
+        // We should end up with two intervals: [10, 120) and [130, 140).
+        assert_eq!(chr1_intervals.len(), 2);
+        assert_eq!(chr1_intervals[0].start, 10);
+        assert_eq!(chr1_intervals[0].end, 120);
+        assert_eq!(chr1_intervals[1].start, 130);
+        assert_eq!(chr1_intervals[1].end, 140);
+
+        // Verify that position_overlaps_intervals works correctly on these merged intervals.
+        assert!(position_overlaps_intervals(chr1_intervals, 50));
+        assert!(position_overlaps_intervals(chr1_intervals, 119));
+        assert!(!position_overlaps_intervals(chr1_intervals, 120));
+        assert!(position_overlaps_intervals(chr1_intervals, 135));
 
         // Clean up
         std::fs::remove_file(bed_path).unwrap();
