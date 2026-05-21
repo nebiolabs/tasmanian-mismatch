@@ -408,6 +408,17 @@ def prepare_plot_data(df: pl.DataFrame):
     is_insert = df["is_insert_mode"][0]
     y_raw_field = "count" if "count" in df.columns else "normalized_frequency"
 
+    # Insert mode should visualize a single merged curve, not separate read tracks.
+    if is_insert:
+        df = (
+            df.group_by(["base_change", "reference_order", "position"])
+            .agg(pl.col(y_raw_field).sum().alias(y_raw_field))
+            .with_columns([
+                pl.lit(1).alias("read_num"),
+                pl.lit(True).alias("is_insert_mode"),
+            ])
+        )
+
     df_all = df.with_columns(
         pl.col("base_change").str.split(">").list.first().alias("source_base")
     )
