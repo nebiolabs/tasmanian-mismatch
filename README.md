@@ -66,7 +66,6 @@ Common options:
 --min-fragment-length <LEN>       Minimum fragment length for insert mode
 --max-fragment-length <LEN>       Maximum fragment length for insert mode
 --methylation-mode                Collapse methylation-driven mismatch classes
---cpg-only                        Restrict methylation collapsing to CpG context
 --normalize                       Write normalized frequencies instead of raw counts
 --emit-rescaling-matrix           Emit matrix rows for tasmanian-rescale-quality
 --plot                            Launch the optional Bokeh visualization

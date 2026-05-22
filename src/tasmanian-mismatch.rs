@@ -64,7 +64,6 @@ fn main() {
         softclip_threshold: 0.66,
         min_base_quality: args.min_base_quality,
         is_methylation: args.methylation_mode,
-        cpg_only: args.cpg_only,
         mode_len: max_read_len,
         min_map_quality: args.min_map_quality,
         required_flags: args.required_flags,

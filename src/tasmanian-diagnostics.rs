@@ -38,10 +38,6 @@ struct Args {
     #[arg(short = 'm', long)]
     methylation: bool,
 
-    /// C/T in CpG context in read1 are converted back to C
-    #[arg(long)]
-    cpg_only: bool,
-
     /// Optional read-length normalization argument preserved for processing compatibility
     #[arg(long, num_args = 0..=1, value_name = "LENGTH")]
     use_read_len_max: Option<Option<u32>>,
@@ -183,7 +179,6 @@ fn main() {
         softclip_threshold: args.softclip_threshold,
         min_base_quality: args.min_base_quality,
         is_methylation: args.methylation,
-        cpg_only: args.cpg_only,
         mode_len,
         min_map_quality: args.min_map_quality,
         required_flags: args.required_flags,

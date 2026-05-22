@@ -121,7 +121,6 @@ pub fn create_mismatch_key(
         strand_adjusted_ref_base,
         read_ctx.read_num,
         config.is_methylation,
-        config.cpg_only,
         read_ctx.ref_seq,
         genome_pos,
     );
@@ -224,7 +223,6 @@ pub fn compare_and_count(
                 strand_adjusted_ref_base,
                 read_ctx.read_num,
                 config.is_methylation,
-                config.cpg_only,
                 read_ctx.ref_seq,
                 genome_pos,
             );
@@ -1423,7 +1421,6 @@ pub fn build_base_change(
     read_base: char,
     is_reverse: bool,
     methylation_mode: bool,
-    next_base_for_cpg_mode: Option<char>,
 ) -> String {
     let (strand_ref, strand_read) = if is_reverse {
         (complement(ref_base), complement(read_base))
@@ -1435,20 +1432,13 @@ pub fn build_base_change(
         return format!("{}>{}", strand_ref, strand_read);
     }
 
-    let collapse_bisulfite = match (read_num, ref_base, read_base, is_reverse) {
-        (1, 'C', 'T', false) => (true, 'C'),
-        (2, 'G', 'A', false) => (true, 'G'),
-        (1, 'G', 'A', true) => (true, 'G'),
-        (2, 'C', 'T', true) => (true, 'C'),
-        _ => (false, 'N'),
-    };
-
-    match (collapse_bisulfite, next_base_for_cpg_mode) {
-        ((true, 'G'), Some('C')) => format!("{}>{}", strand_ref, strand_ref),
-        ((true, 'C'), Some('G')) => format!("{}>{}", strand_ref, strand_ref),
-        ((true, _), _) => format!("{}>{}", strand_ref, strand_ref),
+    match (read_num, ref_base, read_base, is_reverse) {
+        (1, 'C', 'T', false) |
+        (2, 'G', 'A', false) |
+        (1, 'G', 'A', true)  |
+        (2, 'C', 'T', true) => format!("{}>{}", strand_ref, strand_ref),
         _ => format!("{}>{}", strand_ref, strand_read),
-    }
+    };
 }
 
 pub fn compare_record_to_reference(
@@ -1512,26 +1502,12 @@ pub fn compare_record_to_reference(
                         continue;
                     };
 
-                    let next_base_for_cpg_mode = if config.cpg_only {
-                        if record.is_reverse() {
-                            gp.checked_sub(1)
-                                .and_then(|idx| base_to_char(ref_seq[idx].to_ascii_uppercase()))
-                        } else {
-                            ref_seq
-                                .get(gp + 1)
-                                .and_then(|b| base_to_char(b.to_ascii_uppercase()))
-                        }
-                    } else {
-                        None
-                    };
-
                     let ref_base_change = build_base_change(
                         read_num,
                         ref_base,
                         read_base,
                         record.is_reverse(),
                         config.is_methylation,
-                        next_base_for_cpg_mode,
                     );
 
                     let base_position = base_position_for_mode(
@@ -1580,7 +1556,6 @@ pub fn compare_record_to_reference(
             comparison.read_base,
             record.is_reverse(),
             config.is_methylation,
-            None,
         );
         let base_position = base_position_for_mode(
             &config,

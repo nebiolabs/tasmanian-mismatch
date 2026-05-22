@@ -131,8 +131,6 @@ pub struct ProcessingConfig {
     pub min_base_quality: u8,
     /// Whether methylation-aware mismatch normalization is enabled.
     pub is_methylation: bool,
-    /// Whether methylation normalization should be limited to CpG context.
-    pub cpg_only: bool,
     /// Modal read length used for optional read-position normalization.
     pub mode_len: usize,
     /// Minimum mapping quality required for a record to be processed.
@@ -203,10 +201,6 @@ pub struct Args {
     /// Methylation mode for C>T and G>A changes: if true, treat them as C>C and G>G to avoid confounding by bisulfite conversion
     #[arg(long, default_value_t = false)]
     pub methylation_mode: bool,
-
-    /// Restrict methylation collapsing to CpG context only.
-    #[arg(long, default_value_t = false)]
-    pub cpg_only: bool,
 
     /// minimum fragment length to be accepted for insert mode counting;
     #[arg(long, default_value_t = 0)]
