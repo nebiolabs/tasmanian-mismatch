@@ -48,11 +48,7 @@ flowchart TD
 
         BC --> METH{methylation_mode?}
         METH -- No --> BC2[ref>read as-is]
-        METH -- Yes → R1 C→T or R2 G→A --> METH2{cpg_only?}
-        METH2 -- No → collapse all --> BC3[C>C or G>G]
-        METH2 -- Yes → check next ref base --> BC4{CpG context?}
-        BC4 -- Yes --> BC3
-        BC4 -- No --> BC2
+        METH -- Yes → R1 C→T or R2 G→A → collapse all --> BC3[C>C or G>G]
 
         BC2 & BC3 --> POS[base_position_for_mode]
         POS --> POSM{position_mode}
