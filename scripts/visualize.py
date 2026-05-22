@@ -1030,7 +1030,7 @@ def build_plot(df: pl.DataFrame, output_path: str | None = None):
         "sum_mm_cb": sum_mismatch_checkbox,
         "plot": p,
         "raw_label": "Num Observations",
-        "norm_label": "Normalized Count",
+        "norm_label": "Mismatch rate per reference base",
     }
 
     has_read_checkbox = not is_insert and len(reads_available) >= 2
