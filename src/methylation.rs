@@ -10,8 +10,6 @@
 /// * `ref_base` - Reference base after any strand normalization.
 /// * `read_num` - Read number within the pair, usually `1` or `2`.
 /// * `is_methylation` - Whether methylation-aware conversion is enabled.
-/// * `ref_seq` - Reference sequence for the current chromosome.
-/// * `genome_pos` - Genomic position within `ref_seq`.
 ///
 /// # Returns
 /// * The base to use for mismatch accounting.
@@ -20,8 +18,6 @@ pub fn adjust_methylation_base(
     ref_base: char,
     read_num: u8,
     is_methylation: bool,
-    _ref_seq: &[u8],
-    _genome_pos: usize,
 ) -> char {
     if !is_methylation {
         return read_base;

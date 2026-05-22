@@ -96,31 +96,20 @@ mod tests {
 
     #[test]
     fn test_adjust_methylation_base_no_methylation() {
-        let ref_seq = b"ACGT";
-
         // Without methylation mode, bases should not change
-        assert_eq!(
-            adjust_methylation_base('T', 'C', 1, false, false, ref_seq, 0),
-            'T'
-        );
+        assert_eq!(adjust_methylation_base('T', 'C', 1, false), 'T');
     }
 
     #[test]
-    fn test_adjust_methylation_base_cpg_context() {
-        let ref_seq = b"CGTA"; // CG dinucleotide at positions 0-1
+    fn test_adjust_methylation_base_methylation() {
+        // Read 1: C in ref, T in read -> collapse to C
+        assert_eq!(adjust_methylation_base('T', 'C', 1, true), 'C');
 
-        // CpG context: C in ref, T in read (read1) -> should convert to C
-        assert_eq!(
-            adjust_methylation_base('T', 'C', 1, true, true, ref_seq, 0),
-            'C'
-        );
+        // Read 2: G in ref, A in read -> collapse to G
+        assert_eq!(adjust_methylation_base('A', 'G', 2, true), 'G');
 
-        // Non-CpG context: C in ref, T in read (read1) -> should NOT convert
-        let ref_seq_non_cpg = b"CATA";
-        assert_eq!(
-            adjust_methylation_base('T', 'C', 1, true, true, ref_seq_non_cpg, 0),
-            'T'
-        );
+        // Non-collapsing case: passthrough
+        assert_eq!(adjust_methylation_base('T', 'A', 1, true), 'T');
     }
 
     #[test]
@@ -166,7 +155,6 @@ mod tests {
             softclip_threshold: 0.0,
             min_base_quality: 20,
             is_methylation: false,
-            cpg_only: false,
             mode_len: 0,
             min_map_quality: 0,
             required_flags: 0,
@@ -211,7 +199,6 @@ mod tests {
             softclip_threshold: 0.0,
             min_base_quality: 0,
             is_methylation: false,
-            cpg_only: false,
             mode_len: 0,
             min_map_quality: 0,
             required_flags: 0,
@@ -234,7 +221,6 @@ mod tests {
             'A', // read base
             'G', // ref base
             0,   // read position
-            0,   // genome position
             &read_ctx, &config,
         );
 
@@ -464,7 +450,6 @@ mod tests {
             softclip_threshold: 0.0,
             min_base_quality: 0,
             is_methylation: false,
-            cpg_only: false,
             mode_len: 10,
             min_map_quality: 0,
             required_flags: 0,
@@ -517,7 +502,6 @@ mod tests {
             softclip_threshold: 0.0,
             min_base_quality: 20,
             is_methylation: false,
-            cpg_only: false,
             mode_len: 150,
             min_map_quality: 0,
             required_flags: 0,
@@ -784,7 +768,6 @@ mod tests {
             softclip_threshold: 0.66,
             min_base_quality: 20,
             is_methylation: false,
-            cpg_only: false,
             mode_len: 0,
             min_map_quality: 0,
             required_flags: 0,
@@ -849,7 +832,6 @@ mod tests {
             softclip_threshold: 0.66,
             min_base_quality: 20,
             is_methylation: false,
-            cpg_only: false,
             mode_len: 0,
             min_map_quality: 0,
             required_flags: 0,
@@ -1222,58 +1204,23 @@ mod tests {
     // ── methylation branches ────────────────────────────────────────────────
 
     #[test]
-    fn test_adjust_methylation_base_cpg_context_read2_and_bounds() {
-        // Read 2, CpG-only mode: G>A collapses when next base is C/c.
-        let ref_seq = b"ACGT";
-        // genome_pos=0 ('A'), next=C: not a G ref, no collapse.
-        assert_eq!(
-            adjust_methylation_base('A', 'A', 2, true, true, ref_seq, 0),
-            'A'
-        );
-        // genome_pos=0, ref G, read A, next base is C → collapse to G.
-        let ref_seq2 = b"GCA";
-        assert_eq!(
-            adjust_methylation_base('A', 'G', 2, true, true, ref_seq2, 0),
-            'G'
-        );
-        // genome_pos=0, ref G, read A, next base is 'c' (lowercase) → collapse to G.
-        let ref_seq3 = b"GcA";
-        assert_eq!(
-            adjust_methylation_base('A', 'G', 2, true, true, ref_seq3, 0),
-            'G'
-        );
-        // genome_pos=0, ref G, read A, next base is 'T' (not C) → keep A.
-        let ref_seq4 = b"GTA";
-        assert_eq!(
-            adjust_methylation_base('A', 'G', 2, true, true, ref_seq4, 0),
-            'A'
-        );
-        // genome_pos at last position (boundary): genome_pos + 1 >= len → keep read_base.
-        let ref_seq5 = b"G";
-        assert_eq!(
-            adjust_methylation_base('A', 'G', 2, true, true, ref_seq5, 0),
-            'A'
-        );
+    fn test_adjust_methylation_base_read2_and_passthrough() {
+        // Read 2, methylation mode: G>A collapses to G.
+        assert_eq!(adjust_methylation_base('A', 'G', 2, true), 'G');
+        // Read 2, non-G ref: passthrough.
+        assert_eq!(adjust_methylation_base('A', 'A', 2, true), 'A');
+        // Read 2, G ref, non-A read: passthrough.
+        assert_eq!(adjust_methylation_base('C', 'G', 2, true), 'C');
     }
 
     #[test]
-    fn test_adjust_methylation_base_non_cpg_mode_branches() {
-        let ref_seq = b"ACGT";
-        // Non-CpG, read 2, G ref, A read → collapse to G.
-        assert_eq!(
-            adjust_methylation_base('A', 'G', 2, true, false, ref_seq, 0),
-            'G'
-        );
-        // Non-CpG, read 1, C ref, T read → collapse to C.
-        assert_eq!(
-            adjust_methylation_base('T', 'C', 1, true, false, ref_seq, 0),
-            'C'
-        );
-        // Non-CpG, default fallthrough (read 1, A ref, T read) → passthrough.
-        assert_eq!(
-            adjust_methylation_base('T', 'A', 1, true, false, ref_seq, 0),
-            'T'
-        );
+    fn test_adjust_methylation_base_branches() {
+        // Read 2, G ref, A read → collapse to G.
+        assert_eq!(adjust_methylation_base('A', 'G', 2, true), 'G');
+        // Read 1, C ref, T read → collapse to C.
+        assert_eq!(adjust_methylation_base('T', 'C', 1, true), 'C');
+        // Read 1, default fallthrough (A ref, T read) → passthrough.
+        assert_eq!(adjust_methylation_base('T', 'A', 1, true), 'T');
     }
 
     // ── processing helpers ──────────────────────────────────────────────────
@@ -1307,7 +1254,6 @@ mod tests {
             softclip_threshold: 0.0,
             min_base_quality: 0,
             is_methylation: false,
-            cpg_only: false,
             mode_len: 10,
             min_map_quality: 0,
             required_flags: 0,
@@ -1353,25 +1299,15 @@ mod tests {
     #[test]
     fn test_build_base_change_modes() {
         // Non-methylation: simple strand-adjusted change.
-        assert_eq!(build_base_change(1, 'C', 'T', false, false, None), "C>T");
-        assert_eq!(build_base_change(1, 'A', 'G', true, false, None), "T>C");
+        assert_eq!(build_base_change(1, 'C', 'T', false, false), "C>T");
+        assert_eq!(build_base_change(1, 'A', 'G', true, false), "T>C");
 
-        // Methylation, non-CpG: C>T on read 1 collapses to C>C.
-        assert_eq!(build_base_change(1, 'C', 'T', false, true, None), "C>C");
-        // Methylation, G>A on read 2 collapses to G>G.
-        assert_eq!(build_base_change(2, 'G', 'A', false, true, None), "G>G");
+        // Methylation: C>T on read 1 collapses to C>C.
+        assert_eq!(build_base_change(1, 'C', 'T', false, true), "C>C");
+        // Methylation: G>A on read 2 collapses to G>G.
+        assert_eq!(build_base_change(2, 'G', 'A', false, true), "G>G");
         // Methylation, no collapse: A>G stays A>G.
-        assert_eq!(build_base_change(1, 'A', 'G', false, true, None), "A>G");
-        // Methylation mode, CpG context passed as Some('G'): still collapses.
-        assert_eq!(
-            build_base_change(1, 'C', 'T', false, true, Some('G')),
-            "C>C"
-        );
-        // The current implementation collapses this case as well.
-        assert_eq!(
-            build_base_change(2, 'G', 'A', false, true, Some('A')),
-            "G>G"
-        );
+        assert_eq!(build_base_change(1, 'A', 'G', false, true), "A>G");
     }
 
     #[test]
@@ -1447,7 +1383,6 @@ mod tests {
             softclip_threshold: 0.0,
             min_base_quality: 0,
             is_methylation: false,
-            cpg_only: false,
             mode_len: 4,
             min_map_quality: 0,
             required_flags: 0,
@@ -1492,7 +1427,6 @@ mod tests {
             softclip_threshold: 0.0,
             min_base_quality: 0,
             is_methylation: false,
-            cpg_only: false,
             mode_len: 4,
             min_map_quality: 0,
             required_flags: 0,
@@ -1588,7 +1522,6 @@ mod tests {
             softclip_threshold: 0.0,
             min_base_quality: 0,
             is_methylation: false,
-            cpg_only: false,
             mode_len: 4,
             min_map_quality: 0,
             required_flags: 0,
@@ -1658,7 +1591,6 @@ mod tests {
             softclip_threshold: 0.0,
             min_base_quality: 0,
             is_methylation: false,
-            cpg_only: false,
             mode_len: 8,
             min_map_quality: 0,
             required_flags: 0,
@@ -1790,7 +1722,6 @@ mod tests {
             softclip_threshold: 0.0,
             min_base_quality: 0,
             is_methylation: false,
-            cpg_only: false,
             mode_len: 4,
             min_map_quality: 0,
             required_flags: 0,
@@ -1854,7 +1785,6 @@ mod tests {
             softclip_threshold: 0.0,
             min_base_quality: 0,
             is_methylation: false,
-            cpg_only: false,
             mode_len: 8,
             min_map_quality: 0,
             required_flags: 0,
@@ -1889,7 +1819,7 @@ mod tests {
     }
 
     #[test]
-    fn test_compare_record_to_reference_cpg_collapse() {
+    fn test_compare_record_to_reference_methylation_collapse() {
         let mut header = Header::new();
         let mut sq = HeaderRecord::new(b"SQ");
         sq.push_tag(b"SN", "chr1");
@@ -1898,8 +1828,7 @@ mod tests {
         let header_view = HeaderView::from_header(&header);
 
         // Sequence: T at position 0 vs reference C at position 0.
-        // Reference: CG... so next base is G → CpG context.
-        // With cpg_only=true, methylation=true: C>T should collapse to C>C.
+        // With methylation=true: C>T should collapse to C>C.
         let record =
             Record::from_sam(&header_view, b"r1\t0\tchr1\t1\t60\t2M\t*\t0\t0\tTG\tII").unwrap();
 
@@ -1917,7 +1846,6 @@ mod tests {
             softclip_threshold: 0.0,
             min_base_quality: 0,
             is_methylation: true,
-            cpg_only: true,
             mode_len: 2,
             min_map_quality: 0,
             required_flags: 0,
@@ -1931,11 +1859,11 @@ mod tests {
         let mut counts: HashMap<InsertKey, usize> = HashMap::new();
         compare_record_to_reference(&record, &context, config, None, &mut counts);
 
-        // The C>T at a CpG site should have been collapsed to C>C.
-        let has_cpg_collapse = counts.keys().any(|k| k.base_change == "C>C");
+        // The C>T should have been collapsed to C>C.
+        let has_collapse = counts.keys().any(|k| k.base_change == "C>C");
         assert!(
-            has_cpg_collapse,
-            "Expected C>C key for CpG collapse, got: {:?}",
+            has_collapse,
+            "Expected C>C key for methylation collapse, got: {:?}",
             counts
         );
     }
@@ -2005,7 +1933,6 @@ mod tests {
             softclip_threshold: 0.5,
             min_base_quality: 0,
             is_methylation: false,
-            cpg_only: false,
             mode_len: 10,
             min_map_quality: 0,
             required_flags: 0,

@@ -98,7 +98,6 @@ pub fn create_mismatch_key(
     read_base: char,
     ref_base: char,
     r_pos: usize,
-    genome_pos: usize,
     read_ctx: &ReadContext,
     config: &ProcessingConfig,
 ) -> MismatchKey {
@@ -121,8 +120,6 @@ pub fn create_mismatch_key(
         strand_adjusted_ref_base,
         read_ctx.read_num,
         config.is_methylation,
-        read_ctx.ref_seq,
-        genome_pos,
     );
     let adjusted_r_pos = if read_ctx.is_reverse {
         seq_len - r_pos - 1
@@ -202,7 +199,7 @@ pub fn compare_and_count(
     };
 
     // Count both matches and mismatches
-    let key = create_mismatch_key(read_base, ref_base, r_pos, genome_pos, read_ctx, config);
+    let key = create_mismatch_key(read_base, ref_base, r_pos, read_ctx, config);
     *local_counts.entry(key.clone()).or_insert(0) += 1;
 
     // Track genomic position for mismatches only (if genomic_counts is provided)
@@ -223,8 +220,6 @@ pub fn compare_and_count(
                 strand_adjusted_ref_base,
                 read_ctx.read_num,
                 config.is_methylation,
-                read_ctx.ref_seq,
-                genome_pos,
             );
 
             let genomic_key = GenomicMismatchKey {
@@ -389,7 +384,7 @@ fn count_softclip_mismatches(
         if read_base == ref_base {
             matching_bases += 1;
         } else {
-            let key = create_mismatch_key(read_base, ref_base, r_pos, genome_pos, read_ctx, config);
+            let key = create_mismatch_key(read_base, ref_base, r_pos, read_ctx, config);
             temp_mismatch_keys.push(key);
         }
     }
@@ -1433,12 +1428,11 @@ pub fn build_base_change(
     }
 
     match (read_num, ref_base, read_base, is_reverse) {
-        (1, 'C', 'T', false) |
-        (2, 'G', 'A', false) |
-        (1, 'G', 'A', true)  |
-        (2, 'C', 'T', true) => format!("{}>{}", strand_ref, strand_ref),
+        (1, 'C', 'T', false) | (2, 'G', 'A', false) | (1, 'G', 'A', true) | (2, 'C', 'T', true) => {
+            format!("{}>{}", strand_ref, strand_ref)
+        }
         _ => format!("{}>{}", strand_ref, strand_read),
-    };
+    }
 }
 
 pub fn compare_record_to_reference(

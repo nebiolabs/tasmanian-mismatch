@@ -89,7 +89,6 @@ fn integration_all_binaries_with_options_and_three_way_pipe() {
             "--max-fragment-length",
             "1000",
             "--methylation-mode",
-            "--cpg-only",
             "-b",
             &bed_file.to_string_lossy(),
             "--bed-filter-mode",
@@ -127,7 +126,6 @@ fn integration_all_binaries_with_options_and_three_way_pipe() {
         .arg("--max-fragment-length")
         .arg("1000")
         .arg("--methylation-mode")
-        .arg("--cpg-only")
         .arg("-b")
         .arg(&bed_file)
         .arg("--bed-filter-mode")
@@ -199,7 +197,6 @@ fn integration_all_binaries_with_options_and_three_way_pipe() {
             "--min-map-quality",
             "0",
             "-m",
-            "--cpg-only",
             "--use-read-len-max",
             "8",
             "--use-insert-mode",
@@ -239,7 +236,6 @@ fn integration_all_binaries_with_options_and_three_way_pipe() {
         .arg("--min-map-quality")
         .arg("0")
         .arg("-m")
-        .arg("--cpg-only")
         .arg("--use-read-len-max")
         .arg("8")
         .arg("--use-insert-mode")
