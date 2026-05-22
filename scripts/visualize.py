@@ -457,26 +457,46 @@ def build_base_sources(
     for rn in reads_available:
         sources[rn] = {}
         sources_combined[rn] = {}
+
+        # All positions seen for this read across all mismatches and reference orders.
+        all_positions_for_read = sorted(
+            df_mm.filter(pl.col("read_num") == rn)["position"].unique().to_list()
+        )
+
         for bc in MISMATCHES:
             sources[rn][bc] = {}
 
             for ref_ord in reference_orders_available:
+                # Full position spine for this read/reference_order combo.
+                all_pos_ref = sorted(
+                    df_mm.filter(
+                        (pl.col("read_num") == rn) & (pl.col("reference_order") == ref_ord)
+                    )["position"].unique().to_list()
+                )
                 sub = df_mm.filter(
                     (pl.col("read_num") == rn)
                     & (pl.col("base_change") == bc)
                     & (pl.col("reference_order") == ref_ord)
                 ).sort("position")
+                # Zero-fill missing positions.
+                sub_dict: dict[int, tuple[float, float]] = {
+                    row["position"]: (row[y_raw_field], row["normalized_count"])
+                    for row in sub.iter_rows(named=True)
+                }
+                y_count = [sub_dict[p][0] if p in sub_dict else 0.0 for p in all_pos_ref]
+                y_norm  = [sub_dict[p][1] if p in sub_dict else 0.0 for p in all_pos_ref]
                 sources[rn][bc][ref_ord] = ColumnDataSource(data=dict(
-                    position=sub["position"].to_list(),
-                    y=sub[y_raw_field].to_list(),
-                    y_count=sub[y_raw_field].to_list(),
-                    y_norm=sub["normalized_count"].to_list(),
-                    base_change=[bc] * len(sub),
-                    read_num=[rn] * len(sub),
-                    reference_order=[ref_ord] * len(sub),
+                    position=all_pos_ref,
+                    y=list(y_count),
+                    y_count=list(y_count),
+                    y_norm=list(y_norm),
+                    base_change=[bc] * len(all_pos_ref),
+                    read_num=[rn] * len(all_pos_ref),
+                    reference_order=[ref_ord] * len(all_pos_ref),
                 ))
 
-            # Combined source: sum all reference_orders for this read and mismatch.
+            # Combined source: sum all reference_orders for this read and mismatch,
+            # zero-filled across all positions seen for this read.
             sub_num = (
                 df_mm.filter((pl.col("read_num") == rn) & (pl.col("base_change") == bc))
                 .group_by("position")
@@ -502,14 +522,20 @@ def build_base_sources(
                 )
             )
 
+            sub_comb_dict: dict[int, tuple[float, float]] = {
+                row["position"]: (row[y_raw_field], row["y_norm"])
+                for row in sub_combined.iter_rows(named=True)
+            }
+            comb_y_count = [sub_comb_dict[p][0] if p in sub_comb_dict else 0.0 for p in all_positions_for_read]
+            comb_y_norm  = [sub_comb_dict[p][1] if p in sub_comb_dict else 0.0 for p in all_positions_for_read]
             sources_combined[rn][bc] = ColumnDataSource(data=dict(
-                position=sub_combined["position"].to_list(),
-                y=sub_combined[y_raw_field].to_list(),
-                y_count=sub_combined[y_raw_field].to_list(),
-                y_norm=sub_combined["y_norm"].to_list(),
-                base_change=[bc] * len(sub_combined),
-                read_num=[rn] * len(sub_combined),
-                reference_order=["combined"] * len(sub_combined),
+                position=all_positions_for_read,
+                y=list(comb_y_count),
+                y_count=list(comb_y_count),
+                y_norm=list(comb_y_norm),
+                base_change=[bc] * len(all_positions_for_read),
+                read_num=[rn] * len(all_positions_for_read),
+                reference_order=["combined"] * len(all_positions_for_read),
             ))
 
     return sources, sources_combined
@@ -964,6 +990,10 @@ def write_plot_html(layout, output_path: str | None = None, extra_js: str = ""):
 
 def build_plot(df: pl.DataFrame, output_path: str | None = None):
     is_insert, y_raw_field, df, df_all, reads_available, reference_orders_available = prepare_plot_data(df)
+
+    if not reads_available:
+        sys.exit("No mismatches found in input data — nothing to plot.")
+
     sources, sources_combined = build_base_sources(
         df_mm=df,
         df_all=df_all,
