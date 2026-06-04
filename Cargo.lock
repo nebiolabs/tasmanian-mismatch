@@ -1316,6 +1316,7 @@ dependencies = [
  "bio",
  "clap",
  "env_logger",
+ "hts-sys",
  "log",
  "rayon",
  "rust-htslib",
