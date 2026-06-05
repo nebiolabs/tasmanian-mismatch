@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-rust-htslib = { version = "1.0.0", features = ["bindgen", "bzip2"] }
+rust-htslib = "0.44.1"
 rayon = "1.12"
 bio = "3.0"
 clap = { version = "4.6.1", features = ["derive"] }
