@@ -1077,10 +1077,10 @@ pub fn insert_mode_read_position(
         } else {
             read_pos + 1
         }
-    } else if read_pos < seq_len / 2 && short_fragment {
-        read_pos + 1
+    } else if read_pos >= seq_len / 2 && short_fragment {
+        trailing_bases //read_pos + 1
     } else {
-        2 * max_read_len - trailing_bases
+        2 * max_read_len - read_pos
     }
 }
 
