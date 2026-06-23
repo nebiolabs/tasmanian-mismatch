@@ -1237,6 +1237,8 @@ mod tests {
             10
         );
         // second read, non-stretch.
+        // read_pos=8 in a 10-base read (max=12): insert-facing end is at 2*12-9=15, external at 2*12-0=24.
+        // Position 8 maps to 2*max_read_len - read_pos = 24 - 8 = 16.
         assert_eq!(
             insert_mode_read_position(ReferenceOrder::Second, 8, 10, 12, false, None),
             23
