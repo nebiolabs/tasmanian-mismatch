@@ -72,6 +72,8 @@ fn main() {
         use_insert_mode: args.position_mode == PositionMode::Insert,
         position_mode: args.position_mode,
         overlap_mode: args.overlap_mode,
+        min_fragment_length: args.min_fragment_length,
+        max_fragment_length: args.max_fragment_length,
     };
 
     let total_reads = AtomicUsize::new(0);

@@ -46,6 +46,14 @@ struct Args {
     #[arg(long, default_value_t = false)]
     use_insert_mode: bool,
 
+    /// Minimum estimated fragment length required for a read to be counted
+    #[arg(long, default_value_t = 25)]
+    min_fragment_length: usize,
+
+    /// Maximum estimated fragment length allowed for a read to be counted
+    #[arg(long, default_value_t = 10_000)]
+    max_fragment_length: usize,
+
     /// Minimum mismatch count for reporting a genomic site
     #[arg(long, default_value_t = 7)]
     genomic_threshold: usize,
@@ -191,6 +199,8 @@ fn main() {
             PositionMode::Read
         },
         overlap_mode: OverlapMode::Cut,
+        min_fragment_length: args.min_fragment_length,
+        max_fragment_length: args.max_fragment_length,
     };
 
     let bam_path_arc = Arc::new(args.bam_file.clone());

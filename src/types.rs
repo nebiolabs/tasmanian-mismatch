@@ -147,6 +147,10 @@ pub struct ProcessingConfig {
     pub position_mode: PositionMode,
     /// How to handle read-pair overlapping positions.
     pub overlap_mode: OverlapMode,
+    /// Minimum estimated fragment length required for a record to be processed.
+    pub min_fragment_length: usize,
+    /// Maximum estimated fragment length allowed for a record to be processed.
+    pub max_fragment_length: usize,
 }
 
 #[derive(Parser, Debug)]
@@ -202,12 +206,12 @@ pub struct Args {
     #[arg(long, default_value_t = false)]
     pub methylation_mode: bool,
 
-    /// minimum fragment length to be accepted for insert mode counting;
-    #[arg(long, default_value_t = 0)]
+    /// minimum estimated fragment length required for a read to be counted
+    #[arg(long, default_value_t = 25)]
     pub min_fragment_length: usize,
 
-    /// maximum fragment length for insert mode counting
-    #[arg(long, default_value_t = 1500)]
+    /// maximum estimated fragment length allowed for a read to be counted
+    #[arg(long, default_value_t = 10_000)]
     pub max_fragment_length: usize,
 
     /// read position or fragment (insert) position mode

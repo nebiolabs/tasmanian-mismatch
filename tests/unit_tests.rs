@@ -163,6 +163,8 @@ mod tests {
             use_insert_mode: false,
             position_mode: PositionMode::Read,
             overlap_mode: OverlapMode::Cut,
+            min_fragment_length: 0,
+            max_fragment_length: usize::MAX,
         };
         let seq = record.seq();
         let read_ctx = ReadContext {
@@ -207,6 +209,8 @@ mod tests {
             use_insert_mode: false,
             position_mode: PositionMode::Read,
             overlap_mode: OverlapMode::Cut,
+            min_fragment_length: 0,
+            max_fragment_length: usize::MAX,
         };
         let seq = record.seq();
         let read_ctx = ReadContext {
@@ -458,6 +462,8 @@ mod tests {
             use_insert_mode: false,
             position_mode: PositionMode::Read,
             overlap_mode: OverlapMode::Cut,
+            min_fragment_length: 0,
+            max_fragment_length: usize::MAX,
         };
 
         // Overlap region [5, 10): 5 bases shared by both reads.
@@ -510,6 +516,8 @@ mod tests {
             use_insert_mode: false,
             position_mode: PositionMode::Read,
             overlap_mode: OverlapMode::Cut,
+            min_fragment_length: 0,
+            max_fragment_length: usize::MAX,
         };
 
         // Just verify the function runs without panicking
@@ -776,6 +784,8 @@ mod tests {
             use_insert_mode: false,
             position_mode: PositionMode::Read,
             overlap_mode: OverlapMode::Cut,
+            min_fragment_length: 0,
+            max_fragment_length: usize::MAX,
         };
 
         // Should not panic
@@ -840,6 +850,8 @@ mod tests {
             use_insert_mode: false,
             position_mode: PositionMode::Read,
             overlap_mode: OverlapMode::Cut,
+            min_fragment_length: 0,
+            max_fragment_length: usize::MAX,
         };
 
         let mut counts = OverlapCounts {
@@ -1264,6 +1276,8 @@ mod tests {
             use_insert_mode: false,
             position_mode: PositionMode::Read,
             overlap_mode: OverlapMode::Cut,
+            min_fragment_length: 0,
+            max_fragment_length: usize::MAX,
         };
         let pos = base_position_for_mode(&config, 2, 10, false, ReferenceOrder::First, false, None);
         assert_eq!(pos, read_mode_read_position(2, 10, false, 10));
@@ -1393,6 +1407,8 @@ mod tests {
             use_insert_mode: false,
             position_mode: PositionMode::Read,
             overlap_mode: OverlapMode::Cut,
+            min_fragment_length: 0,
+            max_fragment_length: usize::MAX,
         };
 
         let mut counts: HashMap<InsertKey, usize> = HashMap::new();
@@ -1437,6 +1453,8 @@ mod tests {
             use_insert_mode: false,
             position_mode: PositionMode::Read,
             overlap_mode: OverlapMode::Cut,
+            min_fragment_length: 0,
+            max_fragment_length: usize::MAX,
         };
 
         // No filters → not skipped.
@@ -1532,6 +1550,8 @@ mod tests {
             use_insert_mode: false,
             position_mode: PositionMode::Read,
             overlap_mode: OverlapMode::Cut,
+            min_fragment_length: 0,
+            max_fragment_length: usize::MAX,
         };
 
         let mut local_counts: HashMap<MismatchKey, usize> = HashMap::new();
@@ -1601,6 +1621,8 @@ mod tests {
             use_insert_mode: false,
             position_mode: PositionMode::Read,
             overlap_mode: OverlapMode::Cut,
+            min_fragment_length: 0,
+            max_fragment_length: usize::MAX,
         };
 
         let mut local_counts: HashMap<MismatchKey, usize> = HashMap::new();
@@ -1732,6 +1754,8 @@ mod tests {
             use_insert_mode: false,
             position_mode: PositionMode::Read,
             overlap_mode: OverlapMode::Cut,
+            min_fragment_length: 0,
+            max_fragment_length: usize::MAX,
         };
 
         let mut local_counts: HashMap<MismatchKey, usize> = HashMap::new();
@@ -1795,6 +1819,8 @@ mod tests {
             use_insert_mode: false,
             position_mode: PositionMode::Read,
             overlap_mode: OverlapMode::Cut,
+            min_fragment_length: 0,
+            max_fragment_length: usize::MAX,
         };
 
         let mut cut_counts: HashMap<InsertKey, usize> = HashMap::new();
@@ -1856,6 +1882,8 @@ mod tests {
             use_insert_mode: false,
             position_mode: PositionMode::Read,
             overlap_mode: OverlapMode::Cut,
+            min_fragment_length: 0,
+            max_fragment_length: usize::MAX,
         };
 
         let mut counts: HashMap<InsertKey, usize> = HashMap::new();
@@ -1943,6 +1971,8 @@ mod tests {
             use_insert_mode: false,
             position_mode: PositionMode::Read,
             overlap_mode: OverlapMode::Cut,
+            min_fragment_length: 0,
+            max_fragment_length: usize::MAX,
         };
 
         let mut local_counts: HashMap<MismatchKey, usize> = HashMap::new();
