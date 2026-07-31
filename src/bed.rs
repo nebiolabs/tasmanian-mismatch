@@ -74,12 +74,26 @@ pub fn parse_bed_file(bed_path: &str) -> Result<BedRegions, Box<dyn std::error::
         }
 
         let chrom = fields[0].to_string();
-        let start: i64 = fields[1]
-            .parse()
-            .map_err(|_| format!("Invalid start coordinate at line {}", line_num + 1))?;
-        let end: i64 = fields[2]
-            .parse()
-            .map_err(|_| format!("Invalid end coordinate at line {}", line_num + 1))?;
+        let start: i64 = match fields[1].parse() {
+            Ok(v) => v,
+            Err(_) => {
+                log::warn!(
+                    "Skipping non-numeric start coordinate at line {} (possible header)",
+                    line_num + 1
+                );
+                continue;
+            }
+        };
+        let end: i64 = match fields[2].parse() {
+            Ok(v) => v,
+            Err(_) => {
+                log::warn!(
+                    "Skipping non-numeric end coordinate at line {} (possible header)",
+                    line_num + 1
+                );
+                continue;
+            }
+        };
 
         if start >= end {
             log::warn!(
@@ -95,17 +109,15 @@ pub fn parse_bed_file(bed_path: &str) -> Result<BedRegions, Box<dyn std::error::
             .push(BedInterval { start, end });
     }
 
-    // Validate that intervals are sorted by start position within each chromosome
-    for (chrom, intervals) in &regions {
-        for i in 1..intervals.len() {
-            if intervals[i].start < intervals[i - 1].start {
-                panic!(
-                    "BED file is not sorted! Chromosome '{}' has unsorted intervals: \
-                    interval at position {} (start={}) comes before interval at position {} (start={}). \
-                    Please sort your BED file using 'sort -k1,1 -k2,2n'",
-                    chrom, i - 1, intervals[i - 1].start, i, intervals[i].start
-                );
-            }
+    // Sort intervals by start position within each chromosome.
+    for (chrom, intervals) in &mut regions {
+        let was_unsorted = intervals.windows(2).any(|w| w[1].start < w[0].start);
+        if was_unsorted {
+            log::warn!(
+                "BED intervals for '{}' are not sorted by start position; sorting automatically.",
+                chrom
+            );
+            intervals.sort_by_key(|iv| iv.start);
         }
     }
 
