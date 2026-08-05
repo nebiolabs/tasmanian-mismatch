@@ -10,19 +10,21 @@ This tool now supports filtering and masking reads based on BED file regions, le
 
 ```bash
 # Mask individual bases that overlap with BED regions (default)
-./target/release/rustmanian-mismatch \
+./target/release/tasmanian-mismatch \
   input.bam \
   reference.fa \
   -b regions.bed \
   --bed-filter-mode mask
 
 # Filter entire reads that overlap with BED regions
-./target/release/rustmanian-mismatch \
+./target/release/tasmanian-mismatch \
   input.bam \
   reference.fa \
   -b regions.bed \
   --bed-filter-mode filter
 ```
+
+BED filtering is available in both `tasmanian-mismatch` and `tasmanian-diagnostics`.
 
 ## Filter Modes
 
@@ -55,6 +57,12 @@ Minimum required columns:
 
 Additional columns are ignored but preserved compatibility with standard BED files.
 
+### Parsing tolerance
+
+- Header/comment lines (or any line with a non-numeric start/end column) are skipped with a warning instead of aborting the run.
+- Intervals are not required to be pre-sorted: if a chromosome's intervals arrive unsorted by start position, they are sorted automatically (with a warning).
+- Overlapping, nested, or adjacent intervals on the same chromosome are merged into non-overlapping intervals at load time. This is what makes the binary-search overlap check both correct and fast.
+
 ## Examples
 
 ### Example 1: Mask repetitive regions
@@ -75,7 +83,7 @@ rustmanian-mismatch input.bam reference.fa -b repetitive_regions.bed
 
 ```bash
 # Use UCSC or Ensembl BED file for genes to exclude
-rustmanian-mismatch input.bam reference.fa \
+tasmanian-mismatch input.bam reference.fa \
   -b genes_to_exclude.bed \
   --bed-filter-mode filter
 ```
@@ -83,13 +91,17 @@ rustmanian-mismatch input.bam reference.fa \
 ### Example 3: Combined with other filters
 
 ```bash
-# Combine BED filtering with quality filters
-rustmanian-mismatch input.bam reference.fa \
+# Combine BED filtering with quality and fragment-length filters
+tasmanian-mismatch input.bam reference.fa \
   -b problematic_regions.bed \
   -q 30 \
   --min-map-quality 20 \
+  --min-fragment-length 25 \
+  --max-fragment-length 10000 \
   -t 8
 ```
+
+Fragment-length filtering (`--min-fragment-length` / `--max-fragment-length`, defaults 25/10000) excludes reads whose estimated fragment length falls outside the given range. It is independent of BED filtering but commonly used alongside it to further restrict which reads contribute counts.
 
 ## Using with samtools-style filtering
 
@@ -99,15 +111,15 @@ For compatibility with samtools-style workflows, you can pre-filter your BAM fil
 # htslib approach: exclude regions (creates a new BAM)
 samtools view -L ^exclude_regions.bed -b input.bam > filtered.bam
 
-# Then run rustmanian-mismatch on filtered BAM
-rustmanian-mismatch filtered.bam reference.fa
+# Then run tasmanian-mismatch on filtered BAM
+tasmanian-mismatch filtered.bam reference.fa
 ```
 
 Or use the built-in BED filtering:
 
 ```bash
 # Direct approach: use built-in BED filtering
-rustmanian-mismatch input.bam reference.fa -b exclude_regions.bed
+tasmanian-mismatch input.bam reference.fa -b exclude_regions.bed
 ```
 
 ## Performance Notes
@@ -137,5 +149,6 @@ This implementation is compatible with htslib's BED handling conventions:
 
 - Empty BED files or files with no matching chromosomes are handled gracefully
 - Chromosome name mismatches (chr1 vs 1) are NOT automatically handled - ensure consistency
-- Overlapping BED intervals are supported (any overlap triggers filtering)
+- Overlapping, nested, and adjacent BED intervals are merged automatically at load time (any overlap with the merged interval triggers filtering)
+- Header lines and unsorted input are tolerated (see "Parsing tolerance" above)
 - BED file is validated at load time with helpful error messages

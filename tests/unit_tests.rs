@@ -481,8 +481,9 @@ mod tests {
         assert!(local_counts.values().sum::<usize>() > 0);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
-    fn test_process_record_basic() {
+    fn test_process_record_unmapped() {
         // Create header
         let header = Header::new();
         let header_view = HeaderView::from_header(&header);
@@ -748,6 +749,7 @@ mod tests {
         std::fs::remove_file(bed_path).unwrap();
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn test_process_single_record() {
         let header = Header::new();
@@ -802,6 +804,7 @@ mod tests {
         assert!(true);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn test_process_paired_reads_with_overlap() {
         let header = Header::new();
@@ -875,6 +878,7 @@ mod tests {
         assert!(true);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn test_rescale_phred_scores() {
         let header = Header::new();
@@ -902,6 +906,7 @@ mod tests {
         assert!(true);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn test_rescale_phred_scores_with_scaling_factors() {
         let header = Header::new();
@@ -1420,7 +1425,7 @@ mod tests {
         // There should be a C>G (or strand-equivalent) mismatch key.
         let has_mismatch = counts
             .keys()
-            .any(|k| k.base_change.contains('>') && &k.base_change[0..1] != &k.base_change[2..3]);
+            .any(|k| k.base_change.contains('>') && k.base_change[0..1] != k.base_change[2..3]);
         assert!(has_mismatch);
     }
 
@@ -1989,9 +1994,9 @@ mod tests {
         );
 
         // All bases match → no cross-base substitutions.
-        let has_substitution = local_counts.keys().any(|k| {
-            k.mismatch_type.len() == 3 && &k.mismatch_type[0..1] != &k.mismatch_type[2..3]
-        });
+        let has_substitution = local_counts
+            .keys()
+            .any(|k| k.mismatch_type.len() == 3 && k.mismatch_type[0..1] != k.mismatch_type[2..3]);
         assert!(
             !has_substitution,
             "unexpected substitution mismatches: {:?}",
@@ -2017,9 +2022,9 @@ mod tests {
             &config,
             Some(&mut depth2),
         );
-        let has_sub2 = local2.keys().any(|k| {
-            k.mismatch_type.len() == 3 && &k.mismatch_type[0..1] != &k.mismatch_type[2..3]
-        });
+        let has_sub2 = local2
+            .keys()
+            .any(|k| k.mismatch_type.len() == 3 && k.mismatch_type[0..1] != k.mismatch_type[2..3]);
         assert!(
             !has_sub2,
             "unexpected substitution mismatches: {:?}",

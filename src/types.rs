@@ -214,7 +214,7 @@ pub struct Args {
     #[arg(long, default_value_t = 10_000)]
     pub max_fragment_length: usize,
 
-    /// read position or fragment (insert) position mode
+    /// read position (R1 and R2 split) or fragment (insert) position mode
     #[arg(long, value_enum, default_value = "insert")]
     pub position_mode: PositionMode,
 
