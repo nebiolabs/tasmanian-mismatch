@@ -104,7 +104,7 @@ tasmanian-mismatch sample.bam reference.fa \
   --normalize \
   -o mismatch_normalized.tsv
 
-# Emit rescaling matrix rows to stdout (or -o file.tsv)
+# Emit rescaling matrix rows to stdout (or -o file.tsv)  --> _Under development_
 tasmanian-mismatch sample.bam reference.fa \
   --position-mode read \
   --emit-rescaling-matrix
