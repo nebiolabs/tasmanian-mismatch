@@ -1,6 +1,6 @@
 // Unit tests for tasmanian-mismatch
 
-use rustmanian_mismatch::*;
+use tasmanian_mismatch::*;
 
 #[cfg(test)]
 mod tests {
@@ -1298,7 +1298,7 @@ mod tests {
         assert_eq!(cigar_reference_span("10?"), None);
 
         // softclip_identity
-        use rustmanian_mismatch::SoftclipComparison;
+        use tasmanian_mismatch::SoftclipComparison;
         let comps = vec![
             SoftclipComparison {
                 read_pos: 0,

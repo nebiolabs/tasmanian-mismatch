@@ -1,7 +1,7 @@
 use clap::Parser;
 use rayon::prelude::*;
 use rust_htslib::bam::{FetchDefinition, IndexedReader, Read, Reader, Record};
-use rustmanian_mismatch::{OverlapMode, PositionMode, *};
+use tasmanian_mismatch::{OverlapMode, PositionMode, *};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};

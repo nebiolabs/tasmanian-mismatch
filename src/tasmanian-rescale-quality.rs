@@ -3,7 +3,7 @@ use rayon::prelude::*;
 use rust_htslib::bam::{
     FetchDefinition, Format, Header, IndexedReader, Read, Reader, Record, Writer,
 };
-use rustmanian_mismatch::*;
+use tasmanian_mismatch::*;
 use std::collections::HashMap;
 use std::sync::Arc;
 

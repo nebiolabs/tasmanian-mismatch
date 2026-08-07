@@ -1215,18 +1215,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustmanian-mismatch"
-version = "0.1.0"
-dependencies = [
- "bio",
- "clap",
- "env_logger",
- "log",
- "rayon",
- "rust-htslib",
-]
-
-[[package]]
 name = "rustversion"
 version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1393,6 +1381,18 @@ dependencies = [
  "proc-macro2 1.0.106",
  "quote 1.0.45",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "tasmanian-mismatch"
+version = "2.0.3"
+dependencies = [
+ "bio",
+ "clap",
+ "env_logger",
+ "log",
+ "rayon",
+ "rust-htslib",
 ]
 
 [[package]]
