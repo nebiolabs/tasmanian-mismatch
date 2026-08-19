@@ -349,13 +349,12 @@ pub fn apply_external_discounts(
         }
 
         let first_key = if c1 >= c2 { &k1 } else { &k2 };
-        if remaining > 0 {
-            if let Some(v) = counts.get_mut(first_key) {
+        if remaining > 0
+            && let Some(v) = counts.get_mut(first_key) {
                 let take = remaining.min(*v);
                 *v -= take;
                 remaining -= take;
             }
-        }
 
         if remaining > 0 {
             let second_key = if first_key.reference_order == ReferenceOrder::First {

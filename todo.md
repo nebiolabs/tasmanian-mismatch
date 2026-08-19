@@ -2,13 +2,18 @@
 
 ## Clippy — remaining warnings
 
-**Type complexity** — add a `RescalingMatrix` type alias to eliminate the repeated `HashMap<(u8, u16, char, char), f32>`:
-- [ ] `io.rs:223,236,472` — complex return type in `load_rescaling_matrix`, `load_rescaling_matrix_from_reader`, `write_rescaling_matrix_output`
-- [ ] `processing.rs:1249` — complex return type in `build_tid_map_and_regions`
-- [ ] `utils.rs:166` — complex return type in `parse_md_tag`
+`cargo clippy --workspace --all-targets` is clean (aside from an upstream `proc-macro-error2` future-incompat notice unrelated to this crate).
+
+**Type complexity** — done via `RescalingMatrix`/`TidNameMap`/`RegionList`/`MdMismatches`/`MdMatches` type aliases in `types.rs`:
+- [x] `io.rs` — `load_rescaling_matrix`, `load_rescaling_matrix_from_reader`, `write_rescaling_matrix_output` return `RescalingMatrix`
+- [x] `processing.rs` — `build_tid_map_and_regions` returns `(TidNameMap, RegionList)`
+- [x] `utils.rs` — `parse_md_tag` returns `(MdMismatches, MdMatches)`
 
 **Manual flatten** (not auto-fixable):
 - [x] `tasmanian-rescale-quality.rs:128` — `for record_result in bam.records() { if let Ok(mut record) = ...` → `for mut record in bam.records().flatten()`
+
+**Collapsible if** (auto-fixed via `cargo clippy --fix`):
+- [x] `io.rs`, `processing.rs` (7 sites) — collapsed nested `if let`/`if` into `if let ... && ...` let-chains
 
 **Functions with too many arguments** — these lower-level processing functions still need the same `ProcessingConfig`/`ProcessingContext` treatment applied to the main hot path:
 - [ ] `create_mismatch_key` (12 args, `processing.rs:69`)
@@ -33,7 +38,12 @@
 
 - [ ] `frequencies_to_rescaling_matrix` — returns `scaling_factor = 1.0` for every entry (documented placeholder). Either implement the actual conversion or replace the body with `unimplemented!()` so callers know it isn't ready.
 
-- [ ] `merge_reads_into_insert_position_mode` — verify whether this is called anywhere in production paths; if not, delete it.
+- [ ] `merge_reads_into_insert_position_mode` — confirmed unused (not called by any binary, not exercised by any test) as of 2026-08-19. Kept intentionally rather than deleted; revisit if it stays dead.
+- [ ] `print_read_pair_inconsistency_table` (`io.rs:127`) — same situation: `pub`, re-exported from `lib.rs`, zero callers, zero tests, as of 2026-08-19.
+
+## Test coverage gaps (audit 2026-08-19)
+
+- [ ] `--plot` (`launch_visualization` in `io.rs`, invoked from `tasmanian-mismatch.rs`) shells out to `scripts/visualize.py` and has no integration test — a broken plotting script or Python/bokeh env would go undetected by `cargo test`. Full unit/integration coverage otherwise confirmed solid: 68/68 tests pass, assertions check real output values (not just exit codes), no tautological or disabled assertions found.
 
 ## Module structure
 

@@ -203,8 +203,8 @@ pub fn compare_and_count(
     *local_counts.entry(key.clone()).or_insert(0) += 1;
 
     // Track genomic position for mismatches only (if genomic_counts is provided)
-    if let Some(genomic_counts) = genomic_counts {
-        if read_base != ref_base {
+    if let Some(genomic_counts) = genomic_counts
+        && read_base != ref_base {
             let strand_adjusted_read_base = if read_ctx.is_reverse {
                 complement(read_base)
             } else {
@@ -239,7 +239,6 @@ pub fn compare_and_count(
             genomic_values.mismatch_keys.insert(key);
             genomic_values.count = genomic_values.mismatch_keys.len();
         }
-    }
 }
 
 /// Determine the genomic overlap between two reads.
@@ -293,11 +292,10 @@ where
                     let r_pos = read_pos + i as usize;
                     let genome_pos = ref_pos + i as usize;
 
-                    if let Some((start, end)) = range {
-                        if genome_pos < start || genome_pos >= end {
+                    if let Some((start, end)) = range
+                        && (genome_pos < start || genome_pos >= end) {
                             continue;
                         }
-                    }
 
                     on_base(r_pos, genome_pos);
                 }
@@ -880,8 +878,8 @@ pub fn process_paired_reads_with_overlap(
 
     // Detect inconsistencies in the overlap region
     for (genome_pos, (r1_pos, r1_base, r1_qual)) in read1_overlap_map.iter() {
-        if let Some((r2_pos, r2_base, r2_qual)) = read2_overlap_map.get(genome_pos) {
-            if r1_qual >= &config.min_base_quality
+        if let Some((r2_pos, r2_base, r2_qual)) = read2_overlap_map.get(genome_pos)
+            && r1_qual >= &config.min_base_quality
                 && r2_qual >= &config.min_base_quality
                 && r1_base != r2_base
             {
@@ -895,7 +893,6 @@ pub fn process_paired_reads_with_overlap(
                 };
                 *counts.inconsistency_counts.entry(key).or_insert(0) += 1;
             }
-        }
     }
 }
 
@@ -1249,8 +1246,8 @@ pub fn qualifying_softclip_comparisons(
     let aligned_end = cigar.end_pos();
     let mut comparisons = Vec::new();
 
-    if let Some(rust_htslib::bam::record::Cigar::SoftClip(len)) = cigar.iter().next() {
-        if aligned_start >= *len as i64 {
+    if let Some(rust_htslib::bam::record::Cigar::SoftClip(len)) = cigar.iter().next()
+        && aligned_start >= *len as i64 {
             let side = softclip_side_comparisons(
                 record,
                 ref_seq,
@@ -1262,7 +1259,6 @@ pub fn qualifying_softclip_comparisons(
                 comparisons.extend(side);
             }
         }
-    }
 
     if let Some(rust_htslib::bam::record::Cigar::SoftClip(len)) = cigar.iter().last() {
         let side = softclip_side_comparisons(
@@ -1474,13 +1470,11 @@ pub fn compare_record_to_reference(
                     let rp = read_pos + i;
                     let gp = ref_pos + i;
 
-                    if config.overlap_mode == OverlapMode::Cut {
-                        if let Some((ov_start, ov_end)) = overlap {
-                            if gp >= ov_start && gp < ov_end && read_num == 2 {
+                    if config.overlap_mode == OverlapMode::Cut
+                        && let Some((ov_start, ov_end)) = overlap
+                            && gp >= ov_start && gp < ov_end && read_num == 2 {
                                 continue;
                             }
-                        }
-                    }
 
                     if rp >= seq_len || rp >= qual.len() || gp >= ref_seq.len() {
                         continue;

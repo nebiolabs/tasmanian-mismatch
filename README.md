@@ -13,9 +13,8 @@ Tasmanian-Mismatch is a toolkit for mismatch analysis on indexed BAM files again
 - `tasmanian-rescale-quality`: rescale BAM quality scores from a tab-delimited matrix
 
 ## Example Visualization
-![Visualization](test_data_visualization.png)
-[Interactive version](test_data_visualization.html)
-Create this using
+
+Generate an interactive HTML plot from any output TSV:
 ```bash
 pixi run python scripts/visualize.py tests/fixtures/test_data.tsv
 ```
