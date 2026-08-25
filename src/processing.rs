@@ -205,6 +205,16 @@ pub fn compare_and_count(
     // Track genomic position for mismatches only (if genomic_counts is provided)
     if let Some(genomic_counts) = genomic_counts
         && read_base != ref_base {
+            // `read_base`/`ref_base` are already in reference (forward-strand)
+            // orientation: BAM SEQ is stored reverse-complemented for reverse-strand
+            // alignments, so it already reads correctly against the forward-strand
+            // reference. Genomic identity (this key) must stay in that orientation
+            // regardless of which strand supported it — unlike `local_counts` above,
+            // which intentionally pools strand-symmetric complement pairs (C>T/G>A)
+            // for the damage-signature report.
+            //
+            // `adjust_methylation_base` expects strand-relative (bisulfite-convention)
+            // bases, so convert only for that call, then convert its verdict back.
             let strand_adjusted_read_base = if read_ctx.is_reverse {
                 complement(read_base)
             } else {
@@ -215,17 +225,22 @@ pub fn compare_and_count(
             } else {
                 ref_base
             };
-            let meth_adjusted_read_base = adjust_methylation_base(
+            let meth_adjusted_strand_read_base = adjust_methylation_base(
                 strand_adjusted_read_base,
                 strand_adjusted_ref_base,
                 read_ctx.read_num,
                 config.is_methylation,
             );
+            let meth_adjusted_read_base = if read_ctx.is_reverse {
+                complement(meth_adjusted_strand_read_base)
+            } else {
+                meth_adjusted_strand_read_base
+            };
 
             let genomic_key = GenomicMismatchKey {
                 // e.g. key:value = {"chr1", "C>T", 123456}:  {{"C>T", 5, 1}, 23} vals=(_, read_position, readnum), counts
                 chromosome: chromosome.to_string(),
-                mismatch_type: format!("{}>{}", strand_adjusted_ref_base, meth_adjusted_read_base),
+                mismatch_type: format!("{}>{}", ref_base, meth_adjusted_read_base),
                 genomic_position: genome_pos as i64,
             };
 
