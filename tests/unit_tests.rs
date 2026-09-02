@@ -2031,4 +2031,255 @@ mod tests {
             local2
         );
     }
+
+    // ── methylation: genomic-key reference orientation ─────────────────────
+    //
+    // Regression coverage for the fix that keeps the genomic mismatch key in
+    // reference (forward-strand) orientation even when methylation-aware
+    // base adjustment operates on strand-relative (bisulfite-convention)
+    // bases internally. Before the fix, a reverse-strand collapse produced a
+    // genomic key mixing a strand-relative base with the true reference
+    // base, e.g. reporting "C>C" at a position whose actual reference base
+    // is G.
+
+    fn methylation_config(is_methylation: bool) -> ProcessingConfig {
+        ProcessingConfig {
+            softclip_threshold: 0.0,
+            min_base_quality: 0,
+            is_methylation,
+            mode_len: 0,
+            min_map_quality: 0,
+            required_flags: 0,
+            filter_flags: 0,
+            excl_flags: 0,
+            use_insert_mode: false,
+            position_mode: PositionMode::Read,
+            overlap_mode: OverlapMode::Cut,
+            min_fragment_length: 0,
+            max_fragment_length: usize::MAX,
+        }
+    }
+
+    #[test]
+    fn test_compare_and_count_methylation_forward_strand_genomic_key() {
+        let header = Header::new();
+        let header_view = HeaderView::from_header(&header);
+        // Forward strand, read1: ref C, read T at position 0 → bisulfite collapse.
+        let sam_line: &[u8] = b"read1\t0\t*\t1\t60\t8M\t*\t0\t0\tTAAAAAAA\tIIIIIIII";
+        let record = Record::from_sam(&header_view, sam_line).unwrap();
+        let ref_seq: &[u8] = b"CAAAAAAA";
+
+        let config = methylation_config(true);
+        let seq = record.seq();
+        let read_ctx = ReadContext {
+            seq: &seq,
+            qual: record.qual(),
+            ref_seq,
+            is_reverse: false,
+            read_num: 1,
+        };
+
+        let mut local_counts = HashMap::new();
+        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> =
+            HashMap::new();
+        compare_and_count(
+            &read_ctx,
+            0,
+            0,
+            &config,
+            &mut local_counts,
+            Some(&mut genomic_counts),
+            "chr1",
+        );
+
+        assert!(
+            local_counts
+                .keys()
+                .any(|k| k.mismatch_type == "C>C" && k.read_num == 1),
+            "expected collapsed C>C local key, got: {:?}",
+            local_counts
+        );
+        let genomic_key = GenomicMismatchKey {
+            chromosome: "chr1".to_string(),
+            mismatch_type: "C>C".to_string(),
+            genomic_position: 0,
+        };
+        assert!(
+            genomic_counts.contains_key(&genomic_key),
+            "expected reference-orientation C>C genomic key, got: {:?}",
+            genomic_counts.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_compare_and_count_methylation_reverse_strand_read1_genomic_key_orientation() {
+        let header = Header::new();
+        let header_view = HeaderView::from_header(&header);
+        // Reverse strand, read1: reference G, read A at position 4 (forward
+        // orientation). Strand-relative this is ref C / read T for read1,
+        // which methylation mode collapses. The genomic key must stay in
+        // reference orientation: G>G, not the strand-relative C>C.
+        let sam_line: &[u8] = b"read1\t16\t*\t1\t60\t8M\t*\t0\t0\tAAAAAAAA\tIIIIIIII";
+        let record = Record::from_sam(&header_view, sam_line).unwrap();
+        let ref_seq: &[u8] = b"AAAAGAAA";
+
+        let config = methylation_config(true);
+        let seq = record.seq();
+        let read_ctx = ReadContext {
+            seq: &seq,
+            qual: record.qual(),
+            ref_seq,
+            is_reverse: true,
+            read_num: 1,
+        };
+
+        let mut local_counts = HashMap::new();
+        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> =
+            HashMap::new();
+        compare_and_count(
+            &read_ctx,
+            4,
+            4,
+            &config,
+            &mut local_counts,
+            Some(&mut genomic_counts),
+            "chr1",
+        );
+
+        assert!(
+            local_counts
+                .keys()
+                .any(|k| k.mismatch_type == "C>C" && k.read_num == 1),
+            "expected collapsed strand-relative C>C local key, got: {:?}",
+            local_counts
+        );
+        let expected_genomic_key = GenomicMismatchKey {
+            chromosome: "chr1".to_string(),
+            mismatch_type: "G>G".to_string(),
+            genomic_position: 4,
+        };
+        assert!(
+            genomic_counts.contains_key(&expected_genomic_key),
+            "expected reference-orientation G>G genomic key, got: {:?}",
+            genomic_counts.keys().collect::<Vec<_>>()
+        );
+        let wrong_genomic_key = GenomicMismatchKey {
+            chromosome: "chr1".to_string(),
+            mismatch_type: "C>C".to_string(),
+            genomic_position: 4,
+        };
+        assert!(
+            !genomic_counts.contains_key(&wrong_genomic_key),
+            "genomic key must not mix strand-relative base with reference orientation"
+        );
+    }
+
+    #[test]
+    fn test_compare_and_count_methylation_reverse_strand_read2_genomic_key_orientation() {
+        let header = Header::new();
+        let header_view = HeaderView::from_header(&header);
+        // Reverse strand, read2: reference C, read T at position 4 (forward
+        // orientation). Strand-relative this is ref G / read A for read2,
+        // which methylation mode collapses. The genomic key must stay in
+        // reference orientation: C>C, not the strand-relative G>G.
+        let sam_line: &[u8] = b"read2\t16\t*\t1\t60\t8M\t*\t0\t0\tAAAATAAA\tIIIIIIII";
+        let record = Record::from_sam(&header_view, sam_line).unwrap();
+        let ref_seq: &[u8] = b"AAAACAAA";
+
+        let config = methylation_config(true);
+        let seq = record.seq();
+        let read_ctx = ReadContext {
+            seq: &seq,
+            qual: record.qual(),
+            ref_seq,
+            is_reverse: true,
+            read_num: 2,
+        };
+
+        let mut local_counts = HashMap::new();
+        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> =
+            HashMap::new();
+        compare_and_count(
+            &read_ctx,
+            4,
+            4,
+            &config,
+            &mut local_counts,
+            Some(&mut genomic_counts),
+            "chr1",
+        );
+
+        assert!(
+            local_counts
+                .keys()
+                .any(|k| k.mismatch_type == "G>G" && k.read_num == 2),
+            "expected collapsed strand-relative G>G local key, got: {:?}",
+            local_counts
+        );
+        let expected_genomic_key = GenomicMismatchKey {
+            chromosome: "chr1".to_string(),
+            mismatch_type: "C>C".to_string(),
+            genomic_position: 4,
+        };
+        assert!(
+            genomic_counts.contains_key(&expected_genomic_key),
+            "expected reference-orientation C>C genomic key, got: {:?}",
+            genomic_counts.keys().collect::<Vec<_>>()
+        );
+        let wrong_genomic_key = GenomicMismatchKey {
+            chromosome: "chr1".to_string(),
+            mismatch_type: "G>G".to_string(),
+            genomic_position: 4,
+        };
+        assert!(
+            !genomic_counts.contains_key(&wrong_genomic_key),
+            "genomic key must not mix strand-relative base with reference orientation"
+        );
+    }
+
+    #[test]
+    fn test_compare_and_count_methylation_off_no_collapse() {
+        // Same bisulfite-shaped mismatch as the reverse-strand read1 test
+        // above, but with methylation mode disabled: no collapse should
+        // occur, and the genomic key should report the raw G>A mismatch.
+        let header = Header::new();
+        let header_view = HeaderView::from_header(&header);
+        let sam_line: &[u8] = b"read1\t16\t*\t1\t60\t8M\t*\t0\t0\tAAAAAAAA\tIIIIIIII";
+        let record = Record::from_sam(&header_view, sam_line).unwrap();
+        let ref_seq: &[u8] = b"AAAAGAAA";
+
+        let config = methylation_config(false);
+        let seq = record.seq();
+        let read_ctx = ReadContext {
+            seq: &seq,
+            qual: record.qual(),
+            ref_seq,
+            is_reverse: true,
+            read_num: 1,
+        };
+
+        let mut local_counts = HashMap::new();
+        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> =
+            HashMap::new();
+        compare_and_count(
+            &read_ctx,
+            4,
+            4,
+            &config,
+            &mut local_counts,
+            Some(&mut genomic_counts),
+            "chr1",
+        );
+
+        let expected_genomic_key = GenomicMismatchKey {
+            chromosome: "chr1".to_string(),
+            mismatch_type: "G>A".to_string(),
+            genomic_position: 4,
+        };
+        assert!(
+            genomic_counts.contains_key(&expected_genomic_key),
+            "expected uncollapsed G>A genomic key without methylation mode, got: {:?}",
+            genomic_counts.keys().collect::<Vec<_>>()
+        );
+    }
 }

@@ -1385,7 +1385,7 @@ dependencies = [
 
 [[package]]
 name = "tasmanian-mismatch"
-version = "2.0.3"
+version = "2.0.5"
 dependencies = [
  "bio",
  "clap",
