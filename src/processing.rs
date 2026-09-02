@@ -819,7 +819,11 @@ pub fn process_paired_reads_with_overlap(
                                 overlap_map.insert(genome_pos, (r_pos, seq[r_pos], qual[r_pos]));
                             }
 
-                            // Count mismatches in overlap (only process once - use first read)
+                            // Count mismatches in overlap. Gated on `is_first_read` so this
+                            // runs exactly once per pair (from record1's cigar walk) --
+                            // record2's walk only ever reaches this branch with
+                            // `is_first_read == false` and is skipped, so its base is never
+                            // added to genomic_counts here.
                             if is_first_read {
                                 compare_and_count(
                                     &read_ctx,
@@ -827,7 +831,7 @@ pub fn process_paired_reads_with_overlap(
                                     genome_pos,
                                     &config,
                                     counts.overlap_counts,
-                                    None, // Don't track genomic counts in overlap
+                                    counts.genomic_counts.as_deref_mut(),
                                     chr_name,
                                 );
 

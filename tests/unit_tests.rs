@@ -1164,7 +1164,8 @@ mod tests {
 
         let matrix = load_rescaling_matrix(output_path).unwrap();
         assert!(matrix.contains_key(&(1, 4, 'A', 'T')));
-        assert!(matrix.contains_key(&(1, 4, 'A', 'A')));
+        // Matches (A>A) aren't scaled -- rescale_phred_scores only looks up mismatches.
+        assert!(!matrix.contains_key(&(1, 4, 'A', 'A')));
         assert_eq!(matrix.get(&(1, 4, 'A', 'T')), Some(&1.0f32));
 
         std::fs::remove_file(output_path).unwrap();
