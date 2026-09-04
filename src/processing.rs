@@ -237,6 +237,14 @@ pub fn compare_and_count(
                 meth_adjusted_strand_read_base
             };
 
+            // A methylation adjustment can neutralize the raw mismatch (e.g. read1
+            // C>T or read2 G>A reverting to the reference base) -- that's the
+            // expected bisulfite signature, not a genomic variant, so it must not
+            // be recorded at all rather than logged as a same-base "C>C"/"G>G" key.
+            if meth_adjusted_read_base == ref_base {
+                return;
+            }
+
             let genomic_key = GenomicMismatchKey {
                 // e.g. key:value = {"chr1", "C>T", 123456}:  {{"C>T", 5, 1}, 23} vals=(_, read_position, readnum), counts
                 chromosome: chromosome.to_string(),

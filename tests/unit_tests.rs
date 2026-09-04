@@ -2100,14 +2100,11 @@ mod tests {
             "expected collapsed C>C local key, got: {:?}",
             local_counts
         );
-        let genomic_key = GenomicMismatchKey {
-            chromosome: "chr1".to_string(),
-            mismatch_type: "C>C".to_string(),
-            genomic_position: 0,
-        };
+        // A methylation-collapsed mismatch is the expected bisulfite signature,
+        // not a genomic variant, so it must not appear in genomic_counts at all.
         assert!(
-            genomic_counts.contains_key(&genomic_key),
-            "expected reference-orientation C>C genomic key, got: {:?}",
+            genomic_counts.is_empty(),
+            "collapsed methylation event must not produce a genomic key, got: {:?}",
             genomic_counts.keys().collect::<Vec<_>>()
         );
     }
@@ -2154,24 +2151,13 @@ mod tests {
             "expected collapsed strand-relative C>C local key, got: {:?}",
             local_counts
         );
-        let expected_genomic_key = GenomicMismatchKey {
-            chromosome: "chr1".to_string(),
-            mismatch_type: "G>G".to_string(),
-            genomic_position: 4,
-        };
+        // A methylation-collapsed mismatch is the expected bisulfite signature,
+        // not a genomic variant, so it must not appear in genomic_counts at all
+        // -- in either reference orientation (G>G) or strand-relative (C>C).
         assert!(
-            genomic_counts.contains_key(&expected_genomic_key),
-            "expected reference-orientation G>G genomic key, got: {:?}",
+            genomic_counts.is_empty(),
+            "collapsed methylation event must not produce a genomic key, got: {:?}",
             genomic_counts.keys().collect::<Vec<_>>()
-        );
-        let wrong_genomic_key = GenomicMismatchKey {
-            chromosome: "chr1".to_string(),
-            mismatch_type: "C>C".to_string(),
-            genomic_position: 4,
-        };
-        assert!(
-            !genomic_counts.contains_key(&wrong_genomic_key),
-            "genomic key must not mix strand-relative base with reference orientation"
         );
     }
 
@@ -2217,24 +2203,13 @@ mod tests {
             "expected collapsed strand-relative G>G local key, got: {:?}",
             local_counts
         );
-        let expected_genomic_key = GenomicMismatchKey {
-            chromosome: "chr1".to_string(),
-            mismatch_type: "C>C".to_string(),
-            genomic_position: 4,
-        };
+        // A methylation-collapsed mismatch is the expected bisulfite signature,
+        // not a genomic variant, so it must not appear in genomic_counts at all
+        // -- in either reference orientation (C>C) or strand-relative (G>G).
         assert!(
-            genomic_counts.contains_key(&expected_genomic_key),
-            "expected reference-orientation C>C genomic key, got: {:?}",
+            genomic_counts.is_empty(),
+            "collapsed methylation event must not produce a genomic key, got: {:?}",
             genomic_counts.keys().collect::<Vec<_>>()
-        );
-        let wrong_genomic_key = GenomicMismatchKey {
-            chromosome: "chr1".to_string(),
-            mismatch_type: "G>G".to_string(),
-            genomic_position: 4,
-        };
-        assert!(
-            !genomic_counts.contains_key(&wrong_genomic_key),
-            "genomic key must not mix strand-relative base with reference orientation"
         );
     }
 
