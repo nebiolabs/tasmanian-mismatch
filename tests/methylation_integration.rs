@@ -13,13 +13,22 @@ use test_utils::{log_command, log_line, repo_log_path, unique_temp_dir};
 /// - read_bisulfite: reverse strand, covers [0, 8). Reference has G at 0-based
 ///   position 4; the read carries A there. In reference-forward orientation
 ///   this looks like a G>A mismatch, but on the reverse strand it is the
-///   bisulfite signature of an unmethylated C (C>T on the original strand),
-///   which methylation mode should collapse back to a non-event (G>G) in
-///   *reference* orientation.
+///   bisulfite signature of an unmethylated C (C>T on the original strand).
+///   Methylation mode collapses this back to a non-event, and (per
+///   `compare_and_count` in src/processing.rs) a collapsed site is dropped
+///   from the genomic variants report entirely rather than being recorded as
+///   a same-base "G>G" row.
 /// - read_snp: forward strand, covers [8, 16). Reference has T at 0-based
 ///   position 12; the read carries G there. This is an ordinary mismatch
 ///   unrelated to bisulfite conversion and must be reported identically
 ///   with methylation mode on or off.
+///
+/// Both reads are unpaired (no BAM_FPAIRED bit) but explicitly flagged as
+/// "first in template" (BAM_FREAD1) so `record_read_num` reports read_num=1
+/// without relying on its unpaired fallback default; this keeps them on the
+/// `process_single_record` path (not the read-pair overlap path) while
+/// making the read1 methylation-collapse branch (`G>A` on the reverse
+/// strand) the one under test.
 fn write_test_bam(path: &Path) {
     let mut header = Header::new();
     let mut sq = HeaderRecord::new(b"SQ");
@@ -31,15 +40,17 @@ fn write_test_bam(path: &Path) {
     let mut writer =
         Writer::from_path(path, &header, Format::Bam).expect("failed to open BAM writer");
 
+    // Flag 80 = 0x50 = reverse strand (0x10) + read1 (0x40).
     let bisulfite_line =
-        b"read_bisulfite\t16\tchr1\t1\t60\t8M\t*\t0\t0\tAAAAAAAA\tIIIIIIII\tNM:i:1";
+        b"read_bisulfite\t80\tchr1\t1\t60\t8M\t*\t0\t0\tAAAAAAAA\tIIIIIIII\tNM:i:1";
     let bisulfite_record =
         Record::from_sam(&header_view, bisulfite_line).expect("failed to parse SAM line");
     writer
         .write(&bisulfite_record)
         .expect("failed to write BAM record");
 
-    let snp_line = b"read_snp\t0\tchr1\t9\t60\t8M\t*\t0\t0\tCCCCGCCC\tIIIIIIII\tNM:i:1";
+    // Flag 64 = 0x40 = forward strand + read1.
+    let snp_line = b"read_snp\t64\tchr1\t9\t60\t8M\t*\t0\t0\tCCCCGCCC\tIIIIIIII\tNM:i:1";
     let snp_record = Record::from_sam(&header_view, snp_line).expect("failed to parse SAM line");
     writer
         .write(&snp_record)
@@ -164,8 +175,9 @@ fn integration_methylation_mode_collapses_bisulfite_signature_but_not_real_snp()
     );
 
     // Methylation mode on: the bisulfite-consistent G>A signature must collapse
-    // back to a same-base (non-mismatch) row in *reference* orientation, while
-    // the unrelated T>G SNP must be reported identically.
+    // to a non-event and disappear from the variants report entirely (it is
+    // never written as a same-base "G>G" row -- see `compare_and_count`),
+    // while the unrelated T>G SNP must be reported identically.
     let on_variants = temp_dir.join("variants_on.tsv");
     run_diagnostics(
         &log_path,
@@ -186,8 +198,8 @@ fn integration_methylation_mode_collapses_bisulfite_signature_but_not_real_snp()
         on_text
     );
     assert!(
-        on_text.lines().any(|line| line == "chr1\t4\tG\tG\t1\t1"),
-        "expected collapsed G>G row (reference orientation) at position 4 with methylation mode, got:\n{}",
+        !on_text.lines().any(|line| line.starts_with("chr1\t4\t")),
+        "collapsed methylation event at position 4 must not appear in the variants report at all, got:\n{}",
         on_text
     );
     assert!(
