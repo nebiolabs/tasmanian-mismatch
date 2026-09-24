@@ -1,2 +1,6 @@
+# Pins the toolchain for local builds and CI alike, so a new stable release can
+# never break `master` with a lint we have not seen yet.
 [toolchain]
 channel = "1.97.1"
+profile = "minimal"
+components = ["clippy", "rustfmt"]
