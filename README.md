@@ -1,4 +1,4 @@
-# Rustmanian-Mismatch
+# Tasmanian-mismatch
 
 [![CI](https://github.com/nebiolabs/tasmanian-mismatch/actions/workflows/ci.yml/badge.svg)](https://github.com/nebiolabs/tasmanian-mismatch/actions/workflows/ci.yml)
 
@@ -18,6 +18,8 @@ Generate an interactive HTML plot from any output TSV:
 ```bash
 pixi run python scripts/visualize.py tests/fixtures/test_data.tsv
 ```
+
+![Visualization](test_data_visualization.png)
 
 ## Build
 
