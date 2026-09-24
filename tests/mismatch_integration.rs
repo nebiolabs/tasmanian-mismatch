@@ -108,3 +108,71 @@ fn integration_mismatch_fixture_bam_produces_expected_counts() {
         output
     );
 }
+
+#[test]
+fn integration_min_max_position_excludes_bases_outside_range() {
+    let temp_dir = unique_temp_dir("mismatch_position_range_integration");
+    let log_path = repo_log_path("mismatch_position_range_integration");
+    let fixture_bam = temp_dir.join("input.bam");
+    let reference_fa = temp_dir.join("reference.fa");
+    let output_tsv = temp_dir.join("mismatch.tsv");
+
+    log_line(&log_path, "Starting min/max position integration test");
+
+    fs::write(&reference_fa, ">chr1\nACGTACGT\n").expect("failed to write reference");
+    write_test_bam(&fixture_bam);
+    index::build(&fixture_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
+
+    let binary = env!("CARGO_BIN_EXE_tasmanian-mismatch");
+    let args = [
+        "-q",
+        "0",
+        "-m",
+        "0",
+        "--position-mode",
+        "read",
+        "--min-read-position",
+        "6",
+        "--max-read-position",
+        "8",
+        "-o",
+        &output_tsv.to_string_lossy(),
+        &fixture_bam.to_string_lossy(),
+        &reference_fa.to_string_lossy(),
+    ];
+    log_command(&log_path, binary, &args);
+    let output = Command::new(binary)
+        .args(args)
+        .output()
+        .expect("failed to execute mismatch binary");
+    log_line(&log_path, &format!("Command status: {}", output.status));
+    log_line(
+        &log_path,
+        &format!(
+            "Command stderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ),
+    );
+
+    assert!(output.status.success(), "mismatch command failed");
+
+    let output = fs::read_to_string(&output_tsv).expect("failed to read mismatch output");
+    log_line(&log_path, &format!("Mismatch output file:\n{}", output));
+
+    // The A>T mismatch at read_position 5 falls outside [6, 8] and must be excluded.
+    assert!(
+        !output.contains("A>T"),
+        "A>T mismatch at position 5 should be filtered out, got:\n{}",
+        output
+    );
+    // Every remaining row's read_position (4th column) must fall within [6, 8].
+    for line in output.lines().skip(1) {
+        let fields: Vec<&str> = line.split('\t').collect();
+        let read_position: usize = fields[3].parse().expect("read_position should be numeric");
+        assert!(
+            (6..=8).contains(&read_position),
+            "row outside requested range in output:\n{}",
+            output
+        );
+    }
+}

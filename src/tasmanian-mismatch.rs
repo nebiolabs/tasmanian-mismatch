@@ -74,6 +74,8 @@ fn main() {
         overlap_mode: args.overlap_mode,
         min_fragment_length: args.min_fragment_length,
         max_fragment_length: args.max_fragment_length,
+        min_read_position: args.min_read_position.unwrap_or(0),
+        max_read_position: args.max_read_position.unwrap_or(usize::MAX),
     };
 
     let total_reads = AtomicUsize::new(0);

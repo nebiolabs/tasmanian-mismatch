@@ -1535,6 +1535,11 @@ pub fn compare_record_to_reference(
                         estimated_fragment_length(record, mate_end),
                     );
 
+                    if base_position < config.min_read_position || base_position > config.max_read_position
+                    {
+                        continue;
+                    }
+
                     *local_counts
                         .entry(InsertKey {
                             base_change: ref_base_change,
@@ -1581,6 +1586,9 @@ pub fn compare_record_to_reference(
             stretch,
             frag_len,
         );
+        if base_position < config.min_read_position || base_position > config.max_read_position {
+            continue;
+        }
         *local_counts
             .entry(InsertKey {
                 base_change: ref_base_change,

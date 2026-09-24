@@ -151,6 +151,10 @@ pub struct ProcessingConfig {
     pub min_fragment_length: usize,
     /// Maximum estimated fragment length allowed for a record to be processed.
     pub max_fragment_length: usize,
+    /// Minimum position-mode axis position (1-based, inclusive) required for a base to be counted.
+    pub min_read_position: usize,
+    /// Maximum position-mode axis position (1-based, inclusive) allowed for a base to be counted.
+    pub max_read_position: usize,
 }
 
 #[derive(Parser, Debug)]
@@ -213,6 +217,14 @@ pub struct Args {
     /// maximum estimated fragment length allowed for a read to be counted
     #[arg(long, default_value_t = 10_000)]
     pub max_fragment_length: usize,
+
+    /// Minimum position-mode axis position (1-based, inclusive) to include in counts; omit for no lower bound
+    #[arg(long)]
+    pub min_read_position: Option<usize>,
+
+    /// Maximum position-mode axis position (1-based, inclusive) to include in counts; omit for no upper bound
+    #[arg(long)]
+    pub max_read_position: Option<usize>,
 
     /// read position (R1 and R2 split) or fragment (insert) position mode
     #[arg(long, value_enum, default_value = "insert")]
