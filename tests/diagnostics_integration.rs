@@ -314,3 +314,117 @@ fn integration_diagnostics_processes_paired_reads() {
     let discounts = fs::read_to_string(&discounts_tsv).expect("failed to read discounts output");
     assert!(discounts.contains("mismatch_type\tread_num\tread_position\tdiscount_count"));
 }
+
+fn write_two_chrom_bam(path: &Path) {
+    let mut header = Header::new();
+    for name in ["chr1", "chr2"] {
+        let mut sq = HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", name);
+        sq.push_tag(b"LN", 8);
+        header.push_record(&sq);
+    }
+
+    let header_view = HeaderView::from_header(&header);
+    let mut writer =
+        Writer::from_path(path, &header, Format::Bam).expect("failed to open BAM writer");
+
+    // Both references are ACGTACGT. read1 on chr1 has A->T; read2 on chr2 has T->A.
+    for sam_line in [
+        &b"read1\t0\tchr1\t1\t60\t8M\t*\t0\t0\tACGTTCGT\tIIIIIIII\tNM:i:1"[..],
+        &b"read2\t0\tchr2\t1\t60\t8M\t*\t0\t0\tACGTACGA\tIIIIIIII\tNM:i:1"[..],
+    ] {
+        let record = Record::from_sam(&header_view, sam_line).expect("failed to parse SAM line");
+        writer.write(&record).expect("failed to write BAM record");
+    }
+}
+
+#[test]
+fn integration_diagnostics_bed_filter_mode_include_and_filter_are_inverses() {
+    let temp_dir = unique_temp_dir("diagnostics_bed_include_integration");
+    let log_path = repo_log_path("diagnostics_bed_include_integration");
+    let fixture_bam = temp_dir.join("input.bam");
+    let reference_fa = temp_dir.join("reference.fa");
+    let bed_file = temp_dir.join("regions.bed");
+
+    log_line(
+        &log_path,
+        "Starting diagnostics --bed-filter-mode include/filter integration test",
+    );
+
+    fs::write(&reference_fa, ">chr1\nACGTACGT\n>chr2\nACGTACGT\n")
+        .expect("failed to write reference");
+    write_two_chrom_bam(&fixture_bam);
+    index::build(&fixture_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
+    // Covers all of chr1 and none of chr2, so every chr2 chunk has no BED intervals.
+    fs::write(&bed_file, "chr1\t0\t8\n").expect("failed to write BED file");
+
+    let binary = env!("CARGO_BIN_EXE_tasmanian-diagnostics");
+
+    let run = |mode: &str| -> String {
+        let variants_tsv = temp_dir.join(format!("{mode}_variants.tsv"));
+        let inconsistencies_tsv = temp_dir.join(format!("{mode}_inconsistencies.tsv"));
+        let discounts_tsv = temp_dir.join(format!("{mode}_discounts.tsv"));
+        let args = [
+            "-q",
+            "0",
+            "--min-map-quality",
+            "0",
+            "--genomic-threshold",
+            "1",
+            "--genomic-depth-threshold",
+            "1",
+            "-b",
+            &bed_file.to_string_lossy(),
+            "--bed-filter-mode",
+            mode,
+            "--variants-output",
+            &variants_tsv.to_string_lossy(),
+            "--inconsistencies-output",
+            &inconsistencies_tsv.to_string_lossy(),
+            "--discount-output",
+            &discounts_tsv.to_string_lossy(),
+            &fixture_bam.to_string_lossy(),
+            &reference_fa.to_string_lossy(),
+        ];
+        log_command(&log_path, binary, &args);
+        let output = Command::new(binary)
+            .args(args)
+            .output()
+            .unwrap_or_else(|_| panic!("failed to execute diagnostics binary in {mode} mode"));
+        log_line(&log_path, &format!("[{mode}] status: {}", output.status));
+        log_line(
+            &log_path,
+            &format!(
+                "[{mode}] stderr:\n{}",
+                String::from_utf8_lossy(&output.stderr)
+            ),
+        );
+        assert!(
+            output.status.success(),
+            "diagnostics command failed in {mode} mode"
+        );
+        fs::read_to_string(&variants_tsv).expect("failed to read variants output")
+    };
+
+    let include_variants = run("include");
+    log_line(&log_path, &format!("include variants:\n{include_variants}"));
+    assert!(
+        include_variants.lines().any(|l| l.starts_with("chr1\t")),
+        "include mode should keep chr1's variant, got:\n{include_variants}"
+    );
+    assert!(
+        !include_variants.lines().any(|l| l.starts_with("chr2\t")),
+        "include mode should drop chr2's variant (chr2 isn't in the BED), got:\n{include_variants}"
+    );
+
+    let filter_variants = run("filter");
+    log_line(&log_path, &format!("filter variants:\n{filter_variants}"));
+    assert!(
+        !filter_variants.lines().any(|l| l.starts_with("chr1\t")),
+        "filter mode should drop chr1's variant (chr1 is in the BED), got:\n{filter_variants}"
+    );
+    assert!(
+        filter_variants.lines().any(|l| l.starts_with("chr2\t")),
+        "filter mode should keep chr2's variant, got:\n{filter_variants}"
+    );
+}

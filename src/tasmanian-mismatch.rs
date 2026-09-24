@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use tasmanian_mismatch::{
-    Args, BedFilter, InsertKey, PositionMode, ProcessingConfig, ProcessingContext,
+    Args, BedFilter, BedFilterMode, InsertKey, PositionMode, ProcessingConfig, ProcessingContext,
     apply_external_discounts, build_tid_map_and_regions, compute_read_len_max_from_sample_bam,
     configure_thread_pool, launch_visualization, load_discount_table, load_reference_genome,
     mask_reference_with_bed, maybe_parse_bed_file, process_region, write_normalized_output,
@@ -22,7 +22,6 @@ fn main() {
         args.position_mode,
         args.overlap_mode
     );
-    let bed_filter_whole_reads = args.bed_filter_mode == "filter";
 
     configure_thread_pool(args.threads);
 
@@ -35,22 +34,24 @@ fn main() {
     log::info!("Sampled max read length: {}", max_read_len);
 
     let bed_for_filtering = if let Some(regions) = bed_regions {
-        log::info!("BED filter mode: {}", args.bed_filter_mode);
-        match args.bed_filter_mode.as_str() {
-            "filter" => {
+        log::info!("BED filter mode: {:?}", args.bed_filter_mode);
+        match args.bed_filter_mode {
+            BedFilterMode::Filter => {
                 log::info!("Keeping BED regions for whole-read overlap filtering...");
                 Some(Arc::new(regions))
             }
-            "mask" => {
+            BedFilterMode::Include => {
+                log::info!(
+                    "Keeping only reads overlapping BED regions (in-silico exome/panel restriction)..."
+                );
+                Some(Arc::new(regions))
+            }
+            BedFilterMode::Mask => {
                 log::info!("Masking reference genome at BED regions...");
                 let masked_bases = mask_reference_with_bed(&mut reference, &regions);
                 log::info!("Masked {} bases in reference genome", masked_bases);
                 None
             }
-            _ => panic!(
-                "Invalid --bed-filter-mode '{}'. Expected 'mask' or 'filter'.",
-                args.bed_filter_mode
-            ),
         }
     } else {
         None
@@ -89,7 +90,8 @@ fn main() {
         };
         let bed_filter = BedFilter {
             regions: bed_for_filtering.as_deref(),
-            filter_whole_reads: bed_filter_whole_reads,
+            filter_whole_reads: args.bed_filter_mode.filters_whole_reads(),
+            include_only: args.bed_filter_mode.include_only(),
         };
         let (region_counts, region_reads) =
             process_region(&args.bam_path, region, &context, config, &bed_filter);

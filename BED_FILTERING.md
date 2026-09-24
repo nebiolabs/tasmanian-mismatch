@@ -2,7 +2,7 @@
 
 ## Overview
 
-This tool now supports filtering and masking reads based on BED file regions, leveraging both custom implementation and htslib-compatible approaches.
+This tool supports filtering and masking reads based on BED file regions, leveraging both custom implementation and htslib-compatible approaches.
 
 ## Usage
 
@@ -22,9 +22,21 @@ This tool now supports filtering and masking reads based on BED file regions, le
   reference.fa \
   -b regions.bed \
   --bed-filter-mode filter
+
+# Keep ONLY reads that overlap with BED regions (in-silico exome/panel restriction)
+./target/release/tasmanian-mismatch \
+  input.bam \
+  reference.fa \
+  -b exome_targets.bed \
+  --bed-filter-mode include
 ```
 
-BED filtering is available in both `tasmanian-mismatch` and `tasmanian-diagnostics`.
+BED filtering is available in both `tasmanian-mismatch` and `tasmanian-diagnostics`, with the
+same three modes. When `tasmanian-mismatch` runs with `--discount-table`, run
+`tasmanian-diagnostics` with the same BED and mode so the discounts come from the same reads.
+
+`--bed-filter-mode` requires `--bed-file`; giving a mode without a BED is rejected at argument
+parsing, as is an unknown mode name.
 
 ## Filter Modes
 
@@ -39,6 +51,15 @@ BED filtering is available in both `tasmanian-mismatch` and `tasmanian-diagnosti
 - More aggressive filtering approach
 - Useful for completely excluding reads from specific genomic regions
 - Best for: Removing reads from entire genes, chromosomes, or large problematic regions
+
+### 3. Include Mode (`--bed-filter-mode include`)
+- The exact inverse of Filter mode: skips a read UNLESS it overlaps a BED region
+- Best for: in-silico exome or targeted-panel restriction -- keeping only reads over a
+  specific set of regions (e.g. protein-coding CDS) rather than excluding regions
+- `mask`/`filter` can only exclude BED regions; there is no way to express "include only"
+  by inverting them (masking or filtering the *complement* of a BED file doesn't give the
+  same result for reads straddling a region boundary), so this is a genuinely separate mode
+- Like Filter mode, this check is whole-read (not per-base like Mask mode)
 
 ## BED File Format
 
@@ -103,24 +124,45 @@ tasmanian-mismatch input.bam reference.fa \
 
 Fragment-length filtering (`--min-fragment-length` / `--max-fragment-length`, defaults 25/10000) excludes reads whose estimated fragment length falls outside the given range. It is independent of BED filtering but commonly used alongside it to further restrict which reads contribute counts.
 
+### Example 4: In-silico exome or panel restriction
+
+```bash
+# Keep only reads over a set of protein-coding (CDS) or capture-panel regions
+tasmanian-mismatch input.bam reference.fa \
+  -b exome_targets.bed \
+  --bed-filter-mode include
+```
+
 ## Using with samtools-style filtering
 
-For compatibility with samtools-style workflows, you can pre-filter your BAM file:
+For compatibility with samtools-style workflows, you can pre-filter your BAM file instead of
+using `--bed-filter-mode`:
 
 ```bash
 # htslib approach: exclude regions (creates a new BAM)
 samtools view -L ^exclude_regions.bed -b input.bam > filtered.bam
 
-# Then run tasmanian-mismatch on filtered BAM
+# htslib approach: keep only regions (samtools -L is inclusion-only by default)
+samtools view -L exome_targets.bed -b input.bam > exome_only.bam
+
+# Then run tasmanian-mismatch on the pre-filtered BAM, with no -b needed
 tasmanian-mismatch filtered.bam reference.fa
 ```
 
-Or use the built-in BED filtering:
+Or use the built-in BED filtering, which avoids writing an intermediate BAM:
 
 ```bash
 # Direct approach: use built-in BED filtering
-tasmanian-mismatch input.bam reference.fa -b exclude_regions.bed
+tasmanian-mismatch input.bam reference.fa -b exclude_regions.bed --bed-filter-mode filter
+tasmanian-mismatch input.bam reference.fa -b exome_targets.bed --bed-filter-mode include
 ```
+
+Both the BED intervals and read alignment spans are half-open `[start, end)`, the same
+convention `samtools view -L` uses: a read overlaps an interval only if it shares at least one
+reference base with it, and a read that merely abuts one does not. The built-in filter therefore
+selects the same reads as a `samtools view -L` pre-filter. `include` and `filter` are exact
+complements: on the same BAM and BED, every read that passes the other filters is kept by
+exactly one of them.
 
 ## Performance Notes
 
@@ -128,6 +170,8 @@ tasmanian-mismatch input.bam reference.fa -b exclude_regions.bed
 - Intervals are sorted for efficient binary search
 - Minimal overhead for mask mode (~5-10%)
 - Filter mode is slightly faster as it skips entire reads
+- Include mode shares Filter mode's per-read overlap check (just inverted), so its
+  performance characteristics are the same
 
 ## Integration with htslib
 
@@ -144,6 +188,8 @@ This implementation is compatible with htslib's BED handling conventions:
 3. **Remove blacklisted regions**: Exclude ENCODE blacklist regions
 4. **Gene-specific analysis**: Filter reads from specific genes
 5. **Sex chromosome filtering**: Exclude X/Y chromosomes if needed
+6. **In-silico exome/panel restriction**: Keep only reads over a set of CDS or capture-panel
+   regions (`--bed-filter-mode include`)
 
 ## Notes
 

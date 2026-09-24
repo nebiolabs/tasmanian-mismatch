@@ -1590,11 +1590,163 @@ mod tests {
         assert!(should_skip_whole_read_for_bed(
             &record,
             true,
+            false,
             &intervals,
             &mut cursor
         ));
         // Cursor should have advanced past the first interval.
         assert!(cursor >= 1);
+    }
+
+    #[test]
+    fn test_should_skip_whole_read_for_bed_half_open_boundaries() {
+        let mut header = Header::new();
+        let mut sq = HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", "chr1");
+        sq.push_tag(b"LN", 1000);
+        header.push_record(&sq);
+        let header_view = HeaderView::from_header(&header);
+
+        // SAM POS 51 with 8M covers 0-based [50, 58).
+        let record = Record::from_sam(
+            &header_view,
+            b"r\t0\tchr1\t51\t60\t8M\t*\t0\t0\tACGTACGT\tIIIIIIII",
+        )
+        .unwrap();
+
+        let overlaps = |start: i64, end: i64| {
+            let mut cursor = 0usize;
+            // Exclude mode skips exactly the reads that overlap.
+            should_skip_whole_read_for_bed(
+                &record,
+                true,
+                false,
+                &[BedInterval { start, end }],
+                &mut cursor,
+            )
+        };
+
+        assert!(
+            !overlaps(40, 50),
+            "interval ending at read start only abuts"
+        );
+        assert!(
+            !overlaps(58, 70),
+            "interval starting at read end only abuts"
+        );
+        assert!(overlaps(40, 51), "shares the read's first base");
+        assert!(overlaps(57, 70), "shares the read's last base");
+        assert!(overlaps(53, 54), "single base inside the read");
+    }
+
+    #[test]
+    fn test_should_skip_whole_read_for_bed_cursor_across_intervals() {
+        let mut header = Header::new();
+        let mut sq = HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", "chr1");
+        sq.push_tag(b"LN", 1000);
+        header.push_record(&sq);
+        let header_view = HeaderView::from_header(&header);
+
+        let intervals = vec![
+            BedInterval { start: 10, end: 20 },
+            BedInterval { start: 30, end: 40 },
+            BedInterval { start: 60, end: 70 },
+        ];
+
+        // (0-based start, aligned length, overlaps any interval), in coordinate order as the
+        // chunk loop sees them, so one cursor is carried across every read.
+        let reads: [(i64, usize, bool); 10] = [
+            (2, 8, false),  // [2,10) abuts the first interval's start
+            (12, 8, true),  // [12,20) inside the first interval
+            (15, 30, true), // [15,45) spans the first and second intervals
+            (20, 8, false), // [20,28) starts at the first interval's end, in the gap
+            (25, 8, true),  // [25,33) shares the second interval's first bases
+            (38, 8, true),  // [38,46) shares the second interval's last bases
+            (40, 8, false), // [40,48) starts at the second interval's end
+            (52, 8, false), // [52,60) ends at the third interval's start
+            (65, 8, true),  // [65,73) overlaps the third interval
+            (80, 8, false), // [80,88) past every interval
+        ];
+
+        for include_only in [false, true] {
+            let mut cursor = 0usize;
+            for &(start, len, overlaps) in &reads {
+                let sam = format!(
+                    "r{start}\t0\tchr1\t{}\t60\t{len}M\t*\t0\t0\t{}\t{}",
+                    start + 1,
+                    "A".repeat(len),
+                    "I".repeat(len)
+                );
+                let record = Record::from_sam(&header_view, sam.as_bytes()).unwrap();
+                let skipped = should_skip_whole_read_for_bed(
+                    &record,
+                    true,
+                    include_only,
+                    &intervals,
+                    &mut cursor,
+                );
+                // Exclude mode skips overlapping reads; include mode skips the rest.
+                assert_eq!(
+                    skipped,
+                    overlaps != include_only,
+                    "read at {start} (len {len}), include_only={include_only}"
+                );
+            }
+            assert_eq!(cursor, intervals.len(), "cursor should pass every interval");
+        }
+    }
+
+    #[test]
+    fn test_should_skip_whole_read_for_bed_include_only() {
+        let mut header = Header::new();
+        let mut sq = HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", "chr1");
+        sq.push_tag(b"LN", 1000);
+        header.push_record(&sq);
+        let header_view = HeaderView::from_header(&header);
+
+        // Record at position 50-58 (8M).
+        let record = Record::from_sam(
+            &header_view,
+            b"r\t0\tchr1\t51\t60\t8M\t*\t0\t0\tACGTACGT\tIIIIIIII",
+        )
+        .unwrap();
+
+        // Overlapping interval: include-only keeps it (opposite of exclude mode).
+        let overlapping = vec![BedInterval { start: 45, end: 65 }];
+        let mut cursor = 0usize;
+        assert!(!should_skip_whole_read_for_bed(
+            &record,
+            true,
+            true,
+            &overlapping,
+            &mut cursor
+        ));
+
+        // Non-overlapping interval: include-only skips it.
+        let non_overlapping = vec![BedInterval {
+            start: 100,
+            end: 200,
+        }];
+        let mut cursor = 0usize;
+        assert!(should_skip_whole_read_for_bed(
+            &record,
+            true,
+            true,
+            &non_overlapping,
+            &mut cursor
+        ));
+
+        // No intervals in this chunk at all: include-only skips everything.
+        let mut cursor = 0usize;
+        assert!(should_skip_whole_read_for_bed(
+            &record,
+            true,
+            true,
+            &[],
+            &mut cursor
+        ));
     }
 
     #[test]
@@ -2013,13 +2165,15 @@ mod tests {
         assert!(!should_skip_whole_read_for_bed(
             &record,
             false,
+            false,
             &[],
             &mut cursor
         ));
-        // empty BED → always false.
+        // empty BED, exclude mode → always false (nothing to exclude).
         assert!(!should_skip_whole_read_for_bed(
             &record,
             true,
+            false,
             &[],
             &mut cursor
         ));
@@ -2345,6 +2499,35 @@ mod tests {
             genomic_counts.contains_key(&expected_genomic_key),
             "expected uncollapsed G>A genomic key without methylation mode, got: {:?}",
             genomic_counts.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_bed_filter_mode_requires_bed_file() {
+        use clap::Parser;
+        let err = Args::try_parse_from([
+            "tasmanian-mismatch",
+            "--bed-filter-mode",
+            "include",
+            "x.bam",
+            "y.fa",
+        ])
+        .unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+
+        // The default mode alone must not demand a BED file.
+        assert!(Args::try_parse_from(["tasmanian-mismatch", "x.bam", "y.fa"]).is_ok());
+        assert!(
+            Args::try_parse_from([
+                "tasmanian-mismatch",
+                "-b",
+                "r.bed",
+                "--bed-filter-mode",
+                "include",
+                "x.bam",
+                "y.fa",
+            ])
+            .is_ok()
         );
     }
 }
