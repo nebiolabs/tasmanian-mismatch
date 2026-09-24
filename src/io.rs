@@ -31,7 +31,9 @@ pub fn load_reference_genome(fasta_path: &str) -> ReferenceGenome {
     for result in reader.records() {
         let record = result.expect("Failed to read FASTA record");
         let chr_name = record.id().to_string();
-        let sequence = record.seq().to_vec(); // Vec<u8> = byte, not UTF-8 char (overhead)
+        // Uppercase so soft-masked (lowercase) bases are compared like any other; base
+        // comparisons only accept uppercase ACGT and would otherwise skip them silently.
+        let sequence = record.seq().to_ascii_uppercase(); // Vec<u8> = byte, not UTF-8 char (overhead)
         genome.insert(chr_name, sequence);
     }
 
