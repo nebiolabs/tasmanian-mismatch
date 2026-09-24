@@ -201,6 +201,8 @@ fn main() {
         overlap_mode: OverlapMode::Cut,
         min_fragment_length: args.min_fragment_length,
         max_fragment_length: args.max_fragment_length,
+        min_read_position: 0,
+        max_read_position: usize::MAX,
     };
 
     let bam_path_arc = Arc::new(args.bam_file.clone());
