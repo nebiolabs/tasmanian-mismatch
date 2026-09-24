@@ -1,10 +1,10 @@
 use clap::Parser;
 use rayon::prelude::*;
 use rust_htslib::bam::{FetchDefinition, IndexedReader, Read, Reader, Record};
-use tasmanian_mismatch::{OverlapMode, PositionMode, *};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use tasmanian_mismatch::{OverlapMode, PositionMode, *};
 
 #[derive(Parser, Debug)]
 #[command(name = "tasmanian-diagnostics")]

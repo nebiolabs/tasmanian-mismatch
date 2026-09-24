@@ -3,9 +3,9 @@ use rayon::prelude::*;
 use rust_htslib::bam::{
     FetchDefinition, Format, Header, IndexedReader, Read, Reader, Record, Writer,
 };
-use tasmanian_mismatch::*;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tasmanian_mismatch::*;
 
 #[derive(Parser, Debug)]
 #[command(name = "tasmanian-rescale-quality")]

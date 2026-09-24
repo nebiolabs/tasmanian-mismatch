@@ -350,11 +350,12 @@ pub fn apply_external_discounts(
 
         let first_key = if c1 >= c2 { &k1 } else { &k2 };
         if remaining > 0
-            && let Some(v) = counts.get_mut(first_key) {
-                let take = remaining.min(*v);
-                *v -= take;
-                remaining -= take;
-            }
+            && let Some(v) = counts.get_mut(first_key)
+        {
+            let take = remaining.min(*v);
+            *v -= take;
+            remaining -= take;
+        }
 
         if remaining > 0 {
             let second_key = if first_key.reference_order == ReferenceOrder::First {
@@ -480,7 +481,11 @@ fn densify_and_interpolate(
         while j < n && dense[j].is_none() {
             j += 1;
         }
-        let next_known = if j < n { dense[j].map(|v| (j, v)) } else { None };
+        let next_known = if j < n {
+            dense[j].map(|v| (j, v))
+        } else {
+            None
+        };
 
         match (last_known, next_known) {
             (Some((li, lv)), Some((ni, nv))) => {

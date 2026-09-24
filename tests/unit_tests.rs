@@ -1500,9 +1500,11 @@ mod tests {
         let mut restricted: HashMap<InsertKey, usize> = HashMap::new();
         compare_record_to_reference(&record, &context, config, None, &mut restricted);
         assert_eq!(restricted.values().sum::<usize>(), 5);
-        assert!(restricted
-            .keys()
-            .all(|k| k.base_position >= 3 && k.base_position <= 7));
+        assert!(
+            restricted
+                .keys()
+                .all(|k| k.base_position >= 3 && k.base_position <= 7)
+        );
     }
 
     #[test]
@@ -1640,8 +1642,7 @@ mod tests {
         };
 
         let mut local_counts: HashMap<MismatchKey, usize> = HashMap::new();
-        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> =
-            HashMap::new();
+        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> = HashMap::new();
         let mut depth: HashMap<i64, usize> = HashMap::new();
 
         process_record(
@@ -1716,8 +1717,7 @@ mod tests {
         let mut local_counts: HashMap<MismatchKey, usize> = HashMap::new();
         let mut overlap_counts: HashMap<MismatchKey, usize> = HashMap::new();
         let mut inconsistency_counts: HashMap<InconsistencyKey, usize> = HashMap::new();
-        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> =
-            HashMap::new();
+        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> = HashMap::new();
         let mut depth: HashMap<i64, usize> = HashMap::new();
 
         let mut counts = OverlapCounts {
@@ -1850,8 +1850,7 @@ mod tests {
         };
 
         let mut local_counts: HashMap<MismatchKey, usize> = HashMap::new();
-        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> =
-            HashMap::new();
+        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> = HashMap::new();
         let mut depth: HashMap<i64, usize> = HashMap::new();
 
         process_record(
@@ -2074,8 +2073,7 @@ mod tests {
         };
 
         let mut local_counts: HashMap<MismatchKey, usize> = HashMap::new();
-        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> =
-            HashMap::new();
+        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> = HashMap::new();
         let mut depth: HashMap<i64, usize> = HashMap::new();
 
         process_record(
@@ -2176,8 +2174,7 @@ mod tests {
         };
 
         let mut local_counts = HashMap::new();
-        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> =
-            HashMap::new();
+        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> = HashMap::new();
         compare_and_count(
             &read_ctx,
             0,
@@ -2227,8 +2224,7 @@ mod tests {
         };
 
         let mut local_counts = HashMap::new();
-        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> =
-            HashMap::new();
+        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> = HashMap::new();
         compare_and_count(
             &read_ctx,
             4,
@@ -2279,8 +2275,7 @@ mod tests {
         };
 
         let mut local_counts = HashMap::new();
-        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> =
-            HashMap::new();
+        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> = HashMap::new();
         compare_and_count(
             &read_ctx,
             4,
@@ -2330,8 +2325,7 @@ mod tests {
         };
 
         let mut local_counts = HashMap::new();
-        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> =
-            HashMap::new();
+        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> = HashMap::new();
         compare_and_count(
             &read_ctx,
             4,
