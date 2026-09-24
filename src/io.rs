@@ -591,28 +591,41 @@ pub fn frequencies_to_rescaling_matrix(
     }
 
     // Group into per-(read_num, ref_base, alt_base) positional series.
-    let mut by_class: HashMap<(u8, char, char), Vec<(usize, f64, usize)>> = HashMap::new();
+    struct PositionalSample {
+        position: usize,
+        freq: f64,
+        count: usize,
+    }
+    let mut by_class: HashMap<(u8, char, char), Vec<PositionalSample>> = HashMap::new();
     for (&(read_num, pos, ref_base, alt_base), &(freq, count)) in &collapsed {
         by_class
             .entry((read_num, ref_base, alt_base))
             .or_default()
-            .push((pos, freq, count));
+            .push(PositionalSample {
+                position: pos,
+                freq,
+                count,
+            });
     }
 
     let mut matrix: RescalingMatrix = HashMap::new();
 
     for ((read_num, ref_base, alt_base), mut series) in by_class {
-        series.sort_by_key(|&(pos, _, _)| pos);
-        let positions: Vec<usize> = series.iter().map(|&(p, _, _)| p).collect();
-        let freqs: Vec<f64> = series.iter().map(|&(_, f, _)| f).collect();
-        let counts: Vec<usize> = series.iter().map(|&(_, _, c)| c).collect();
+        series.sort_by_key(|sample| sample.position);
+        let positions: Vec<usize> = series.iter().map(|sample| sample.position).collect();
+        let freqs: Vec<f64> = series.iter().map(|sample| sample.freq).collect();
+        let counts: Vec<usize> = series.iter().map(|sample| sample.count).collect();
 
         let min_pos = *positions.first().unwrap();
         let max_pos = *positions.last().unwrap();
         let n_positions = max_pos - min_pos + 1;
 
         let window = (n_positions / 10).max(5);
-        let window = if window % 2 == 0 { window + 1 } else { window };
+        let window = if window.is_multiple_of(2) {
+            window + 1
+        } else {
+            window
+        };
 
         let dense = densify_and_interpolate(&positions, &freqs, min_pos, max_pos);
         let smoothed = rolling_median(&dense, window);

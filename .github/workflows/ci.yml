@@ -1,25 +1,53 @@
-name: CI
+name: CI # Continuous Integration
 
 on:
   push:
-    branches: [master, rastmanian-from-scratch]
+    branches:
+      - master
   pull_request:
-    branches: master
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
-    name: Rust Tests
+    name: Test Suite
     runs-on: ubuntu-latest
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
-    
-    - name: Cache Rust dependencies
-      uses: Swatinem/rust-cache@v2
+      - name: Checkout repository
+        uses: actions/checkout@v5
 
-    - name: Run all tests (unit + integration)
-      run: cargo test --workspace --all-targets --verbose
+      - name: Install Rust toolchain
+        # Version, profile and components all come from rust-toolchain.toml.
+        run: rustup show active-toolchain
+
+      - name: Cache build artifacts
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}-${{ hashFiles('**/*.rs') }}
+
+      # - name: Check formatting
+      #   run: cargo fmt --all --check
+
+      - name: Lint
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Build
+        run: cargo build --verbose
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked || true
+
+      - name: Licenses and advisories
+        run: cargo deny check
+
+      - name: Run tests
+        env:
+          RUST_LOG: info
+        run: cargo test --all-features --workspace

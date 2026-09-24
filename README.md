@@ -1,6 +1,7 @@
 # Rustmanian-Mismatch
 
 [![CI](https://github.com/nebiolabs/tasmanian-mismatch/actions/workflows/ci.yml/badge.svg)](https://github.com/nebiolabs/tasmanian-mismatch/actions/workflows/ci.yml)
+[![Coverage](badges/coverage.svg)](https://github.com/nebiolabs/tasmanian-mismatch/actions/workflows/ci-metrics.yml)
 
 ## Abstract
 

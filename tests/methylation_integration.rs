@@ -57,14 +57,18 @@ fn write_test_bam(path: &Path) {
         .expect("failed to write BAM record");
 }
 
+struct DiagnosticsOutputs<'a> {
+    variants_tsv: &'a Path,
+    inconsistencies_tsv: &'a Path,
+    discounts_tsv: &'a Path,
+}
+
 fn run_diagnostics(
     log_path: &Path,
     binary: &str,
     fixture_bam: &Path,
     reference_fa: &Path,
-    variants_tsv: &Path,
-    inconsistencies_tsv: &Path,
-    discounts_tsv: &Path,
+    outputs: DiagnosticsOutputs,
     methylation: bool,
 ) {
     let mut args: Vec<&str> = vec![
@@ -80,9 +84,9 @@ fn run_diagnostics(
     if methylation {
         args.push("-m");
     }
-    let variants_str = variants_tsv.to_string_lossy().to_string();
-    let inconsistencies_str = inconsistencies_tsv.to_string_lossy().to_string();
-    let discounts_str = discounts_tsv.to_string_lossy().to_string();
+    let variants_str = outputs.variants_tsv.to_string_lossy().to_string();
+    let inconsistencies_str = outputs.inconsistencies_tsv.to_string_lossy().to_string();
+    let discounts_str = outputs.discounts_tsv.to_string_lossy().to_string();
     let bam_str = fixture_bam.to_string_lossy().to_string();
     let reference_str = reference_fa.to_string_lossy().to_string();
     args.extend([
@@ -151,9 +155,11 @@ fn integration_methylation_mode_collapses_bisulfite_signature_but_not_real_snp()
         diagnostics_bin,
         &fixture_bam,
         &reference_fa,
-        &off_variants,
-        &temp_dir.join("inconsistencies_off.tsv"),
-        &temp_dir.join("discounts_off.tsv"),
+        DiagnosticsOutputs {
+            variants_tsv: &off_variants,
+            inconsistencies_tsv: &temp_dir.join("inconsistencies_off.tsv"),
+            discounts_tsv: &temp_dir.join("discounts_off.tsv"),
+        },
         false,
     );
     let off_text = fs::read_to_string(&off_variants).expect("failed to read variants_off.tsv");
@@ -184,9 +190,11 @@ fn integration_methylation_mode_collapses_bisulfite_signature_but_not_real_snp()
         diagnostics_bin,
         &fixture_bam,
         &reference_fa,
-        &on_variants,
-        &temp_dir.join("inconsistencies_on.tsv"),
-        &temp_dir.join("discounts_on.tsv"),
+        DiagnosticsOutputs {
+            variants_tsv: &on_variants,
+            inconsistencies_tsv: &temp_dir.join("inconsistencies_on.tsv"),
+            discounts_tsv: &temp_dir.join("discounts_on.tsv"),
+        },
         true,
     );
     let on_text = fs::read_to_string(&on_variants).expect("failed to read variants_on.tsv");
