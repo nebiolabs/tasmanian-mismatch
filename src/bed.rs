@@ -28,6 +28,10 @@ pub struct BedFilter<'a> {
     /// When `true`, skip any read whose alignment overlaps a BED interval.
     /// When `false`, individual bases at BED positions are masked in the reference.
     pub filter_whole_reads: bool,
+    /// Only meaningful when `filter_whole_reads` is `true`. When `true`, the overlap check
+    /// is inverted: reads are kept only if they DO overlap a BED interval (an in-silico
+    /// exome/panel restriction) instead of being dropped when they overlap one.
+    pub include_only: bool,
 }
 
 /// Parse a BED file into chromosome-indexed intervals.

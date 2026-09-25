@@ -1,6 +1,7 @@
 # Tasmanian-mismatch
 
 [![CI](https://github.com/nebiolabs/tasmanian-mismatch/actions/workflows/ci.yml/badge.svg)](https://github.com/nebiolabs/tasmanian-mismatch/actions/workflows/ci.yml)
+[![Coverage](badges/coverage.svg)](https://github.com/nebiolabs/tasmanian-mismatch/actions/workflows/ci-metrics.yml)
 
 ## Abstract
 
@@ -66,12 +67,16 @@ Common options:
 --overlap-mode <cut|stretch>      Overlap handling mode
 --discount-table <TSV>            Discount table from tasmanian-diagnostics
 -b, --bed-file <BED>              BED file for masking/filtering
---bed-filter-mode <mask|filter>   BED handling mode
+--bed-filter-mode <mask|filter|include>  BED handling mode ('include' keeps only reads
+                                          overlapping the BED file -- an in-silico exome/panel
+                                          restriction; 'mask'/'filter' exclude BED regions)
 -f <FLAGS>                        SAM flags that must be present
 -F <FLAGS>                        SAM flags that, if present, skip a read
 -G <FLAGS>                        SAM flags that, if all present, skip a read
 --min-fragment-length <LEN>       Minimum fragment length for insert mode
 --max-fragment-length <LEN>       Maximum fragment length for insert mode
+--min-position <N>                Minimum position-mode axis position (1-based, inclusive) to include
+--max-position <N>                Maximum position-mode axis position (1-based, inclusive) to include
 --methylation-mode                Collapse methylation-driven mismatch classes
 --normalize                       Write normalized frequencies instead of raw counts
 --emit-rescaling-matrix           Emit matrix rows for tasmanian-rescale-quality
@@ -105,10 +110,22 @@ tasmanian-mismatch sample.bam reference.fa \
   --normalize \
   -o mismatch_normalized.tsv
 
+# Restrict to read positions 5-40 (e.g. to minimize sequencer read quality effects)
+tasmanian-mismatch sample.bam reference.fa \
+  --position-mode read \
+  --min-position 5 \
+  --max-position 40 \
+  -o mismatch_positions_5_40.tsv
+
 # Emit rescaling matrix rows to stdout (or -o file.tsv)  --> _Under development_
 tasmanian-mismatch sample.bam reference.fa \
   --position-mode read \
   --emit-rescaling-matrix
+
+# Keep only reads overlapping the given BED regions, e.g. In-silico exome
+tasmanian-mismatch sample.bam reference.fa \
+  -b exome_targets.bed --bed-filter-mode include \
+  -o mismatch_exome_only.tsv
 ```
 
 ### `tasmanian-diagnostics`
@@ -139,7 +156,7 @@ Common options:
 --genomic-threshold <N>               Minimum mismatch count for reporting a genomic site
 --genomic-depth-threshold <N>         Minimum depth for reporting a genomic site
 -b, --bed-file <BED>                  BED file for masking/filtering
---bed-filter-mode <mask|filter>       BED handling mode
+--bed-filter-mode <mask|filter|include>  BED handling mode (requires -b)
 -f <FLAGS>                            SAM flags that must be present
 -F <FLAGS>                            SAM flags that, if present, skip a read
 -G <FLAGS>                            SAM flags that, if all present, skip a read

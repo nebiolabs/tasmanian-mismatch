@@ -1,10 +1,10 @@
 use clap::Parser;
 use rayon::prelude::*;
 use rust_htslib::bam::{FetchDefinition, IndexedReader, Read, Reader, Record};
-use tasmanian_mismatch::{OverlapMode, PositionMode, *};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use tasmanian_mismatch::{OverlapMode, PositionMode, *};
 
 #[derive(Parser, Debug)]
 #[command(name = "tasmanian-diagnostics")]
@@ -76,9 +76,9 @@ struct Args {
     #[arg(short = 'b', long)]
     bed_file: Option<String>,
 
-    /// Filter mode: 'mask' (skip individual bases) or 'filter' (skip whole reads)
-    #[arg(long, default_value = "mask")]
-    bed_filter_mode: String,
+    /// How the BED file is applied
+    #[arg(long, value_enum, default_value = "mask", requires = "bed_file")]
+    bed_filter_mode: BedFilterMode,
 
     /// Output path for genomic potential variants table
     #[arg(long, default_value = "potential_variants.tsv")]
@@ -130,17 +130,13 @@ fn main() {
     let mut reference = load_reference_genome(&args.reference_fasta);
 
     let bed_for_filtering = if let Some(regions) = maybe_parse_bed_file(args.bed_file.as_deref()) {
-        match args.bed_filter_mode.as_str() {
-            "filter" => Some(Arc::new(regions)),
-            "mask" => {
+        match args.bed_filter_mode {
+            BedFilterMode::Filter | BedFilterMode::Include => Some(Arc::new(regions)),
+            BedFilterMode::Mask => {
                 let masked_bases = mask_reference_with_bed(&mut reference, &regions);
                 log::info!("Masked {} bases in reference genome", masked_bases);
                 None
             }
-            _ => panic!(
-                "Invalid --bed-filter-mode '{}'. Expected 'mask' or 'filter'.",
-                args.bed_filter_mode
-            ),
         }
     } else {
         None
@@ -236,9 +232,12 @@ fn main() {
         let processing_context = ProcessingContext {
             reference: &ref_clone,
             tid_to_name: &tid_clone,
-            bed_intervals: &chunk_bed_intervals,
+            // BED regions act per read (skip check below), never per base: mask mode masks
+            // the reference instead, and per-base masking would erase every read `include` keeps.
+            bed_intervals: &[],
         };
 
+        let mut bed_cursor = 0usize;
         let mut local_count = 0usize;
         let mut local_overlap_count = 0usize;
 
@@ -262,14 +261,13 @@ fn main() {
                 continue;
             }
 
-            let should_skip_whole_read =
-                args.bed_filter_mode == "filter" && !chunk_bed_intervals.is_empty() && {
-                    let read_end = calculate_end_pos(record.pos(), &record.cigar());
-                    chunk_bed_intervals
-                        .iter()
-                        .any(|interval| record.pos() <= interval.end && read_end >= interval.start)
-                };
-            if should_skip_whole_read {
+            if should_skip_whole_read_for_bed(
+                &record,
+                args.bed_filter_mode.filters_whole_reads(),
+                args.bed_filter_mode.include_only(),
+                &chunk_bed_intervals,
+                &mut bed_cursor,
+            ) {
                 continue;
             }
 

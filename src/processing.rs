@@ -12,7 +12,7 @@ use crate::types::{
 };
 use crate::utils::{base_to_char, calculate_end_pos, complement, correct_read_len_with_mode};
 use rayon;
-use rust_htslib::bam::{record::Aux, FetchDefinition, IndexedReader, Read, Reader, Record};
+use rust_htslib::bam::{FetchDefinition, IndexedReader, Read, Reader, Record, record::Aux};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -173,7 +173,10 @@ pub fn compare_and_count(
     if r_pos >= seq_len {
         log::error!(
             "Read position {} exceeds sequence length {} at chromosome {}:{}. This indicates a bug or corrupted data.",
-            r_pos, seq_len, chromosome, genome_pos
+            r_pos,
+            seq_len,
+            chromosome,
+            genome_pos
         );
         return;
     }
@@ -181,7 +184,9 @@ pub fn compare_and_count(
     if genome_pos >= ref_len {
         log::error!(
             "Genomic position {} exceeds reference length {} on chromosome {}. This may indicate reference/BAM mismatch or corrupted data.",
-            genome_pos, ref_len, chromosome
+            genome_pos,
+            ref_len,
+            chromosome
         );
         return;
     }
@@ -204,64 +209,65 @@ pub fn compare_and_count(
 
     // Track genomic position for mismatches only (if genomic_counts is provided)
     if let Some(genomic_counts) = genomic_counts
-        && read_base != ref_base {
-            // `read_base`/`ref_base` are already in reference (forward-strand)
-            // orientation: BAM SEQ is stored reverse-complemented for reverse-strand
-            // alignments, so it already reads correctly against the forward-strand
-            // reference. Genomic identity (this key) must stay in that orientation
-            // regardless of which strand supported it — unlike `local_counts` above,
-            // which intentionally pools strand-symmetric complement pairs (C>T/G>A)
-            // for the damage-signature report.
-            //
-            // `adjust_methylation_base` expects strand-relative (bisulfite-convention)
-            // bases, so convert only for that call, then convert its verdict back.
-            let strand_adjusted_read_base = if read_ctx.is_reverse {
-                complement(read_base)
-            } else {
-                read_base
-            };
-            let strand_adjusted_ref_base = if read_ctx.is_reverse {
-                complement(ref_base)
-            } else {
-                ref_base
-            };
-            let meth_adjusted_strand_read_base = adjust_methylation_base(
-                strand_adjusted_read_base,
-                strand_adjusted_ref_base,
-                read_ctx.read_num,
-                config.is_methylation,
-            );
-            let meth_adjusted_read_base = if read_ctx.is_reverse {
-                complement(meth_adjusted_strand_read_base)
-            } else {
-                meth_adjusted_strand_read_base
-            };
+        && read_base != ref_base
+    {
+        // `read_base`/`ref_base` are already in reference (forward-strand)
+        // orientation: BAM SEQ is stored reverse-complemented for reverse-strand
+        // alignments, so it already reads correctly against the forward-strand
+        // reference. Genomic identity (this key) must stay in that orientation
+        // regardless of which strand supported it — unlike `local_counts` above,
+        // which intentionally pools strand-symmetric complement pairs (C>T/G>A)
+        // for the deamination damage-signature report.
+        //
+        // `adjust_methylation_base` expects strand-relative (bisulfite-convention)
+        // bases, so convert only for that call, then convert its verdict back.
+        let strand_adjusted_read_base = if read_ctx.is_reverse {
+            complement(read_base)
+        } else {
+            read_base
+        };
+        let strand_adjusted_ref_base = if read_ctx.is_reverse {
+            complement(ref_base)
+        } else {
+            ref_base
+        };
+        let meth_adjusted_strand_read_base = adjust_methylation_base(
+            strand_adjusted_read_base,
+            strand_adjusted_ref_base,
+            read_ctx.read_num,
+            config.is_methylation,
+        );
+        let meth_adjusted_read_base = if read_ctx.is_reverse {
+            complement(meth_adjusted_strand_read_base)
+        } else {
+            meth_adjusted_strand_read_base
+        };
 
-            // A methylation adjustment can neutralize the raw mismatch (e.g. read1
-            // C>T or read2 G>A reverting to the reference base) -- that's the
-            // expected bisulfite signature, not a genomic variant, so it must not
-            // be recorded at all rather than logged as a same-base "C>C"/"G>G" key.
-            if meth_adjusted_read_base == ref_base {
-                return;
-            }
-
-            let genomic_key = GenomicMismatchKey {
-                // e.g. key:value = {"chr1", "C>T", 123456}:  {{"C>T", 5, 1}, 23} vals=(_, read_position, readnum), counts
-                chromosome: chromosome.to_string(),
-                mismatch_type: format!("{}>{}", ref_base, meth_adjusted_read_base),
-                genomic_position: genome_pos as i64,
-            };
-
-            let genomic_values =
-                genomic_counts
-                    .entry(genomic_key)
-                    .or_insert_with(|| GenomicMismatchValue {
-                        mismatch_keys: HashSet::new(),
-                        count: 0,
-                    });
-            genomic_values.mismatch_keys.insert(key);
-            genomic_values.count = genomic_values.mismatch_keys.len();
+        // A methylation adjustment can neutralize the raw mismatch (e.g. read1
+        // C>T or read2 G>A reverting to the reference base) -- that's the
+        // expected bisulfite signature, not a genomic variant, so it must not
+        // be recorded at all rather than logged as a same-base "C>C"/"G>G" key.
+        if meth_adjusted_read_base == ref_base {
+            return;
         }
+
+        let genomic_key = GenomicMismatchKey {
+            // e.g. key:value = {"chr1", "C>T", 123456}:  {{"C>T", 5, 1}, 23} vals=(_, read_position, readnum), counts
+            chromosome: chromosome.to_string(),
+            mismatch_type: format!("{}>{}", ref_base, meth_adjusted_read_base),
+            genomic_position: genome_pos as i64,
+        };
+
+        let genomic_values =
+            genomic_counts
+                .entry(genomic_key)
+                .or_insert_with(|| GenomicMismatchValue {
+                    mismatch_keys: HashSet::new(),
+                    count: 0,
+                });
+        genomic_values.mismatch_keys.insert(key);
+        genomic_values.count = genomic_values.mismatch_keys.len();
+    }
 }
 
 /// Determine the genomic overlap between two reads.
@@ -316,9 +322,10 @@ where
                     let genome_pos = ref_pos + i as usize;
 
                     if let Some((start, end)) = range
-                        && (genome_pos < start || genome_pos >= end) {
-                            continue;
-                        }
+                        && (genome_pos < start || genome_pos >= end)
+                    {
+                        continue;
+                    }
 
                     on_base(r_pos, genome_pos);
                 }
@@ -907,19 +914,19 @@ pub fn process_paired_reads_with_overlap(
     for (genome_pos, (r1_pos, r1_base, r1_qual)) in read1_overlap_map.iter() {
         if let Some((r2_pos, r2_base, r2_qual)) = read2_overlap_map.get(genome_pos)
             && r1_qual >= &config.min_base_quality
-                && r2_qual >= &config.min_base_quality
-                && r1_base != r2_base
-            {
-                let r1_char = base_to_char(*r1_base).unwrap_or('N');
-                let r2_char = base_to_char(*r2_base).unwrap_or('N');
+            && r2_qual >= &config.min_base_quality
+            && r1_base != r2_base
+        {
+            let r1_char = base_to_char(*r1_base).unwrap_or('N');
+            let r2_char = base_to_char(*r2_base).unwrap_or('N');
 
-                let key = InconsistencyKey {
-                    discordance_type: format!("R1:{}_R2:{}", r1_char, r2_char),
-                    read1_position: *r1_pos,
-                    read2_position: *r2_pos,
-                };
-                *counts.inconsistency_counts.entry(key).or_insert(0) += 1;
-            }
+            let key = InconsistencyKey {
+                discordance_type: format!("R1:{}_R2:{}", r1_char, r2_char),
+                read1_position: *r1_pos,
+                read2_position: *r2_pos,
+            };
+            *counts.inconsistency_counts.entry(key).or_insert(0) += 1;
+        }
     }
 }
 
@@ -1274,18 +1281,19 @@ pub fn qualifying_softclip_comparisons(
     let mut comparisons = Vec::new();
 
     if let Some(rust_htslib::bam::record::Cigar::SoftClip(len)) = cigar.iter().next()
-        && aligned_start >= *len as i64 {
-            let side = softclip_side_comparisons(
-                record,
-                ref_seq,
-                0,
-                *len as usize,
-                (aligned_start - *len as i64) as usize,
-            );
-            if softclip_identity(&side).is_some_and(|identity| identity >= min_identity) {
-                comparisons.extend(side);
-            }
+        && aligned_start >= *len as i64
+    {
+        let side = softclip_side_comparisons(
+            record,
+            ref_seq,
+            0,
+            *len as usize,
+            (aligned_start - *len as i64) as usize,
+        );
+        if softclip_identity(&side).is_some_and(|identity| identity >= min_identity) {
+            comparisons.extend(side);
         }
+    }
 
     if let Some(rust_htslib::bam::record::Cigar::SoftClip(len)) = cigar.iter().last() {
         let side = softclip_side_comparisons(
@@ -1352,40 +1360,39 @@ pub fn should_skip_record(record: &Record, config: ProcessingConfig) -> bool {
 pub fn should_skip_whole_read_for_bed(
     record: &Record,
     bed_filter_whole_reads: bool,
+    include_only: bool,
     chunk_bed_intervals: &[crate::bed::BedInterval],
     bed_cursor: &mut usize,
 ) -> bool {
-    if !bed_filter_whole_reads || chunk_bed_intervals.is_empty() {
+    if !bed_filter_whole_reads {
         return false;
     }
+    if chunk_bed_intervals.is_empty() {
+        // Exclude mode: nothing here to exclude, keep the read. Include-only mode: this
+        // chunk has no target intervals at all, so nothing in it can overlap.
+        return include_only;
+    }
 
+    // Both the read span and BED intervals are half-open [start, end), so a read that
+    // merely abuts an interval (read_end == interval.start) does not overlap it.
     let read_start = record.pos();
     let read_end = calculate_end_pos(read_start, &record.cigar());
 
     // Reads are fetched in coordinate order, so we can advance a cursor
-    // and never revisit intervals that end before this read starts.
+    // and never revisit intervals that end at or before this read's start.
     while *bed_cursor < chunk_bed_intervals.len()
-        && chunk_bed_intervals[*bed_cursor].end < read_start
+        && chunk_bed_intervals[*bed_cursor].end <= read_start
     {
         *bed_cursor += 1;
     }
 
-    let mut idx = *bed_cursor;
-    while idx < chunk_bed_intervals.len() {
-        let interval = &chunk_bed_intervals[idx];
+    // The cursor interval (if any) ends after read_start, and intervals are sorted by
+    // start, so it is the only candidate: it overlaps iff it starts before read_end.
+    let overlaps = chunk_bed_intervals
+        .get(*bed_cursor)
+        .is_some_and(|interval| interval.start < read_end);
 
-        if interval.start > read_end {
-            break;
-        }
-
-        if read_start <= interval.end && read_end >= interval.start {
-            return true;
-        }
-
-        idx += 1;
-    }
-
-    false
+    overlaps != include_only
 }
 
 pub fn record_read_num(record: &Record) -> u8 {
@@ -1499,9 +1506,12 @@ pub fn compare_record_to_reference(
 
                     if config.overlap_mode == OverlapMode::Cut
                         && let Some((ov_start, ov_end)) = overlap
-                            && gp >= ov_start && gp < ov_end && read_num == 2 {
-                                continue;
-                            }
+                        && gp >= ov_start
+                        && gp < ov_end
+                        && read_num == 2
+                    {
+                        continue;
+                    }
 
                     if rp >= seq_len || rp >= qual.len() || gp >= ref_seq.len() {
                         continue;
@@ -1535,7 +1545,8 @@ pub fn compare_record_to_reference(
                         estimated_fragment_length(record, mate_end),
                     );
 
-                    if base_position < config.min_read_position || base_position > config.max_read_position
+                    if base_position < config.min_read_position
+                        || base_position > config.max_read_position
                     {
                         continue;
                     }
@@ -1650,6 +1661,7 @@ pub fn process_region(
         if should_skip_whole_read_for_bed(
             &record,
             bed_filter.filter_whole_reads,
+            bed_filter.include_only,
             &chunk_bed_intervals,
             &mut bed_cursor,
         ) {

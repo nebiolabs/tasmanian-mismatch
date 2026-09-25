@@ -112,6 +112,29 @@ pub enum PositionMode {
     Insert,
 }
 
+/// How a BED file (`--bed-file`) restricts which bases or reads are counted.
+#[derive(Debug, Clone, Copy, clap::ValueEnum, PartialEq, Eq)]
+pub enum BedFilterMode {
+    /// Skip individual bases in BED regions (masks the reference)
+    Mask,
+    /// Skip whole reads overlapping BED regions
+    Filter,
+    /// Keep only whole reads overlapping BED regions (in-silico exome/panel restriction)
+    Include,
+}
+
+impl BedFilterMode {
+    /// True for the modes that decide per read rather than per base.
+    pub fn filters_whole_reads(self) -> bool {
+        matches!(self, Self::Filter | Self::Include)
+    }
+
+    /// True when overlapping reads are kept rather than dropped.
+    pub fn include_only(self) -> bool {
+        self == Self::Include
+    }
+}
+
 /// Identifies a genomic region within a BAM file.
 pub struct GenomicRegion {
     /// BAM target ID.
@@ -238,9 +261,9 @@ pub struct Args {
     #[arg(short = 'b', long)]
     pub bed_file: Option<String>,
 
-    /// Filter mode: 'mask' (skip individual bases in BED regions) or 'filter' (skip whole reads overlapping BED regions)
-    #[arg(long, default_value = "mask")]
-    pub bed_filter_mode: String,
+    /// How the BED file is applied
+    #[arg(long, value_enum, default_value = "mask", requires = "bed_file")]
+    pub bed_filter_mode: BedFilterMode,
 
     /// Normalize counts to frequencies within each (read_num, position, ref_base) group
     #[arg(long, default_value_t = false)]
