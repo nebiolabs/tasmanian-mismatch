@@ -217,7 +217,7 @@ pub fn compare_and_count(
         // reference. Genomic identity (this key) must stay in that orientation
         // regardless of which strand supported it — unlike `local_counts` above,
         // which intentionally pools strand-symmetric complement pairs (C>T/G>A)
-        // for the damage-signature report.
+        // for the deamination damage-signature report.
         //
         // `adjust_methylation_base` expects strand-relative (bisulfite-convention)
         // bases, so convert only for that call, then convert its verdict back.
@@ -1386,22 +1386,11 @@ pub fn should_skip_whole_read_for_bed(
         *bed_cursor += 1;
     }
 
-    let mut idx = *bed_cursor;
-    let mut overlaps = false;
-    while idx < chunk_bed_intervals.len() {
-        let interval = &chunk_bed_intervals[idx];
-
-        if interval.start >= read_end {
-            break;
-        }
-
-        if read_start < interval.end && read_end > interval.start {
-            overlaps = true;
-            break;
-        }
-
-        idx += 1;
-    }
+    // The cursor interval (if any) ends after read_start, and intervals are sorted by
+    // start, so it is the only candidate: it overlaps iff it starts before read_end.
+    let overlaps = chunk_bed_intervals
+        .get(*bed_cursor)
+        .is_some_and(|interval| interval.start < read_end);
 
     overlaps != include_only
 }
