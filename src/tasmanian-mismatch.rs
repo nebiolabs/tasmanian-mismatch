@@ -1,15 +1,15 @@
 use clap::Parser;
 use rayon::prelude::*;
-use tasmanian_mismatch::{
-    apply_external_discounts, build_tid_map_and_regions, compute_read_len_max_from_sample_bam,
-    configure_thread_pool, launch_visualization, load_discount_table, load_reference_genome,
-    mask_reference_with_bed, maybe_parse_bed_file, process_region, write_normalized_output,
-    write_output, write_rescaling_matrix_output, Args, BedFilter, InsertKey, PositionMode,
-    ProcessingConfig, ProcessingContext,
-};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use tasmanian_mismatch::{
+    Args, BedFilter, InsertKey, PositionMode, ProcessingConfig, ProcessingContext,
+    apply_external_discounts, build_tid_map_and_regions, compute_read_len_max_from_sample_bam,
+    configure_thread_pool, launch_visualization, load_discount_table, load_reference_genome,
+    mask_reference_with_bed, maybe_parse_bed_file, process_region, write_normalized_output,
+    write_output, write_rescaling_matrix_output,
+};
 
 fn main() {
     env_logger::Builder::from_default_env()

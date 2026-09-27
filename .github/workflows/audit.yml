@@ -1,0 +1,87 @@
+name: Security audit
+
+on:
+  schedule:
+    # Runs at 00:00 UTC everyday
+    - cron: "0 0 * * *"
+  push:
+    paths:
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+      - name: Run security audit
+        uses: rustsec/audit-check@v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  # rustsec/audit-check opens an issue per advisory but never closes them.
+  # This job closes any open RUSTSEC-* issue whose advisory no longer appears
+  # in `cargo audit` output, so resolved advisories self-close.
+  close-resolved:
+    # Only run where we have write access and a real advisory picture
+    # (fork PRs get a read-only token, so skip them).
+    # No `needs: audit` — the audit job fails when advisories exist, and we still
+    # want the reconciler to close *other* resolved issues when that happens. This
+    # job runs its own cargo audit, so it is self-contained.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: Close resolved advisory issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # cargo audit exits non-zero when it finds advisories, so tolerate that
+          # and judge success by the JSON instead.
+          cargo audit --json > audit.json || true
+
+          # Fail SAFE: only proceed if we got a well-formed report. A truncated or
+          # empty file (e.g. a transient advisory-DB fetch failure) must NOT be read
+          # as "no advisories" — that would close every open issue by mistake.
+          if ! jq -e 'has("vulnerabilities") and has("warnings")' audit.json >/dev/null 2>&1; then
+            echo "::error::cargo audit did not produce a valid report; refusing to close any issues."
+            head -c 500 audit.json || true
+            exit 1
+          fi
+
+          # Advisory IDs currently reported (vulnerabilities + warnings such as
+          # unmaintained/unsound). Schema verified against cargo-audit 0.22.
+          jq -r '[.vulnerabilities.list[]?.advisory.id] + [.warnings[]?[]?.advisory.id] | unique[]' \
+            audit.json | sort -u > current_ids.txt
+          echo "Advisories still present:"; cat current_ids.txt
+
+          # Every open issue whose title starts with a RUSTSEC id.
+          gh issue list --state open --limit 500 --json number,title \
+            --jq '.[] | select(.title | test("^RUSTSEC-[0-9]{4}-[0-9]{4}")) | "\(.number)\t\(.title)"' \
+            > open_advisory_issues.txt || true
+
+          while IFS=$'\t' read -r number title; do
+            [ -n "${number:-}" ] || continue
+            id=$(printf '%s' "$title" | grep -oE '^RUSTSEC-[0-9]{4}-[0-9]{4}')
+            if grep -qxF "$id" current_ids.txt; then
+              echo "Keeping #$number ($id still present)"
+            else
+              echo "Closing #$number ($id no longer reported)"
+              gh issue close "$number" \
+                --comment "Advisory \`$id\` is no longer reported by \`cargo audit\`; closing automatically."
+            fi
+          done < open_advisory_issues.txt
