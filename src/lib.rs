@@ -6,6 +6,8 @@
 
 /// BED parsing and region masking/filtering utilities.
 pub mod bed;
+/// Block-bootstrap confidence intervals for mismatch frequencies.
+pub mod bootstrap;
 /// FASTA and BAM input helpers.
 pub mod io;
 /// Methylation-aware base adjustment logic.
@@ -16,18 +18,24 @@ pub mod processing;
 pub mod types;
 /// General helper functions for sequence and output handling.
 pub mod utils;
+/// Per-window mismatch-rate summaries.
+pub mod windows;
 
 // Re-export commonly used items
 pub use bed::{
-    BedFilter, BedInterval, BedRegions, filter_bed_for_region, mask_reference_with_bed,
+    BedFilter, BedInterval, BedRegions, bed_intervals_from, mask_reference_with_bed,
     maybe_parse_bed_file, parse_bed_file, position_overlaps_intervals,
+};
+pub use bootstrap::{
+    BlockCounts, BootstrapIntervals, ClassDiagnostics, RateInterval, block_residual_diagnostics,
+    bootstrap_intervals, write_block_diagnostics, write_rate_intervals,
 };
 pub use io::{
     apply_external_discounts, compute_read_len_max_from_sample_bam,
     frequencies_to_rescaling_matrix, launch_visualization, load_discount_table,
     load_discount_table_from_reader, load_reference_genome, load_rescaling_matrix,
-    load_rescaling_matrix_from_reader, normalize_mismatch_counts,
-    print_read_pair_inconsistency_table, write_inconsistencies_tsv,
+    load_rescaling_matrix_from_reader, normalize_mismatch_counts, position_label,
+    print_read_pair_inconsistency_table, write_bootstrap_output, write_inconsistencies_tsv,
     write_mismatch_discounts_to_writer, write_mismatch_discounts_tsv, write_normalized_output,
     write_output, write_potential_variants_tsv, write_rescaling_matrix_output,
 };
@@ -38,10 +46,10 @@ pub use processing::{
     compare_record_to_reference, configure_thread_pool, create_mismatch_key,
     estimated_fragment_length, get_overlap_region, insert_mode_read_position, mc_mate_end,
     merge_reads_into_insert_position_mode, overlap_interval, process_overlap_region,
-    process_paired_reads_with_overlap, process_record, process_region, process_single_record,
-    qualifying_softclip_comparisons, read_is_first_in_reference, read_mode_read_position,
-    record_read_num, rescale_phred_scores, should_skip_record, should_skip_whole_read_for_bed,
-    softclip_identity, softclip_side_comparisons,
+    process_paired_reads_with_overlap, process_record, process_region, process_region_windows,
+    process_single_record, qualifying_softclip_comparisons, read_is_first_in_reference,
+    read_mode_read_position, record_read_num, rescale_phred_scores, should_skip_record,
+    should_skip_whole_read_for_bed, softclip_identity, softclip_side_comparisons,
 };
 pub use types::{
     Args, BedFilterMode, DiscountKey, GenomicMismatchKey, GenomicMismatchValue, GenomicRegion,
@@ -52,3 +60,4 @@ pub use utils::{
     base_to_char, calculate_end_pos, complement, correct_read_len_with_mode, parse_md_tag,
     print_main_output, print_position_table,
 };
+pub use windows::{WindowRow, WindowSummary, summarize_window_counts, write_window_output};

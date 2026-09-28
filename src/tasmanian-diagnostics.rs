@@ -223,11 +223,9 @@ fn main() {
         let inconsistency_clone = Arc::clone(&inconsistency_counts);
         let discount_clone = Arc::clone(&mismatch_discounts);
 
-        let chunk_bed_intervals = if let Some(bed) = bed_for_filtering.as_ref() {
-            filter_bed_for_region(bed, chr_name, *start, *end)
-        } else {
-            Vec::new()
-        };
+        let chunk_bed_intervals: &[BedInterval] = bed_for_filtering
+            .as_ref()
+            .map_or(&[], |bed| bed_intervals_from(bed, chr_name, *start));
 
         let processing_context = ProcessingContext {
             reference: &ref_clone,
@@ -265,7 +263,7 @@ fn main() {
                 &record,
                 args.bed_filter_mode.filters_whole_reads(),
                 args.bed_filter_mode.include_only(),
-                &chunk_bed_intervals,
+                chunk_bed_intervals,
                 &mut bed_cursor,
             ) {
                 continue;

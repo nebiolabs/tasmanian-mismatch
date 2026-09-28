@@ -487,7 +487,6 @@ mod tests {
         assert!(local_counts.values().sum::<usize>() > 0);
     }
 
-    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn test_process_record_unmapped() {
         // Create header
@@ -538,9 +537,6 @@ mod tests {
             &config,
             None, // no genomic depth
         );
-
-        // Function completed successfully (unmapped reads may result in no counts)
-        assert!(true);
     }
 
     #[test]
@@ -656,6 +652,17 @@ mod tests {
     }
 
     #[test]
+    fn test_load_reference_genome_uppercases_soft_masked_bases() {
+        let fasta_path = "test_reference_soft_masked.fa";
+        std::fs::write(fasta_path, ">chr1\nACGTacgtNn\n").unwrap();
+
+        let reference = load_reference_genome(fasta_path);
+        assert_eq!(reference["chr1"], b"ACGTACGTNN");
+
+        std::fs::remove_file(fasta_path).unwrap();
+    }
+
+    #[test]
     fn test_load_reference_genome_multiline_sequence() {
         // Create a FASTA with sequences spanning multiple lines
         let fasta_path = "test_reference_multiline.fa";
@@ -757,7 +764,6 @@ mod tests {
         std::fs::remove_file(bed_path).unwrap();
     }
 
-    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn test_process_single_record() {
         let header = Header::new();
@@ -809,12 +815,8 @@ mod tests {
             &context,
             config,
         );
-
-        // Verify it completed successfully
-        assert!(true);
     }
 
-    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn test_process_paired_reads_with_overlap() {
         let header = Header::new();
@@ -886,11 +888,8 @@ mod tests {
             &context,
             config,
         );
-
-        assert!(true);
     }
 
-    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn test_rescale_phred_scores() {
         let header = Header::new();
@@ -914,11 +913,8 @@ mod tests {
             &tid_to_name,
             &rescaling_matrix,
         );
-
-        assert!(true);
     }
 
-    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn test_rescale_phred_scores_with_scaling_factors() {
         let header = Header::new();
@@ -945,49 +941,69 @@ mod tests {
             &tid_to_name,
             &rescaling_matrix,
         );
-
-        assert!(true);
     }
 
     #[test]
-    fn test_filter_bed_for_region() {
-        // Create a BED file
-        let bed_path = "test_filter.bed";
-        let bed_content = "chr1\t100\t200\nchr1\t500\t600\nchr2\t1000\t1500\n";
-
-        std::fs::write(bed_path, bed_content).unwrap();
-        let bed_regions = parse_bed_file(bed_path).unwrap();
-
-        // Filter for chr1 with range 0-400
-        let filtered = filter_bed_for_region(&bed_regions, "chr1", 0, 400);
-
-        assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].start, 100);
-        assert_eq!(filtered[0].end, 200);
-
-        // Filter for chr1 with range 0-601 (includes second region)
-        let filtered2 = filter_bed_for_region(&bed_regions, "chr1", 0, 601);
-        assert_eq!(filtered2.len(), 2);
-
-        // Clean up
-        std::fs::remove_file(bed_path).unwrap();
+    fn test_bed_intervals_from_has_no_upper_bound() {
+        let bed_regions: BedRegions = HashMap::from([(
+            "chr1".to_string(),
+            vec![
+                BedInterval {
+                    start: 100,
+                    end: 200,
+                },
+                BedInterval {
+                    start: 1000,
+                    end: 1100,
+                },
+            ],
+        )]);
+        let starts = |from: i64| -> Vec<i64> {
+            bed_intervals_from(&bed_regions, "chr1", from)
+                .iter()
+                .map(|iv| iv.start)
+                .collect()
+        };
+        assert_eq!(starts(0), [100, 1000]);
+        // [100, 200) ends at 200: a read starting there can't overlap it (half-open).
+        assert_eq!(starts(200), [1000]);
+        assert_eq!(starts(150), [100, 1000]);
+        assert!(starts(1100).is_empty());
+        assert!(bed_intervals_from(&bed_regions, "chr2", 0).is_empty());
     }
 
     #[test]
-    fn test_filter_bed_for_region_no_overlap() {
-        // Create a BED file
-        let bed_path = "test_filter_no_overlap.bed";
-        let bed_content = "chr1\t100\t200\nchr1\t500\t600\n";
+    fn test_read_crossing_chunk_end_sees_interval_past_it() {
+        let mut header = Header::new();
+        let mut sq = HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", "chr1");
+        sq.push_tag(b"LN", 5000);
+        header.push_record(&sq);
+        let header_view = HeaderView::from_header(&header);
+        // Starts in chunk [0, 1000) at 990, covers [990, 1010); the interval starts at 1005.
+        let record = Record::from_sam(
+            &header_view,
+            b"r\t0\tchr1\t991\t60\t20M\t*\t0\t0\tAAAAAAAAAAAAAAAAAAAA\tIIIIIIIIIIIIIIIIIIII",
+        )
+        .unwrap();
+        let bed_regions: BedRegions = HashMap::from([(
+            "chr1".to_string(),
+            vec![BedInterval {
+                start: 1005,
+                end: 1100,
+            }],
+        )]);
 
-        std::fs::write(bed_path, bed_content).unwrap();
-        let bed_regions = parse_bed_file(bed_path).unwrap();
-
-        // Filter for chr1 with range 1000-2000 (no overlap)
-        let filtered = filter_bed_for_region(&bed_regions, "chr1", 1000, 2000);
-        assert_eq!(filtered.len(), 0);
-
-        // Clean up
-        std::fs::remove_file(bed_path).unwrap();
+        // The interval lies past the chunk's end, but the list used for whole-read checks
+        // still reaches it, so include mode keeps the read.
+        let mut cursor = 0usize;
+        assert!(!should_skip_whole_read_for_bed(
+            &record,
+            true,
+            true,
+            bed_intervals_from(&bed_regions, "chr1", 0),
+            &mut cursor
+        ));
     }
 
     #[test]

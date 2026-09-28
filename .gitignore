@@ -7,7 +7,7 @@
 *metrics
 *summary
 *bam
-target/*
+target*/*
 test_output/*
 # pixi environments
 .pixi/*
