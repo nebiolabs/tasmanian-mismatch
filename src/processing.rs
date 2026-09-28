@@ -217,7 +217,7 @@ pub fn compare_and_count(
         // reference. Genomic identity (this key) must stay in that orientation
         // regardless of which strand supported it — unlike `local_counts` above,
         // which intentionally pools strand-symmetric complement pairs (C>T/G>A)
-        // for the damage-signature report.
+        // for the deamination damage-signature report.
         //
         // `adjust_methylation_base` expects strand-relative (bisulfite-convention)
         // bases, so convert only for that call, then convert its verdict back.
@@ -1360,40 +1360,39 @@ pub fn should_skip_record(record: &Record, config: ProcessingConfig) -> bool {
 pub fn should_skip_whole_read_for_bed(
     record: &Record,
     bed_filter_whole_reads: bool,
+    include_only: bool,
     chunk_bed_intervals: &[crate::bed::BedInterval],
     bed_cursor: &mut usize,
 ) -> bool {
-    if !bed_filter_whole_reads || chunk_bed_intervals.is_empty() {
+    if !bed_filter_whole_reads {
         return false;
     }
+    if chunk_bed_intervals.is_empty() {
+        // Exclude mode: nothing here to exclude, keep the read. Include-only mode: this
+        // chunk has no target intervals at all, so nothing in it can overlap.
+        return include_only;
+    }
 
+    // Both the read span and BED intervals are half-open [start, end), so a read that
+    // merely abuts an interval (read_end == interval.start) does not overlap it.
     let read_start = record.pos();
     let read_end = calculate_end_pos(read_start, &record.cigar());
 
     // Reads are fetched in coordinate order, so we can advance a cursor
-    // and never revisit intervals that end before this read starts.
+    // and never revisit intervals that end at or before this read's start.
     while *bed_cursor < chunk_bed_intervals.len()
-        && chunk_bed_intervals[*bed_cursor].end < read_start
+        && chunk_bed_intervals[*bed_cursor].end <= read_start
     {
         *bed_cursor += 1;
     }
 
-    let mut idx = *bed_cursor;
-    while idx < chunk_bed_intervals.len() {
-        let interval = &chunk_bed_intervals[idx];
+    // The cursor interval (if any) ends after read_start, and intervals are sorted by
+    // start, so it is the only candidate: it overlaps iff it starts before read_end.
+    let overlaps = chunk_bed_intervals
+        .get(*bed_cursor)
+        .is_some_and(|interval| interval.start < read_end);
 
-        if interval.start > read_end {
-            break;
-        }
-
-        if read_start <= interval.end && read_end >= interval.start {
-            return true;
-        }
-
-        idx += 1;
-    }
-
-    false
+    overlaps != include_only
 }
 
 pub fn record_read_num(record: &Record) -> u8 {
@@ -1662,6 +1661,7 @@ pub fn process_region(
         if should_skip_whole_read_for_bed(
             &record,
             bed_filter.filter_whole_reads,
+            bed_filter.include_only,
             &chunk_bed_intervals,
             &mut bed_cursor,
         ) {

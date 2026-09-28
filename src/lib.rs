@@ -44,9 +44,9 @@ pub use processing::{
     softclip_identity, softclip_side_comparisons,
 };
 pub use types::{
-    Args, DiscountKey, GenomicMismatchKey, GenomicMismatchValue, GenomicRegion, InconsistencyKey,
-    InsertKey, MismatchKey, OverlapMode, PositionMode, ProcessingConfig, ReadInfo, ReferenceGenome,
-    ReferenceOrder, SoftclipComparison,
+    Args, BedFilterMode, DiscountKey, GenomicMismatchKey, GenomicMismatchValue, GenomicRegion,
+    InconsistencyKey, InsertKey, MismatchKey, OverlapMode, PositionMode, ProcessingConfig,
+    ReadInfo, ReferenceGenome, ReferenceOrder, SoftclipComparison,
 };
 pub use utils::{
     base_to_char, calculate_end_pos, complement, correct_read_len_with_mode, parse_md_tag,
