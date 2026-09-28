@@ -1,10 +1,8 @@
 use clap::Parser;
 use rayon::prelude::*;
-use rust_htslib::bam::{
-    FetchDefinition, Format, Header, IndexedReader, Read, Reader, Record, Writer,
-};
-use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
+use tasmanian_mismatch::bam::{BamReader, BamWriter, IndexedBam, Record, RecordExt};
 use tasmanian_mismatch::*;
 
 #[derive(Parser, Debug)]
@@ -75,84 +73,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     log::info!("Loaded {} rescaling entries", rescaling_matrix.len());
 
     // Open BAM to read header and create regions
-    let bam = Reader::from_path(bam_path)?;
-    let header_view = bam.header();
-    let out_header = Header::from_template(header_view);
-
-    // Create thread-safe chromosome name mapping
-    let tid_to_name: Arc<HashMap<i32, String>> = Arc::new(
-        (0..header_view.target_count())
-            .map(|i| {
-                (
-                    i as i32,
-                    String::from_utf8_lossy(header_view.tid2name(i)).to_string(),
-                )
-            })
-            .collect(),
-    );
-
-    // Create regions to process in parallel
-    let mut regions = Vec::new();
-    for (&tid, chr_name) in tid_to_name.iter() {
-        let chr_len = header_view.target_len(tid as u32).unwrap() as i64;
-
-        let mut start = 0i64;
-        while start < chr_len {
-            let end = std::cmp::min(start + region_size as i64, chr_len);
-            regions.push((tid, start, end, chr_name.clone()));
-            start = end;
-        }
-    }
-
-    // Keep write order deterministic and coordinate-like.
-    regions.sort_by_key(|(tid, start, _, _)| (*tid, *start));
-
+    let bam = IndexedBam::open(bam_path)?;
+    let (tid_to_name, regions) = build_tid_map_and_regions(bam.header(), region_size as usize);
     log::info!("Created {} regions to process", regions.len());
-    drop(bam); // Close the initial BAM reader
 
     // Process regions in parallel
-    let bam_path_arc = Arc::new(bam_path.to_string());
     let matrix_arc = Arc::new(rescaling_matrix);
-    let tid_to_name_arc = Arc::clone(&tid_to_name);
     let reference_arc = Arc::new(reference);
 
     let processed_records: Vec<Vec<Record>> = regions
         .par_iter()
-        .map(|(tid, start, end, chr_name)| {
+        .with_max_len(1)
+        .map(|region| {
             let mut region_records = Vec::new();
-
-            match IndexedReader::from_path(bam_path_arc.as_str()) {
-                Ok(mut bam) => {
-                    if bam
-                        .fetch(FetchDefinition::Region(*tid, *start, *end))
-                        .is_ok()
-                    {
-                        for mut record in bam.records().flatten() {
-                            // Avoid boundary duplicates from region-based fetch.
-                            let rec_start = record.pos();
-                            if rec_start < *start || rec_start >= *end {
-                                continue;
-                            }
-
-                            rescale_phred_scores(
-                                &mut record,
-                                &reference_arc,
-                                &tid_to_name_arc,
-                                &matrix_arc,
-                            );
-                            region_records.push(record);
-                        }
-                    }
+            let result = bam.for_each_in_region(region, |mut record| {
+                // Avoid boundary duplicates from region-based fetch.
+                let rec_start = record.pos();
+                if rec_start < region.start || rec_start >= region.end {
+                    return;
                 }
-                Err(e) => {
-                    log::warn!(
-                        "Failed to fetch region {}:{}-{}: {}",
-                        chr_name,
-                        start,
-                        end,
-                        e
-                    );
-                }
+
+                rescale_phred_scores(&mut record, &reference_arc, &tid_to_name, &matrix_arc);
+                region_records.push(record);
+            });
+            if let Err(e) = result {
+                log::warn!(
+                    "Failed to fetch region {}:{}-{}: {}",
+                    tid_to_name[&region.tid],
+                    region.start,
+                    region.end,
+                    e
+                );
             }
 
             region_records
@@ -161,11 +112,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Write all records in order
     log::info!("Writing rescaled records to output...");
-    let mut writer = if let Some(output_path) = output_path {
-        Writer::from_path(output_path, &out_header, Format::Bam)?
-    } else {
-        Writer::from_stdout(&out_header, Format::Bam)?
-    };
+    let mut writer =
+        BamWriter::create(output_path.as_deref().map(Path::new), bam.header().clone())?;
 
     let mut total_records = 0usize;
     for region_records in processed_records {
@@ -176,15 +124,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Include unmapped records to preserve whole-BAM output behavior.
-    let mut full_reader = Reader::from_path(bam_path)?;
+    let mut full_reader = BamReader::open(bam_path)?;
     for record_result in full_reader.records() {
         let mut record = record_result?;
         if record.tid() < 0 {
-            rescale_phred_scores(&mut record, &reference_arc, &tid_to_name_arc, &matrix_arc);
+            rescale_phred_scores(&mut record, &reference_arc, &tid_to_name, &matrix_arc);
             writer.write(&record)?;
             total_records += 1;
         }
     }
+    writer.finish()?;
 
     log::info!("Finished rescaling {} quality scores.", total_records);
     Ok(())

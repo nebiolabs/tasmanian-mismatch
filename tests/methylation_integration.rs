@@ -1,12 +1,10 @@
 mod test_utils;
 
-use rust_htslib::bam::header::HeaderRecord;
-use rust_htslib::bam::index;
-use rust_htslib::bam::{Format, Header, HeaderView, Record, Writer};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
-use test_utils::{log_command, log_line, repo_log_path, unique_temp_dir};
+use tasmanian_mismatch::bam::{BamWriter, record_from_sam};
+use test_utils::{index_bam, log_command, log_line, repo_log_path, sam_header, unique_temp_dir};
 
 /// Reference: "AAAAGAAA" + "CCCCTCCC" (16 bp, chr1).
 ///
@@ -30,28 +28,22 @@ use test_utils::{log_command, log_line, repo_log_path, unique_temp_dir};
 /// making the read1 methylation-collapse branch (`G>A` on the reverse
 /// strand) the one under test.
 fn write_test_bam(path: &Path) {
-    let mut header = Header::new();
-    let mut sq = HeaderRecord::new(b"SQ");
-    sq.push_tag(b"SN", "chr1");
-    sq.push_tag(b"LN", 16);
-    header.push_record(&sq);
-
-    let header_view = HeaderView::from_header(&header);
+    let header = sam_header(&[("chr1", 16)]);
     let mut writer =
-        Writer::from_path(path, &header, Format::Bam).expect("failed to open BAM writer");
+        BamWriter::create(Some(path), header.clone()).expect("failed to open BAM writer");
 
     // Flag 80 = 0x50 = reverse strand (0x10) + read1 (0x40).
     let bisulfite_line =
         b"read_bisulfite\t80\tchr1\t1\t60\t8M\t*\t0\t0\tAAAAAAAA\tIIIIIIII\tNM:i:1";
     let bisulfite_record =
-        Record::from_sam(&header_view, bisulfite_line).expect("failed to parse SAM line");
+        record_from_sam(&header, bisulfite_line).expect("failed to parse SAM line");
     writer
         .write(&bisulfite_record)
         .expect("failed to write BAM record");
 
     // Flag 64 = 0x40 = forward strand + read1.
     let snp_line = b"read_snp\t64\tchr1\t9\t60\t8M\t*\t0\t0\tCCCCGCCC\tIIIIIIII\tNM:i:1";
-    let snp_record = Record::from_sam(&header_view, snp_line).expect("failed to parse SAM line");
+    let snp_record = record_from_sam(&header, snp_line).expect("failed to parse SAM line");
     writer
         .write(&snp_record)
         .expect("failed to write BAM record");
@@ -144,7 +136,7 @@ fn integration_methylation_mode_collapses_bisulfite_signature_but_not_real_snp()
 
     fs::write(&reference_fa, ">chr1\nAAAAGAAACCCCTCCC\n").expect("failed to write reference");
     write_test_bam(&fixture_bam);
-    index::build(&fixture_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
+    index_bam(&fixture_bam);
 
     let diagnostics_bin = env!("CARGO_BIN_EXE_tasmanian-diagnostics");
 

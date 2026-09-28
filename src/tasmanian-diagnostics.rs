@@ -1,9 +1,9 @@
 use clap::Parser;
 use rayon::prelude::*;
-use rust_htslib::bam::{FetchDefinition, IndexedReader, Read, Reader, Record};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use tasmanian_mismatch::bam::{IndexedBam, Record, RecordExt, qname};
 use tasmanian_mismatch::{OverlapMode, PositionMode, *};
 
 #[derive(Parser, Debug)]
@@ -76,9 +76,9 @@ struct Args {
     #[arg(short = 'b', long)]
     bed_file: Option<String>,
 
-    /// Filter mode: 'mask' (skip individual bases) or 'filter' (skip whole reads)
-    #[arg(long, default_value = "mask")]
-    bed_filter_mode: String,
+    /// How the BED file is applied
+    #[arg(long, value_enum, default_value = "mask", requires = "bed_file")]
+    bed_filter_mode: BedFilterMode,
 
     /// Output path for genomic potential variants table
     #[arg(long, default_value = "potential_variants.tsv")]
@@ -130,47 +130,21 @@ fn main() {
     let mut reference = load_reference_genome(&args.reference_fasta);
 
     let bed_for_filtering = if let Some(regions) = maybe_parse_bed_file(args.bed_file.as_deref()) {
-        match args.bed_filter_mode.as_str() {
-            "filter" => Some(Arc::new(regions)),
-            "mask" => {
+        match args.bed_filter_mode {
+            BedFilterMode::Filter | BedFilterMode::Include => Some(Arc::new(regions)),
+            BedFilterMode::Mask => {
                 let masked_bases = mask_reference_with_bed(&mut reference, &regions);
                 log::info!("Masked {} bases in reference genome", masked_bases);
                 None
             }
-            _ => panic!(
-                "Invalid --bed-filter-mode '{}'. Expected 'mask' or 'filter'.",
-                args.bed_filter_mode
-            ),
         }
     } else {
         None
     };
 
     let reference = Arc::new(reference);
-    let bam = Reader::from_path(&args.bam_file).expect("Failed to open BAM file");
-
-    let tid_to_name: Arc<HashMap<i32, String>> = Arc::new(
-        (0..bam.header().target_count())
-            .map(|i| {
-                (
-                    i as i32,
-                    String::from_utf8_lossy(bam.header().tid2name(i)).to_string(),
-                )
-            })
-            .collect(),
-    );
-
-    let mut regions = Vec::new();
-    for (&tid, chr_name) in tid_to_name.iter() {
-        let chr_len = bam.header().target_len(tid as u32).unwrap_or(0) as i64;
-        let mut start = 0i64;
-        while start < chr_len {
-            let end = std::cmp::min(start + args.region_size as i64, chr_len);
-            regions.push((tid, start, end, chr_name.clone()));
-            start = end;
-        }
-    }
-    drop(bam);
+    let bam = IndexedBam::open(&args.bam_file).expect("Failed to open indexed BAM");
+    let (tid_to_name, regions) = build_tid_map_and_regions(bam.header(), args.region_size);
 
     log::info!("Created {} regions to process", regions.len());
 
@@ -205,40 +179,28 @@ fn main() {
         max_read_position: usize::MAX,
     };
 
-    let bam_path_arc = Arc::new(args.bam_file.clone());
-
-    regions.par_iter().for_each(|(tid, start, end, chr_name)| {
-        let mut bam =
-            IndexedReader::from_path(bam_path_arc.as_str()).expect("Failed to open BAM file");
-
-        if let Err(e) = bam.fetch(FetchDefinition::Region(*tid, *start, *end)) {
-            log::warn!(
-                "Failed to fetch region {}:{}-{}: {}",
-                chr_name,
-                start,
-                end,
-                e
-            );
-            return;
-        }
+    regions.par_iter().with_max_len(1).for_each(|region| {
+        let (start, end) = (&region.start, &region.end);
+        let chr_name = &tid_to_name[&region.tid];
 
         let ref_clone = Arc::clone(&reference);
         let tid_clone = Arc::clone(&tid_to_name);
         let inconsistency_clone = Arc::clone(&inconsistency_counts);
         let discount_clone = Arc::clone(&mismatch_discounts);
 
-        let chunk_bed_intervals = if let Some(bed) = bed_for_filtering.as_ref() {
-            filter_bed_for_region(bed, chr_name, *start, *end)
-        } else {
-            Vec::new()
-        };
+        let chunk_bed_intervals: &[BedInterval] = bed_for_filtering
+            .as_ref()
+            .map_or(&[], |bed| bed_intervals_from(bed, chr_name, *start));
 
         let processing_context = ProcessingContext {
             reference: &ref_clone,
             tid_to_name: &tid_clone,
-            bed_intervals: &chunk_bed_intervals,
+            // BED regions act per read (skip check below), never per base: mask mode masks
+            // the reference instead, and per-base masking would erase every read `include` keeps.
+            bed_intervals: &[],
         };
 
+        let mut bed_cursor = 0usize;
         let mut local_count = 0usize;
         let mut local_overlap_count = 0usize;
 
@@ -251,34 +213,30 @@ fn main() {
 
         let mut read_groups: HashMap<Vec<u8>, Vec<Record>> = HashMap::new();
 
-        for result in bam.records() {
-            let Ok(record) = result else {
-                continue;
-            };
-
+        let result = bam.for_each_in_region(region, |record| {
             let read_start = record.pos();
             let starts_in_chunk = read_start >= *start && read_start < *end;
             if !starts_in_chunk {
-                continue;
+                return;
             }
 
-            let should_skip_whole_read =
-                args.bed_filter_mode == "filter" && !chunk_bed_intervals.is_empty() && {
-                    let read_end = calculate_end_pos(record.pos(), &record.cigar());
-                    chunk_bed_intervals
-                        .iter()
-                        .any(|interval| record.pos() <= interval.end && read_end >= interval.start)
-                };
-            if should_skip_whole_read {
-                continue;
+            if should_skip_whole_read_for_bed(
+                &record,
+                args.bed_filter_mode.filters_whole_reads(),
+                args.bed_filter_mode.include_only(),
+                chunk_bed_intervals,
+                &mut bed_cursor,
+            ) {
+                return;
             }
 
+            let flags = record.flags();
             let has_mapped_pair =
-                record.is_paired() && !record.is_unmapped() && !record.is_mate_unmapped();
+                flags.is_segmented() && !flags.is_unmapped() && !flags.is_mate_unmapped();
             if has_mapped_pair {
-                let qname = record.qname().to_vec();
+                let qname = qname(&record).to_vec();
                 read_groups.entry(qname).or_default().push(record);
-                continue;
+                return;
             }
 
             process_single_record(
@@ -290,6 +248,16 @@ fn main() {
                 processing_config,
             );
             local_count += 1;
+        });
+        if let Err(e) = result {
+            log::warn!(
+                "Failed to fetch region {}:{}-{}: {}",
+                chr_name,
+                start,
+                end,
+                e
+            );
+            return;
         }
 
         for (_qname, records) in read_groups {

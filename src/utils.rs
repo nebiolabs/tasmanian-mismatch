@@ -45,6 +45,29 @@ pub fn base_to_char(byte: u8) -> Option<char> {
     }
 }
 
+/// The four canonical bases, in the index order `base_index` uses.
+pub const BASES: [char; 4] = ['A', 'C', 'G', 'T'];
+
+/// Index of a canonical base in `BASES`, or `None` for anything else (e.g. `N`).
+pub fn base_index(base: char) -> Option<usize> {
+    BASES.iter().position(|&b| b == base)
+}
+
+/// Split a `base_change` such as `"C>T"` into its reference and read bases.
+pub fn split_base_change(base_change: &str) -> Option<(char, char)> {
+    let (ref_part, read_part) = base_change.split_once('>')?;
+    Some((ref_part.chars().next()?, read_part.chars().next()?))
+}
+
+/// `numerator / denominator`, or 0 when the denominator is 0.
+pub fn ratio(numerator: u64, denominator: u64) -> f64 {
+    if denominator == 0 {
+        0.0
+    } else {
+        numerator as f64 / denominator as f64
+    }
+}
+
 /// Normalize a read position using the modal read length.
 ///
 /// # Arguments
@@ -84,18 +107,14 @@ pub fn correct_read_len_with_mode(
 ///
 /// # Returns
 /// * The exclusive genomic end position after consuming reference bases.
-pub fn calculate_end_pos(start_pos: i64, cigar: &rust_htslib::bam::record::CigarStringView) -> i64 {
-    use rust_htslib::bam::record::Cigar::*;
-    let mut end = start_pos;
-    for op in cigar.iter() {
-        match op {
-            Match(len) | Equal(len) | Diff(len) | Del(len) | RefSkip(len) => {
-                end += *len as i64;
-            }
-            _ => {}
-        }
-    }
-    end
+pub fn calculate_end_pos(start_pos: i64, cigar: &crate::bam::Cigar) -> i64 {
+    let ref_span: usize = cigar
+        .as_ref()
+        .iter()
+        .filter(|op| crate::bam::consumes_reference(op.kind()))
+        .map(|op| op.len())
+        .sum();
+    start_pos + ref_span as i64
 }
 
 /// Print the position-based mismatch table as CSV.

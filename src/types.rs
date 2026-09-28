@@ -112,6 +112,29 @@ pub enum PositionMode {
     Insert,
 }
 
+/// How a BED file (`--bed-file`) restricts which bases or reads are counted.
+#[derive(Debug, Clone, Copy, clap::ValueEnum, PartialEq, Eq)]
+pub enum BedFilterMode {
+    /// Skip individual bases in BED regions (masks the reference)
+    Mask,
+    /// Skip whole reads overlapping BED regions
+    Filter,
+    /// Keep only whole reads overlapping BED regions (in-silico exome/panel restriction)
+    Include,
+}
+
+impl BedFilterMode {
+    /// True for the modes that decide per read rather than per base.
+    pub fn filters_whole_reads(self) -> bool {
+        matches!(self, Self::Filter | Self::Include)
+    }
+
+    /// True when overlapping reads are kept rather than dropped.
+    pub fn include_only(self) -> bool {
+        self == Self::Include
+    }
+}
+
 /// Identifies a genomic region within a BAM file.
 pub struct GenomicRegion {
     /// BAM target ID.
@@ -238,9 +261,9 @@ pub struct Args {
     #[arg(short = 'b', long)]
     pub bed_file: Option<String>,
 
-    /// Filter mode: 'mask' (skip individual bases in BED regions) or 'filter' (skip whole reads overlapping BED regions)
-    #[arg(long, default_value = "mask")]
-    pub bed_filter_mode: String,
+    /// How the BED file is applied
+    #[arg(long, value_enum, default_value = "mask", requires = "bed_file")]
+    pub bed_filter_mode: BedFilterMode,
 
     /// Normalize counts to frequencies within each (read_num, position, ref_base) group
     #[arg(long, default_value_t = false)]
@@ -255,4 +278,42 @@ pub struct Args {
     /// Requires python3 with bokeh and pandas installed.
     #[arg(long, default_value_t = false)]
     pub plot: bool,
+
+    /// Report per-window mismatch rates instead of the genome-wide table: tile each contig into
+    /// windows of this many bp (reads are assigned by alignment start) and write one row per
+    /// window, read and mismatch class, pooled over positions. Processing chunks
+    /// (--region-size) are rounded up to whole windows
+    #[arg(
+        long,
+        value_parser = clap::value_parser!(u64).range(1..),
+        conflicts_with_all = [
+            "normalize", "emit_rescaling_matrix", "discount_table", "plot", "bootstrap",
+        ]
+    )]
+    pub window_size: Option<u64>,
+
+    /// Estimate a 95% confidence interval for each row's frequency from this many
+    /// block-bootstrap replicates, resampling the genome in --region-size blocks; adds
+    /// frequency, ci_low and ci_high columns
+    #[arg(
+        long,
+        value_parser = clap::value_parser!(u32).range(2..),
+        conflicts_with = "emit_rescaling_matrix"
+    )]
+    pub bootstrap: Option<u32>,
+
+    /// Random seed for --bootstrap, so reruns give identical intervals
+    #[arg(long, default_value_t = 1, requires = "bootstrap")]
+    pub bootstrap_seed: u64,
+
+    /// Write a between-block heterogeneity diagnostic for --bootstrap to this TSV: per
+    /// mismatch class, a histogram of each block's Pearson residual against the pooled rate,
+    /// beside the counts N(0, 1) would give
+    #[arg(long, requires = "bootstrap")]
+    pub bootstrap_diagnostics: Option<String>,
+
+    /// Write per-position mismatch rates with 95% --bootstrap intervals to this TSV, pooled over
+    /// reference orders: each A/C/G/T class, each strand-folded class (C>T/G>A), and N>N
+    #[arg(long, requires = "bootstrap")]
+    pub bootstrap_rates: Option<String>,
 }

@@ -28,6 +28,10 @@ pub struct BedFilter<'a> {
     /// When `true`, skip any read whose alignment overlaps a BED interval.
     /// When `false`, individual bases at BED positions are masked in the reference.
     pub filter_whole_reads: bool,
+    /// Only meaningful when `filter_whole_reads` is `true`. When `true`, the overlap check
+    /// is inverted: reads are kept only if they DO overlap a BED interval (an in-silico
+    /// exome/panel restriction) instead of being dropped when they overlap one.
+    pub include_only: bool,
 }
 
 /// Parse a BED file into chromosome-indexed intervals.
@@ -185,34 +189,19 @@ pub fn position_overlaps_intervals(intervals: &[BedInterval], pos: i64) -> bool 
     idx > 0 && pos < intervals[idx - 1].end
 }
 
-/// Return BED intervals that overlap a genomic region.
-///
-/// # Arguments
-/// * `bed_regions` - BED intervals grouped by chromosome.
-/// * `chrom` - Chromosome or contig name.
-/// * `region_start` - Region start in 0-based inclusive coordinates.
-/// * `region_end` - Region end in 0-based exclusive coordinates.
-///
-/// # Returns
-/// * A vector of [`BedInterval`] values that overlap the requested region.
-pub fn filter_bed_for_region(
-    bed_regions: &BedRegions,
+/// BED intervals on `chrom` that a read starting at or after `region_start` could overlap:
+/// every interval ending after `region_start`, with no upper bound. Reads are assigned to a
+/// processing chunk by their start, and one near the chunk's end can extend past it into
+/// intervals beyond, so a list of only the chunk's overlapping intervals would miss them.
+/// Relies on `parse_bed_file`'s sorted, merged intervals, whose ends are then increasing.
+pub fn bed_intervals_from<'a>(
+    bed_regions: &'a BedRegions,
     chrom: &str,
     region_start: i64,
-    region_end: i64,
-) -> Vec<BedInterval> {
-    if let Some(intervals) = bed_regions.get(chrom) {
-        intervals
-            .iter()
-            .filter(|interval| {
-                // Check if interval overlaps with region
-                interval.start < region_end && interval.end > region_start
-            })
-            .cloned()
-            .collect()
-    } else {
-        Vec::new()
-    }
+) -> &'a [BedInterval] {
+    bed_regions.get(chrom).map_or(&[], |intervals| {
+        &intervals[intervals.partition_point(|interval| interval.end <= region_start)..]
+    })
 }
 
 /// Mask BED-covered bases in the reference genome with `N`.
