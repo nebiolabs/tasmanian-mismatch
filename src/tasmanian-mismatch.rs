@@ -3,6 +3,7 @@ use rayon::prelude::*;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use tasmanian_mismatch::bam::IndexedBam;
 use tasmanian_mismatch::{
     Args, BedFilter, BedFilterMode, BlockCounts, InsertKey, PositionMode, ProcessingConfig,
     ProcessingContext, WindowSummary, apply_external_discounts, block_residual_diagnostics,
@@ -65,7 +66,8 @@ fn main() {
     let chunk_size = args.window_size.map_or(args.region_size, |size| {
         (args.region_size as u64).div_ceil(size).max(1) as usize * size as usize
     });
-    let (tid_to_name, regions) = build_tid_map_and_regions(&args.bam_path, chunk_size);
+    let bam = IndexedBam::open(&args.bam_path).expect("Failed to open indexed BAM");
+    let (tid_to_name, regions) = build_tid_map_and_regions(bam.header(), chunk_size);
     log::info!("Processing {} indexed regions", regions.len());
 
     let config = ProcessingConfig {
@@ -109,10 +111,11 @@ fn main() {
         // Regions are in genomic order and rayon's collect keeps it, so windows come out sorted.
         let windows: Vec<WindowSummary> = regions
             .par_iter()
+            .with_max_len(1)
             .flat_map_iter(|region| {
                 let mut windows = Vec::new();
                 let region_reads = process_region_windows(
-                    &args.bam_path,
+                    &bam,
                     region,
                     &context,
                     config,
@@ -148,9 +151,9 @@ fn main() {
     let bootstrap_blocks: Option<Mutex<BlockCounts>> =
         args.bootstrap.map(|_| Mutex::new(BlockCounts::new()));
 
-    regions.par_iter().for_each(|region| {
+    regions.par_iter().with_max_len(1).for_each(|region| {
         let (region_counts, region_reads) =
-            process_region(&args.bam_path, region, &context, config, &bed_filter);
+            process_region(&bam, region, &context, config, &bed_filter);
 
         if !region_counts.is_empty() {
             if let Some(blocks) = &bootstrap_blocks {

@@ -1,3 +1,7 @@
+// Each tests/*.rs binary compiles this file as its own module and only uses a
+// subset of these helpers, so per-binary dead-code warnings are false positives.
+#![allow(dead_code)]
+
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -37,4 +41,23 @@ pub fn log_line(log_path: &std::path::Path, message: &str) {
 pub fn log_command(log_path: &std::path::Path, binary: &str, args: &[&str]) {
     let cmd_str = format!("{} {}", binary, args.join(" "));
     log_line(log_path, &format!("Executing: {}", cmd_str));
+}
+
+/// A coordinate-sorted SAM header with one `@SQ` line per `(name, length)`.
+pub fn sam_header(references: &[(&str, usize)]) -> tasmanian_mismatch::bam::Header {
+    let sq_lines: String = references
+        .iter()
+        .map(|(name, len)| format!("@SQ\tSN:{name}\tLN:{len}\n"))
+        .collect();
+    format!("@HD\tVN:1.6\tSO:coordinate\n{sq_lines}")
+        .parse()
+        .expect("failed to parse SAM header")
+}
+
+/// Index `path` as `path.bai`.
+pub fn index_bam(path: &std::path::Path) {
+    let index = noodles::bam::fs::index(path).expect("failed to build BAM index");
+    let mut bai = path.as_os_str().to_owned();
+    bai.push(".bai");
+    noodles::bam::bai::fs::write(bai, &index).expect("failed to write BAM index");
 }

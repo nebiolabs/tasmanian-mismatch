@@ -1,12 +1,12 @@
 //! Input helpers for reference FASTA and BAM-derived metadata.
 
+use crate::bam::BamReader;
 use crate::types::{
     DiscountKey, GenomicMismatchKey, InconsistencyKey, InsertKey, MismatchKey, PositionMode,
     ReferenceGenome, ReferenceOrder, RescalingMatrix,
 };
 use crate::utils::{ratio, split_base_change};
-use noodles_fasta as fasta;
-use rust_htslib::bam::{Read, Reader};
+use noodles::fasta;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
@@ -58,7 +58,7 @@ pub fn load_reference_genome(fasta_path: &str) -> ReferenceGenome {
 /// * If the BAM file cannot be opened.
 pub fn compute_read_len_max_from_sample_bam(bam_path: &str, sample_size: usize) -> usize {
     let mut bam =
-        Reader::from_path(bam_path).expect("Failed to open BAM file for read length sampling");
+        BamReader::open(bam_path).expect("Failed to open BAM file for read length sampling");
 
     let mut max_length: usize = 0;
 
@@ -69,7 +69,7 @@ pub fn compute_read_len_max_from_sample_bam(bam_path: &str, sample_size: usize) 
                 process::exit(1);
             }
             Ok(record) => {
-                let read_len = record.seq().len();
+                let read_len = record.sequence().len();
                 if read_len > max_length {
                     max_length = read_len;
                 }

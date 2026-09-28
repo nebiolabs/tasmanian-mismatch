@@ -1,28 +1,20 @@
 mod test_utils;
 
-use rust_htslib::bam::header::HeaderRecord;
-use rust_htslib::bam::index;
-use rust_htslib::bam::{Format, Header, HeaderView, Record, Writer};
 use std::fs;
 use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use test_utils::{log_command, log_line, repo_log_path, unique_temp_dir};
+use tasmanian_mismatch::bam::{BamWriter, record_from_sam};
+use test_utils::{index_bam, log_command, log_line, repo_log_path, sam_header, unique_temp_dir};
 
 fn write_test_bam(path: &Path) {
-    let mut header = Header::new();
-    let mut sq = HeaderRecord::new(b"SQ");
-    sq.push_tag(b"SN", "chr1");
-    sq.push_tag(b"LN", 8);
-    header.push_record(&sq);
-
-    let header_view = HeaderView::from_header(&header);
+    let header = sam_header(&[("chr1", 8)]);
     let mut writer =
-        Writer::from_path(path, &header, Format::Bam).expect("failed to open BAM writer");
+        BamWriter::create(Some(path), header.clone()).expect("failed to open BAM writer");
 
     // Reference is ACGTACGT. This read has one mismatch (A->T).
     let sam_line = b"read1\t0\tchr1\t1\t60\t8M\t*\t0\t0\tACGTTCGT\tIIIIIIII\tNM:i:1";
-    let record = Record::from_sam(&header_view, sam_line).expect("failed to parse SAM line");
+    let record = record_from_sam(&header, sam_line).expect("failed to parse SAM line");
     writer.write(&record).expect("failed to write BAM record");
 }
 
@@ -40,7 +32,7 @@ fn integration_all_binaries_with_options_and_three_way_pipe() {
 
     fs::write(&reference_fa, ">chr1\nACGTACGT\n").expect("failed to write reference");
     write_test_bam(&fixture_bam);
-    index::build(&fixture_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
+    index_bam(&fixture_bam);
     log_line(
         &log_path,
         &format!(

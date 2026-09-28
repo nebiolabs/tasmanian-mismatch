@@ -1,29 +1,22 @@
 mod test_utils;
 
-use rust_htslib::bam;
-use rust_htslib::bam::header::HeaderRecord;
-use rust_htslib::bam::index;
-use rust_htslib::bam::{Format, Header, HeaderView, Read, Record, Writer};
+use noodles::sam;
+use noodles::sam::alignment::io::Write as _;
 use std::fs;
 use std::io::Read as IoRead;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use test_utils::{log_command, log_line, repo_log_path, unique_temp_dir};
+use tasmanian_mismatch::bam::{BamReader, BamWriter, RecordExt, record_from_sam};
+use test_utils::{index_bam, log_command, log_line, repo_log_path, sam_header, unique_temp_dir};
 
 fn write_test_bam(path: &Path) {
-    let mut header = Header::new();
-    let mut sq = HeaderRecord::new(b"SQ");
-    sq.push_tag(b"SN", "chr1");
-    sq.push_tag(b"LN", 8);
-    header.push_record(&sq);
-
-    let header_view = HeaderView::from_header(&header);
+    let header = sam_header(&[("chr1", 8)]);
     let mut writer =
-        Writer::from_path(path, &header, Format::Bam).expect("failed to open BAM writer");
+        BamWriter::create(Some(path), header.clone()).expect("failed to open BAM writer");
 
     // Reference is ACGTACGT. This read has one mismatch at read position 4 (A->T).
     let sam_line = b"read1\t0\tchr1\t1\t60\t8M\t*\t0\t0\tACGTTCGT\tIIIIIIII\tNM:i:1";
-    let record = Record::from_sam(&header_view, sam_line).expect("failed to parse SAM line");
+    let record = record_from_sam(&header, sam_line).expect("failed to parse SAM line");
     writer.write(&record).expect("failed to write BAM record");
 }
 
@@ -43,7 +36,7 @@ fn integration_rescale_matrix_produces_rescaled_sam() {
     fs::write(&matrix_tsv, "1\t4\tA\tT\t0.5\n").expect("failed to write matrix");
     write_test_bam(&input_bam);
 
-    index::build(&input_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
+    index_bam(&input_bam);
 
     let binary = env!("CARGO_BIN_EXE_tasmanian-rescale-quality");
     log_command(
@@ -84,7 +77,7 @@ fn integration_rescale_matrix_produces_rescaled_sam() {
     assert!(output.status.success(), "rescale command failed");
     assert!(output_bam.exists(), "rescaled BAM file was not created");
 
-    let mut bam_reader = bam::Reader::from_path(&output_bam).expect("failed to open rescaled BAM");
+    let mut bam_reader = BamReader::open(&output_bam).expect("failed to open rescaled BAM");
     let mut records = bam_reader.records(); // records is Option<Result<Record>> panics are 1.Option 2.Result
     let record = records
         .next()
@@ -99,15 +92,21 @@ fn integration_rescale_matrix_produces_rescaled_sam() {
     );
 
     // Also write a SAM file from the rescaled BAM to validate end-to-end output artifact.
-    let out_header = Header::from_template(bam_reader.header());
-    let mut sam_writer = Writer::from_path(&output_sam, &out_header, Format::Sam)
-        .expect("failed to open SAM writer");
+    drop(records);
+    let out_header = bam_reader.header().clone();
+    let mut sam_writer =
+        sam::io::Writer::new(fs::File::create(&output_sam).expect("failed to open SAM writer"));
+    sam_writer
+        .write_header(&out_header)
+        .expect("failed to write SAM header");
 
-    let mut second_reader =
-        bam::Reader::from_path(&output_bam).expect("failed to re-open rescaled BAM");
+    let mut second_reader = BamReader::open(&output_bam).expect("failed to re-open rescaled BAM");
     for rec in second_reader.records() {
         sam_writer
-            .write(&rec.expect("failed to read record for SAM conversion"))
+            .write_alignment_record(
+                &out_header,
+                &rec.expect("failed to read record for SAM conversion"),
+            )
             .expect("failed to write SAM record");
     }
     drop(sam_writer);
@@ -145,7 +144,7 @@ fn integration_rescale_can_consume_matrix_from_mismatch_stdout() {
 
     fs::write(&reference_fa, ">chr1\nACGTACGT\n").expect("failed to write reference");
     write_test_bam(&input_bam);
-    index::build(&input_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
+    index_bam(&input_bam);
 
     let mismatch_bin = env!("CARGO_BIN_EXE_tasmanian-mismatch");
     log_command(
@@ -243,7 +242,7 @@ fn integration_rescale_can_consume_matrix_from_mismatch_stdout() {
     assert!(status.success(), "rescale command failed");
     assert!(output_bam.exists(), "rescaled BAM file was not created");
 
-    let mut bam_reader = bam::Reader::from_path(&output_bam).expect("failed to open rescaled BAM");
+    let mut bam_reader = BamReader::open(&output_bam).expect("failed to open rescaled BAM");
     let mut records = bam_reader.records();
     let record = records
         .next()

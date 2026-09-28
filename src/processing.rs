@@ -3,6 +3,9 @@
 //! This module contains the main logic for turning aligned BAM records into
 //! mismatch, overlap, inconsistency, and genomic summary counts.
 
+use crate::bam::{
+    Header, IndexedBam, Record, RecordExt, mate_cigar, reference_sequences, set_quality_scores,
+};
 use crate::bed::position_overlaps_intervals;
 use crate::methylation::adjust_methylation_base;
 use crate::types::{
@@ -11,8 +14,8 @@ use crate::types::{
     ReferenceOrder, RescalingMatrix, SoftclipComparison,
 };
 use crate::utils::{base_to_char, calculate_end_pos, complement, correct_read_len_with_mode};
+use noodles::sam::alignment::record::cigar::op::Kind;
 use rayon;
-use rust_htslib::bam::{FetchDefinition, IndexedReader, Read, Reader, Record, record::Aux};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -33,8 +36,8 @@ pub struct ProcessingContext<'a> {
 
 /// Per-read state needed when comparing bases against the reference.
 pub struct ReadContext<'a> {
-    /// Encoded read sequence.
-    pub seq: &'a rust_htslib::bam::record::Seq<'a>,
+    /// Read sequence bases.
+    pub seq: &'a [u8],
     /// Base quality scores aligned to `seq`.
     pub qual: &'a [u8],
     /// Reference sequence for the current contig.
@@ -291,8 +294,8 @@ pub fn get_overlap_region(
         return None;
     }
 
-    let end1 = calculate_end_pos(read1.pos, &record1.cigar());
-    let end2 = calculate_end_pos(read2.pos, &record2.cigar());
+    let end1 = calculate_end_pos(read1.pos, record1.cigar());
+    let end2 = calculate_end_pos(read2.pos, record2.cigar());
 
     let overlap_start = read1.pos.max(read2.pos);
     let overlap_end = end1.min(end2);
@@ -313,13 +316,13 @@ where
     let mut read_pos = 0usize;
     let mut ref_pos = record.pos() as usize;
 
-    use rust_htslib::bam::record::Cigar::*;
-    for cigar_op in record.cigar().iter() {
-        match cigar_op {
-            Match(len) | Equal(len) | Diff(len) => {
-                for i in 0..*len {
-                    let r_pos = read_pos + i as usize;
-                    let genome_pos = ref_pos + i as usize;
+    for op in record.cigar().as_ref() {
+        let len = op.len();
+        match op.kind() {
+            Kind::Match | Kind::SequenceMatch | Kind::SequenceMismatch => {
+                for i in 0..len {
+                    let r_pos = read_pos + i;
+                    let genome_pos = ref_pos + i;
 
                     if let Some((start, end)) = range
                         && (genome_pos < start || genome_pos >= end)
@@ -329,14 +332,14 @@ where
 
                     on_base(r_pos, genome_pos);
                 }
-                read_pos += *len as usize;
-                ref_pos += *len as usize;
+                read_pos += len;
+                ref_pos += len;
             }
-            Ins(len) => {
-                read_pos += *len as usize;
+            Kind::Insertion => {
+                read_pos += len;
             }
-            Del(len) | RefSkip(len) => {
-                ref_pos += *len as usize;
+            Kind::Deletion | Kind::Skip => {
+                ref_pos += len;
             }
             _ => {}
         }
@@ -356,7 +359,7 @@ fn count_softclip_mismatches(
     read_ctx: &ReadContext,
     read_pos: usize,
     ref_pos: usize,
-    softclip_len: u32,
+    softclip_len: usize,
     config: &ProcessingConfig,
     bed_intervals: &[crate::bed::BedInterval],
     local_counts: &mut HashMap<MismatchKey, usize>,
@@ -367,17 +370,17 @@ fn count_softclip_mismatches(
     let seq_len = read_ctx.seq.len();
 
     for i in 0..softclip_len {
-        let r_pos = read_pos + i as usize;
+        let r_pos = read_pos + i;
         let genome_pos = if read_pos == 0 {
             // Soft-clip at beginning of read.
-            if ref_pos >= (softclip_len - i) as usize {
-                ref_pos - (softclip_len - i) as usize
+            if ref_pos >= softclip_len - i {
+                ref_pos - (softclip_len - i)
             } else {
                 continue;
             }
         } else {
             // Soft-clip at end of read.
-            ref_pos + i as usize
+            ref_pos + i
         };
 
         if r_pos >= seq_len || genome_pos >= read_ctx.ref_seq.len() {
@@ -434,7 +437,7 @@ fn should_skip_record_core(
     excl_flags: u16,
     skip_secondary_and_supplementary: bool,
 ) -> bool {
-    let flags = record.flags();
+    let flags = record.flag_bits();
 
     // samtools-like flag filtering
     if required_flags != 0 && (flags & required_flags) != required_flags {
@@ -448,10 +451,12 @@ fn should_skip_record_core(
     }
 
     // Standard read quality/status filtering
-    if record.is_unmapped() || record.mapq() < min_map_quality {
+    if record.flags().is_unmapped() || record.mapq() < min_map_quality {
         return true;
     }
-    if skip_secondary_and_supplementary && (record.is_secondary() || record.is_supplementary()) {
+    if skip_secondary_and_supplementary
+        && (record.flags().is_secondary() || record.flags().is_supplementary())
+    {
         return true;
     }
 
@@ -498,7 +503,7 @@ pub fn process_overlap_region(
             continue;
         }
 
-        let seq = record.seq();
+        let seq = record.sequence().as_ref();
         let qual = record.qual();
 
         for_each_aligned_base_in_range(
@@ -554,21 +559,21 @@ pub fn process_overlap_region(
         let Some(ref_seq) = context.reference.get(chr_name.as_str()) else {
             continue;
         };
-        let seq = record.seq();
+        let seq = record.sequence().as_ref();
         let qual = record.qual();
-        let read_num = if record.is_first_in_template() {
+        let read_num = if record.flags().is_first_segment() {
             1
-        } else if record.is_last_in_template() {
+        } else if record.flags().is_last_segment() {
             2
         } else {
             1
         };
 
         let read_ctx = ReadContext {
-            seq: &seq,
-            qual,
+            seq,
+            qual: &qual,
             ref_seq,
-            is_reverse: record.is_reverse(),
+            is_reverse: record.flags().is_reverse_complemented(),
             read_num,
         };
 
@@ -638,35 +643,34 @@ pub fn process_record(
         return;
     };
     let ref_start = record.pos() as usize; // (0-based)
-    let seq = record.seq();
+    let seq = record.sequence().as_ref();
     let qual = record.qual();
-    let cigar = record.cigar();
-    let read_num = if record.is_first_in_template() {
+    let read_num = if record.flags().is_first_segment() {
         1
-    } else if record.is_last_in_template() {
+    } else if record.flags().is_last_segment() {
         2
     } else {
         1
     };
 
     let read_ctx = ReadContext {
-        seq: &seq,
-        qual,
+        seq,
+        qual: &qual,
         ref_seq,
-        is_reverse: record.is_reverse(),
+        is_reverse: record.flags().is_reverse_complemented(),
         read_num,
     };
 
     // Single CIGAR pass: handle aligned bases and soft clips together.
     let mut read_pos = 0usize;
     let mut ref_pos = ref_start;
-    for cigar_op in cigar.iter() {
-        use rust_htslib::bam::record::Cigar::*;
-        match cigar_op {
-            Match(len) | Equal(len) | Diff(len) => {
-                for i in 0..*len {
-                    let r_pos = read_pos + i as usize;
-                    let genome_pos = ref_pos + i as usize;
+    for op in record.cigar().as_ref() {
+        let len = op.len();
+        match op.kind() {
+            Kind::Match | Kind::SequenceMatch | Kind::SequenceMismatch => {
+                for i in 0..len {
+                    let r_pos = read_pos + i;
+                    let genome_pos = ref_pos + i;
 
                     // Skip if position overlaps BED region (mask mode)
                     if is_bed_masked(context.bed_intervals, genome_pos) {
@@ -689,28 +693,28 @@ pub fn process_record(
                     }
                 }
 
-                read_pos += *len as usize;
-                ref_pos += *len as usize;
+                read_pos += len;
+                ref_pos += len;
             }
-            SoftClip(len) => {
+            Kind::SoftClip => {
                 count_softclip_mismatches(
                     &read_ctx,
                     read_pos,
                     ref_pos,
-                    *len,
+                    len,
                     config,
                     context.bed_intervals,
                     local_counts,
                 );
-                read_pos += *len as usize;
+                read_pos += len;
             }
-            Ins(len) => {
-                read_pos += *len as usize;
+            Kind::Insertion => {
+                read_pos += len;
             }
-            Del(len) | RefSkip(len) => {
-                ref_pos += *len as usize;
+            Kind::Deletion | Kind::Skip => {
+                ref_pos += len;
             }
-            HardClip(_) | Pad(_) => {}
+            Kind::HardClip | Kind::Pad => {}
         }
     }
 }
@@ -789,22 +793,21 @@ pub fn process_paired_reads_with_overlap(
         };
 
         let ref_start = record.pos() as usize;
-        let seq = record.seq();
+        let seq = record.sequence().as_ref();
         let qual = record.qual();
-        let cigar = record.cigar();
-        let read_num = if record.is_first_in_template() {
+        let read_num = if record.flags().is_first_segment() {
             1
-        } else if record.is_last_in_template() {
+        } else if record.flags().is_last_segment() {
             2
         } else {
             1
         };
 
         let read_ctx = ReadContext {
-            seq: &seq,
-            qual,
+            seq,
+            qual: &qual,
             ref_seq,
-            is_reverse: record.is_reverse(),
+            is_reverse: record.flags().is_reverse_complemented(),
             read_num,
         };
 
@@ -812,13 +815,13 @@ pub fn process_paired_reads_with_overlap(
         let mut ref_pos = ref_start;
 
         // Walk through CIGAR operations
-        for cigar_op in cigar.iter() {
-            use rust_htslib::bam::record::Cigar::*;
-            match cigar_op {
-                Match(len) | Equal(len) | Diff(len) => {
-                    for i in 0..*len {
-                        let r_pos = read_pos + i as usize;
-                        let genome_pos = ref_pos + i as usize;
+        for op in record.cigar().as_ref() {
+            let len = op.len();
+            match op.kind() {
+                Kind::Match | Kind::SequenceMatch | Kind::SequenceMismatch => {
+                    for i in 0..len {
+                        let r_pos = read_pos + i;
+                        let genome_pos = ref_pos + i;
 
                         // Skip if position overlaps BED region (mask mode)
                         if is_bed_masked(context.bed_intervals, genome_pos) {
@@ -884,28 +887,28 @@ pub fn process_paired_reads_with_overlap(
                             }
                         }
                     }
-                    read_pos += *len as usize;
-                    ref_pos += *len as usize;
+                    read_pos += len;
+                    ref_pos += len;
                 }
-                SoftClip(len) => {
+                Kind::SoftClip => {
                     count_softclip_mismatches(
                         &read_ctx,
                         read_pos,
                         ref_pos,
-                        *len,
+                        len,
                         &config,
                         context.bed_intervals,
                         counts.local_counts,
                     );
-                    read_pos += *len as usize;
+                    read_pos += len;
                 }
-                Ins(len) => {
-                    read_pos += *len as usize;
+                Kind::Insertion => {
+                    read_pos += len;
                 }
-                Del(len) | RefSkip(len) => {
-                    ref_pos += *len as usize;
+                Kind::Deletion | Kind::Skip => {
+                    ref_pos += len;
                 }
-                HardClip(_) | Pad(_) => {}
+                Kind::HardClip | Kind::Pad => {}
             }
         }
     }
@@ -955,30 +958,29 @@ pub fn rescale_phred_scores(
         return;
     };
     let ref_start = record.pos() as usize;
-    let seq = record.seq();
-    let read_num = if record.is_first_in_template() {
+    let seq = record.sequence().as_ref();
+    let read_num = if record.flags().is_first_segment() {
         1
-    } else if record.is_last_in_template() {
+    } else if record.flags().is_last_segment() {
         2
     } else {
         1
     };
-    let cigar = record.cigar(); // There could be INDELS...
     let qual = record.qual();
-    let is_reverse = record.is_reverse();
+    let is_reverse = record.flags().is_reverse_complemented();
     let mut read_pos = 0usize;
     let mut ref_pos = ref_start;
 
     // Collect quality score modifications
     let mut qual_modifications: Vec<(usize, u8)> = Vec::new();
 
-    for cigar_op in cigar.iter() {
-        use rust_htslib::bam::record::Cigar::*;
-        match cigar_op {
-            Match(len) | Equal(len) | Diff(len) => {
-                for i in 0..*len {
-                    let r_pos = read_pos + i as usize;
-                    let genome_pos = ref_pos + i as usize;
+    for op in record.cigar().as_ref() {
+        let len = op.len();
+        match op.kind() {
+            Kind::Match | Kind::SequenceMatch | Kind::SequenceMismatch => {
+                for i in 0..len {
+                    let r_pos = read_pos + i;
+                    let genome_pos = ref_pos + i;
 
                     let Some(read_base) = base_to_char(seq[r_pos]) else {
                         continue;
@@ -1015,14 +1017,14 @@ pub fn rescale_phred_scores(
                         }
                     }
                 }
-                read_pos += *len as usize;
-                ref_pos += *len as usize;
+                read_pos += len;
+                ref_pos += len;
             }
-            Ins(len) => {
-                read_pos += *len as usize;
+            Kind::Insertion => {
+                read_pos += len;
             }
-            Del(len) | RefSkip(len) => {
-                ref_pos += *len as usize;
+            Kind::Deletion | Kind::Skip => {
+                ref_pos += len;
             }
             _ => {}
         }
@@ -1035,11 +1037,7 @@ pub fn rescale_phred_scores(
             new_qual[pos] = new_score;
         }
 
-        let qname = record.qname().to_vec();
-        let cigar = record.cigar().take();
-        let seq = record.seq().as_bytes();
-
-        record.set(&qname, Some(&cigar), &seq, &new_qual);
+        set_quality_scores(record, new_qual);
     }
 }
 
@@ -1164,24 +1162,13 @@ pub fn configure_thread_pool(threads: usize) {
     }
 }
 
-pub fn build_tid_map_and_regions(bam_path: &str, region_size: usize) -> (TidNameMap, RegionList) {
-    let bam = Reader::from_path(bam_path).expect("Failed to open BAM file");
-
-    let tid_to_name: TidNameMap = Arc::new(
-        (0..bam.header().target_count())
-            .map(|i| {
-                (
-                    i as i32,
-                    String::from_utf8_lossy(bam.header().tid2name(i)).to_string(),
-                )
-            })
-            .collect(),
-    );
+pub fn build_tid_map_and_regions(header: &Header, region_size: usize) -> (TidNameMap, RegionList) {
+    let tid_to_name: TidNameMap = Arc::new(crate::bam::tid_to_name(header));
 
     // Regions in genomic order, so results collected per region come out sorted.
     let mut regions = Vec::new();
-    for tid in 0..bam.header().target_count() as i32 {
-        let chr_len = bam.header().target_len(tid as u32).unwrap_or(0) as i64;
+    for (tid, (_, chr_len)) in reference_sequences(header).into_iter().enumerate() {
+        let (tid, chr_len) = (tid as i32, chr_len as i64);
         let mut start = 0i64;
         while start < chr_len {
             let end = std::cmp::min(start + region_size as i64, chr_len);
@@ -1228,13 +1215,13 @@ pub fn softclip_side_comparisons(
     ref_start: usize,
 ) -> Vec<SoftclipComparison> {
     if clip_len == 0
-        || read_start + clip_len > record.seq().len()
+        || read_start + clip_len > record.sequence().len()
         || ref_start + clip_len > ref_seq.len()
     {
         return Vec::new();
     }
 
-    let read_seq = record.seq();
+    let read_seq = record.sequence().as_ref();
     let mut comparisons = Vec::with_capacity(clip_len);
 
     for offset in 0..clip_len {
@@ -1276,32 +1263,37 @@ pub fn qualifying_softclip_comparisons(
     ref_seq: &[u8],
     min_identity: f64,
 ) -> Vec<SoftclipComparison> {
-    let cigar = record.cigar();
+    let ops = record.cigar().as_ref();
     let aligned_start = record.pos();
-    let aligned_end = cigar.end_pos();
+    let aligned_end = record.end_pos();
     let mut comparisons = Vec::new();
 
-    if let Some(rust_htslib::bam::record::Cigar::SoftClip(len)) = cigar.iter().next()
-        && aligned_start >= *len as i64
+    if let Some(op) = ops.first()
+        && op.kind() == Kind::SoftClip
+        && aligned_start >= op.len() as i64
     {
+        let len = op.len();
         let side = softclip_side_comparisons(
             record,
             ref_seq,
             0,
-            *len as usize,
-            (aligned_start - *len as i64) as usize,
+            len,
+            (aligned_start - len as i64) as usize,
         );
         if softclip_identity(&side).is_some_and(|identity| identity >= min_identity) {
             comparisons.extend(side);
         }
     }
 
-    if let Some(rust_htslib::bam::record::Cigar::SoftClip(len)) = cigar.iter().last() {
+    if let Some(op) = ops.last()
+        && op.kind() == Kind::SoftClip
+    {
+        let len = op.len();
         let side = softclip_side_comparisons(
             record,
             ref_seq,
-            record.seq().len().saturating_sub(*len as usize),
-            *len as usize,
+            record.sequence().len().saturating_sub(len),
+            len,
             aligned_end as usize,
         );
         if softclip_identity(&side).is_some_and(|identity| identity >= min_identity) {
@@ -1316,17 +1308,14 @@ pub fn qualifying_softclip_comparisons(
 /// when the MC tag is absent, the record is unpaired / mate-unmapped, or the
 /// reads are on different contigs.
 pub fn mc_mate_end(record: &Record) -> Option<i64> {
-    if !record.is_paired() || record.is_mate_unmapped() {
+    if !record.flags().is_segmented() || record.flags().is_mate_unmapped() {
         return None;
     }
     if record.tid() < 0 || record.mtid() < 0 || record.tid() != record.mtid() {
         return None;
     }
     let mate_start = record.mpos();
-    let mate_span = match record.aux(b"MC".as_ref()) {
-        Ok(Aux::String(mc)) => i64::try_from(cigar_reference_span(mc)?).ok()?,
-        _ => return None,
-    };
+    let mate_span = i64::try_from(cigar_reference_span(mate_cigar(record)?)?).ok()?;
     Some(mate_start + mate_span)
 }
 
@@ -1334,7 +1323,7 @@ pub fn estimated_fragment_length(record: &Record, mate_end: Option<i64>) -> Opti
     let mate_end = mate_end?;
 
     let read_start = record.pos();
-    let read_end = record.cigar().end_pos();
+    let read_end = record.end_pos();
     let mate_start = record.mpos();
 
     let fragment_start = std::cmp::min(read_start, mate_start);
@@ -1347,10 +1336,10 @@ pub fn estimated_fragment_length(record: &Record, mate_end: Option<i64>) -> Opti
 }
 
 pub fn should_skip_record(record: &Record, config: ProcessingConfig) -> bool {
-    if record.is_unmapped() || record.mapq() < config.min_map_quality {
+    if record.flags().is_unmapped() || record.mapq() < config.min_map_quality {
         return true;
     }
-    let flags = record.flags();
+    let flags = record.flag_bits();
     let missing_required =
         config.required_flags != 0 && (flags & config.required_flags) != config.required_flags;
     let has_filtered = config.filter_flags != 0 && (flags & config.filter_flags) != 0;
@@ -1377,7 +1366,7 @@ pub fn should_skip_whole_read_for_bed(
     // Both the read span and BED intervals are half-open [start, end), so a read that
     // merely abuts an interval (read_end == interval.start) does not overlap it.
     let read_start = record.pos();
-    let read_end = calculate_end_pos(read_start, &record.cigar());
+    let read_end = calculate_end_pos(read_start, record.cigar());
 
     // Reads are fetched in coordinate order, so we can advance a cursor
     // and never revisit intervals that end at or before this read's start.
@@ -1408,9 +1397,9 @@ pub fn should_skip_whole_read_for_bed(
 }
 
 pub fn record_read_num(record: &Record) -> u8 {
-    if record.is_first_in_template() {
+    if record.flags().is_first_segment() {
         1
-    } else if record.is_last_in_template() {
+    } else if record.flags().is_last_segment() {
         2
     } else {
         1
@@ -1418,7 +1407,7 @@ pub fn record_read_num(record: &Record) -> u8 {
 }
 
 pub fn read_is_first_in_reference(record: &Record) -> ReferenceOrder {
-    if !record.is_paired() || record.is_mate_unmapped() {
+    if !record.flags().is_segmented() || record.flags().is_mate_unmapped() {
         return ReferenceOrder::First;
     }
 
@@ -1440,7 +1429,7 @@ pub fn overlap_interval(record: &Record, mate_end: Option<i64>) -> Option<(usize
     let mate_end = mate_end?;
 
     let read_start = record.pos();
-    let read_end = record.cigar().end_pos();
+    let read_end = record.end_pos();
     let mate_start = record.mpos();
 
     let ov_start = std::cmp::max(read_start, mate_start);
@@ -1496,7 +1485,7 @@ pub fn compare_record_to_reference(
         return;
     };
 
-    let seq = record.seq();
+    let seq = record.sequence().as_ref();
     let qual = record.qual();
     let seq_len = seq.len();
     let read_num = record_read_num(record);
@@ -1508,11 +1497,11 @@ pub fn compare_record_to_reference(
     let mut read_pos = 0usize;
     let mut ref_pos = record.pos() as usize;
 
-    use rust_htslib::bam::record::Cigar::*;
-    for op in record.cigar().iter() {
-        match op {
-            Match(len) | Equal(len) | Diff(len) => {
-                for i in 0..*len as usize {
+    for op in record.cigar().as_ref() {
+        let len = op.len();
+        match op.kind() {
+            Kind::Match | Kind::SequenceMatch | Kind::SequenceMismatch => {
+                for i in 0..len {
                     let rp = read_pos + i;
                     let gp = ref_pos + i;
 
@@ -1543,7 +1532,7 @@ pub fn compare_record_to_reference(
                         read_num,
                         ref_base,
                         read_base,
-                        record.is_reverse(),
+                        record.flags().is_reverse_complemented(),
                         config.is_methylation,
                     );
 
@@ -1551,7 +1540,7 @@ pub fn compare_record_to_reference(
                         &config,
                         rp,
                         seq_len,
-                        record.is_reverse(),
+                        record.flags().is_reverse_complemented(),
                         reference_order,
                         stretch,
                         estimated_fragment_length(record, mate_end),
@@ -1573,16 +1562,16 @@ pub fn compare_record_to_reference(
                         .or_insert(0) += 1;
                 }
 
-                read_pos += *len as usize;
-                ref_pos += *len as usize;
+                read_pos += len;
+                ref_pos += len;
             }
-            Ins(len) | SoftClip(len) => {
-                read_pos += *len as usize;
+            Kind::Insertion | Kind::SoftClip => {
+                read_pos += len;
             }
-            Del(len) | RefSkip(len) => {
-                ref_pos += *len as usize;
+            Kind::Deletion | Kind::Skip => {
+                ref_pos += len;
             }
-            HardClip(_) | Pad(_) => {}
+            Kind::HardClip | Kind::Pad => {}
         }
     }
 
@@ -1597,14 +1586,14 @@ pub fn compare_record_to_reference(
             read_num,
             comparison.ref_base,
             comparison.read_base,
-            record.is_reverse(),
+            record.flags().is_reverse_complemented(),
             config.is_methylation,
         );
         let base_position = base_position_for_mode(
             &config,
             comparison.read_pos,
             seq_len,
-            record.is_reverse(),
+            record.flags().is_reverse_complemented(),
             reference_order,
             stretch,
             frag_len,
@@ -1624,7 +1613,7 @@ pub fn compare_record_to_reference(
 }
 
 pub fn process_region(
-    bam_path: &str,
+    bam: &IndexedBam,
     region: &GenomicRegion,
     context: &ProcessingContext,
     config: ProcessingConfig,
@@ -1632,7 +1621,7 @@ pub fn process_region(
 ) -> (HashMap<InsertKey, usize>, usize) {
     let mut counts: HashMap<InsertKey, usize> = HashMap::new();
     let reads = for_each_region_read(
-        bam_path,
+        bam,
         region,
         context,
         config,
@@ -1650,7 +1639,7 @@ pub fn process_region(
 /// as soon as a read starts past it, and only one window's counts are held at a time.
 /// Returns the number of reads counted.
 pub fn process_region_windows(
-    bam_path: &str,
+    bam: &IndexedBam,
     region: &GenomicRegion,
     context: &ProcessingContext,
     config: ProcessingConfig,
@@ -1661,7 +1650,7 @@ pub fn process_region_windows(
     let mut window_start = region.start;
     let mut counts: HashMap<InsertKey, usize> = HashMap::new();
     let reads = for_each_region_read(
-        bam_path,
+        bam,
         region,
         context,
         config,
@@ -1687,7 +1676,7 @@ pub fn process_region_windows(
 /// Fetch `region` and call `count` on every read that starts in it and passes the BED and
 /// record filters, with the read's mate end. Returns the number of reads counted.
 fn for_each_region_read(
-    bam_path: &str,
+    bam: &IndexedBam,
     region: &GenomicRegion,
     context: &ProcessingContext,
     config: ProcessingConfig,
@@ -1698,38 +1687,17 @@ fn for_each_region_read(
         .tid_to_name
         .get(&region.tid)
         .expect("tid not found in tid_to_name");
-    let mut bam = IndexedReader::from_path(bam_path).expect("Failed to open indexed BAM");
-    if let Err(error) = bam.fetch(FetchDefinition::Region(
-        region.tid,
-        region.start,
-        region.end,
-    )) {
-        log::warn!(
-            "Failed to fetch region {}:{}-{}: {}",
-            chr_name,
-            region.start,
-            region.end,
-            error
-        );
-        return 0;
-    }
-
     let mut local_read_count = 0usize;
     let chunk_bed_intervals: &[crate::bed::BedInterval] = bed_filter.regions.map_or(&[], |bed| {
         crate::bed_intervals_from(bed, chr_name, region.start)
     });
     let mut bed_cursor = 0usize;
 
-    for result in bam.records() {
-        let record = match result {
-            Ok(r) => r,
-            Err(_) => continue,
-        };
-
+    let result = bam.for_each_in_region(region, |record| {
         // Ensure each read is counted once across chunks.
         let read_start = record.pos();
         if read_start < region.start || read_start >= region.end {
-            continue;
+            return;
         }
 
         if should_skip_whole_read_for_bed(
@@ -1739,17 +1707,26 @@ fn for_each_region_read(
             chunk_bed_intervals,
             &mut bed_cursor,
         ) {
-            continue;
+            return;
         }
 
         let mate_end = mc_mate_end(&record);
 
         if should_skip_record(&record, config) {
-            continue;
+            return;
         }
 
         count(&record, mate_end);
         local_read_count += 1;
+    });
+    if let Err(error) = result {
+        log::warn!(
+            "Failed to fetch region {}:{}-{}: {}",
+            chr_name,
+            region.start,
+            region.end,
+            error
+        );
     }
 
     local_read_count

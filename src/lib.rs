@@ -4,6 +4,8 @@
 //! files, including reference loading, BED masking/filtering, methylation-aware
 //! base normalization, and paired-read overlap handling.
 
+/// BAM reading, writing, and record accessors (noodles).
+pub mod bam;
 /// BED parsing and region masking/filtering utilities.
 pub mod bed;
 /// Block-bootstrap confidence intervals for mismatch frequencies.

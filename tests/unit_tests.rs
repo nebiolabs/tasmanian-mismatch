@@ -2,13 +2,15 @@
 
 use tasmanian_mismatch::*;
 
+mod test_utils;
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust_htslib::bam::header::HeaderRecord;
-    use rust_htslib::bam::{Format, Header, HeaderView, Record, Writer};
+    use crate::test_utils::sam_header;
     use std::collections::HashMap;
     use std::io::Cursor;
+    use tasmanian_mismatch::bam::{BamWriter, Header, RecordExt, record_from_sam};
 
     #[test]
     fn test_complement() {
@@ -46,15 +48,14 @@ mod tests {
 
     #[test]
     fn test_calculate_end_pos() {
-        let header = Header::new();
-        let header_view = HeaderView::from_header(&header);
+        let header = Header::default();
 
         let sam_line: &[u8] = b"read1\t0\t*\t101\t60\t10M2D5M3I4N\t*\t0\t0\tACGTACGTACGTACGTAC\t*";
-        let record = Record::from_sam(&header_view, sam_line).unwrap();
+        let record = record_from_sam(&header, sam_line).unwrap();
         let start_pos = record.pos();
         let cigar_view = record.cigar();
 
-        let end_pos = calculate_end_pos(start_pos, &cigar_view);
+        let end_pos = calculate_end_pos(start_pos, cigar_view);
 
         // Expected end pos = 100 (0-based) + 10 + 2 + 5 + 4 = 121
         assert_eq!(end_pos, 121);
@@ -64,11 +65,11 @@ mod tests {
     fn test_compute_read_len_max_from_sample_bam() {
         // Create a temporary BAM file with known read lengths
         let bam_path = "test_sample.bam";
-        let header = Header::new();
-        let header_view = HeaderView::from_header(&header);
+        let header = Header::default();
 
         {
-            let mut bam_writer = Writer::from_path(bam_path, &header, Format::Bam).unwrap();
+            let mut bam_writer =
+                BamWriter::create(Some(std::path::Path::new(bam_path)), header.clone()).unwrap();
 
             let sam_lines: Vec<&[u8]> = vec![
                 b"read1\t0\t*\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII",
@@ -79,7 +80,7 @@ mod tests {
             ];
 
             for sam_line in sam_lines {
-                let record = Record::from_sam(&header_view, sam_line).unwrap();
+                let record = record_from_sam(&header, sam_line).unwrap();
                 bam_writer.write(&record).unwrap();
             }
         }
@@ -138,12 +139,11 @@ mod tests {
 
     #[test]
     fn test_compare_and_count() {
-        let header = Header::new();
-        let header_view = HeaderView::from_header(&header);
+        let header = Header::default();
 
         // Create a test record
         let sam_line: &[u8] = b"read1\t0\t*\t101\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII";
-        let record = Record::from_sam(&header_view, sam_line).unwrap();
+        let record = record_from_sam(&header, sam_line).unwrap();
 
         let ref_seq: &[u8] = b"AGGAACGTAC"; // Has mismatch at position 2: read has G, ref has G (actually match at 2, mismatch at 1)
         let mut local_counts = HashMap::new();
@@ -168,10 +168,10 @@ mod tests {
             min_read_position: 0,
             max_read_position: usize::MAX,
         };
-        let seq = record.seq();
+        let seq = record.sequence().as_ref();
         let read_ctx = ReadContext {
-            seq: &seq,
-            qual: record.qual(),
+            seq,
+            qual: &record.qual(),
             ref_seq,
             is_reverse: false,
             read_num: 1,
@@ -194,10 +194,9 @@ mod tests {
     fn test_create_mismatch_key() {
         let ref_seq: &[u8] = b"GCGTACGTAC";
 
-        let header = Header::new();
-        let header_view = HeaderView::from_header(&header);
+        let header = Header::default();
         let sam_line: &[u8] = b"read1\t0\t*\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII";
-        let record = Record::from_sam(&header_view, sam_line).unwrap();
+        let record = record_from_sam(&header, sam_line).unwrap();
 
         let config = ProcessingConfig {
             softclip_threshold: 0.0,
@@ -216,10 +215,10 @@ mod tests {
             min_read_position: 0,
             max_read_position: usize::MAX,
         };
-        let seq = record.seq();
+        let seq = record.sequence().as_ref();
         let read_ctx = ReadContext {
-            seq: &seq,
-            qual: record.qual(),
+            seq,
+            qual: &record.qual(),
             ref_seq,
             is_reverse: false,
             read_num: 1,
@@ -239,20 +238,19 @@ mod tests {
 
     #[test]
     fn test_get_overlap_region() {
-        let header = Header::new();
-        let header_view = HeaderView::from_header(&header);
+        let header = Header::default();
 
         // Create two overlapping reads
         // Read1: pos 100 (1-based=101), 20M (covers 100-119 in 0-based)
         let sam_line1: &[u8] =
             b"read1\t99\t*\t101\t60\t20M\t*\t111\t30\tACGTACGTACGTACGTACGT\tIIIIIIIIIIIIIIIIIIII";
-        let read1 = Record::from_sam(&header_view, sam_line1).unwrap();
+        let read1 = record_from_sam(&header, sam_line1).unwrap();
 
         // Read2: pos 110 (1-based=111), 20M (covers 110-129 in 0-based)
         // This overlaps with read1 from position 110 to 119 (10 bases)
         let sam_line2: &[u8] =
             b"read1\t147\t*\t111\t60\t20M\t*\t101\t-30\tTGCATGCATGCATGCATGCA\tIIIIIIIIIIIIIIIIIIII";
-        let read2 = Record::from_sam(&header_view, sam_line2).unwrap();
+        let read2 = record_from_sam(&header, sam_line2).unwrap();
 
         // Create ReadInfo structs
         let info1 = ReadInfo {
@@ -420,22 +418,17 @@ mod tests {
     #[test]
     fn test_process_overlap_region() {
         // Use a named contig so records aren't treated as unmapped.
-        let mut header = Header::new();
-        let mut sq = HeaderRecord::new(b"SQ");
-        sq.push_tag(b"SN", "chr1");
-        sq.push_tag(b"LN", 1000);
-        header.push_record(&sq);
-        let header_view = HeaderView::from_header(&header);
+        let header = sam_header(&[("chr1", 1000)]);
 
         // Read1: forward, positions 1-10 (0-based 0-9).
-        let read1 = Record::from_sam(
-            &header_view,
+        let read1 = record_from_sam(
+            &header,
             b"read1\t99\tchr1\t1\t60\t10M\t=\t6\t15\tACGTACGTAC\tIIIIIIIIII",
         )
         .unwrap();
         // Read2: reverse, positions 6-15 (0-based 5-14). Overlaps read1 at 5-9.
-        let read2 = Record::from_sam(
-            &header_view,
+        let read2 = record_from_sam(
+            &header,
             b"read1\t147\tchr1\t6\t60\t10M\t=\t1\t-15\tGTACGTACGT\tIIIIIIIIII",
         )
         .unwrap();
@@ -490,12 +483,11 @@ mod tests {
     #[test]
     fn test_process_record_unmapped() {
         // Create header
-        let header = Header::new();
-        let header_view = HeaderView::from_header(&header);
+        let header = Header::default();
 
         // Create a simple record - just verify it doesn't panic
         let sam_line: &[u8] = b"read1\t0\t*\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII\tMD:Z:5A4";
-        let record = Record::from_sam(&header_view, sam_line).unwrap();
+        let record = record_from_sam(&header, sam_line).unwrap();
 
         let mut reference_genome = HashMap::new();
         reference_genome.insert("*".to_string(), b"ACGTAAGCAC".to_vec());
@@ -766,11 +758,10 @@ mod tests {
 
     #[test]
     fn test_process_single_record() {
-        let header = Header::new();
-        let header_view = HeaderView::from_header(&header);
+        let header = Header::default();
 
         let sam_line: &[u8] = b"read1\t0\t*\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII";
-        let record = Record::from_sam(&header_view, sam_line).unwrap();
+        let record = record_from_sam(&header, sam_line).unwrap();
 
         let mut reference_genome = HashMap::new();
         reference_genome.insert("*".to_string(), b"ACGTACGTAC".to_vec());
@@ -819,18 +810,17 @@ mod tests {
 
     #[test]
     fn test_process_paired_reads_with_overlap() {
-        let header = Header::new();
-        let header_view = HeaderView::from_header(&header);
+        let header = Header::default();
 
         // Read1: pos 100, 20M
         let sam_line1: &[u8] =
             b"read1\t99\t*\t101\t60\t20M\t*\t111\t30\tACGTACGTACGTACGTACGT\tIIIIIIIIIIIIIIIIIIII";
-        let read1 = Record::from_sam(&header_view, sam_line1).unwrap();
+        let read1 = record_from_sam(&header, sam_line1).unwrap();
 
         // Read2: pos 110, 20M (overlaps with read1)
         let sam_line2: &[u8] =
             b"read1\t147\t*\t111\t60\t20M\t*\t101\t-30\tTGCATGCATGCATGCATGCA\tIIIIIIIIIIIIIIIIIIII";
-        let read2 = Record::from_sam(&header_view, sam_line2).unwrap();
+        let read2 = record_from_sam(&header, sam_line2).unwrap();
 
         let mut reference_genome = HashMap::new();
         reference_genome.insert(
@@ -892,11 +882,10 @@ mod tests {
 
     #[test]
     fn test_rescale_phred_scores() {
-        let header = Header::new();
-        let header_view = HeaderView::from_header(&header);
+        let header = Header::default();
 
         let sam_line: &[u8] = b"read1\t0\t*\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII";
-        let mut record = Record::from_sam(&header_view, sam_line).unwrap();
+        let mut record = record_from_sam(&header, sam_line).unwrap();
 
         let mut reference_genome = HashMap::new();
         reference_genome.insert("*".to_string(), b"ACGTACGTAC".to_vec());
@@ -917,11 +906,10 @@ mod tests {
 
     #[test]
     fn test_rescale_phred_scores_with_scaling_factors() {
-        let header = Header::new();
-        let header_view = HeaderView::from_header(&header);
+        let header = Header::default();
 
         let sam_line: &[u8] = b"read1\t0\t*\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII";
-        let mut record = Record::from_sam(&header_view, sam_line).unwrap();
+        let mut record = record_from_sam(&header, sam_line).unwrap();
 
         let mut reference_genome = HashMap::new();
         reference_genome.insert("*".to_string(), b"AGGAACGTAC".to_vec());
@@ -974,15 +962,10 @@ mod tests {
 
     #[test]
     fn test_read_crossing_chunk_end_sees_interval_past_it() {
-        let mut header = Header::new();
-        let mut sq = HeaderRecord::new(b"SQ");
-        sq.push_tag(b"SN", "chr1");
-        sq.push_tag(b"LN", 5000);
-        header.push_record(&sq);
-        let header_view = HeaderView::from_header(&header);
+        let header = sam_header(&[("chr1", 5000)]);
         // Starts in chunk [0, 1000) at 990, covers [990, 1010); the interval starts at 1005.
-        let record = Record::from_sam(
-            &header_view,
+        let record = record_from_sam(
+            &header,
             b"r\t0\tchr1\t991\t60\t20M\t*\t0\t0\tAAAAAAAAAAAAAAAAAAAA\tIIIIIIIIIIIIIIIIIIII",
         )
         .unwrap();
@@ -1364,25 +1347,20 @@ mod tests {
 
     #[test]
     fn test_processing_mate_and_overlap_helpers() {
-        let mut header = Header::new();
-        let mut sq = HeaderRecord::new(b"SQ");
-        sq.push_tag(b"SN", "chr1");
-        sq.push_tag(b"LN", 1000);
-        header.push_record(&sq);
-        let header_view = HeaderView::from_header(&header);
+        let header = sam_header(&[("chr1", 1000)]);
 
-        let paired = Record::from_sam(
-            &header_view,
+        let paired = record_from_sam(
+            &header,
             b"read1\t99\tchr1\t1\t60\t8M\t=\t5\t12\tACGTACGT\tIIIIIIII\tMC:Z:8M",
         )
         .unwrap();
-        let no_mc = Record::from_sam(
-            &header_view,
+        let no_mc = record_from_sam(
+            &header,
             b"read1\t99\tchr1\t1\t60\t8M\t=\t5\t12\tACGTACGT\tIIIIIIII",
         )
         .unwrap();
-        let unpaired = Record::from_sam(
-            &header_view,
+        let unpaired = record_from_sam(
+            &header,
             b"read1\t0\tchr1\t1\t60\t8M\t*\t0\t0\tACGTACGT\tIIIIIIII\tMC:Z:8M",
         )
         .unwrap();
@@ -1397,11 +1375,8 @@ mod tests {
         assert_eq!(estimated_fragment_length(&paired, None), None);
 
         // record_read_num: flag 0x40 = first in template.
-        let r1 = Record::from_sam(
-            &header_view,
-            b"r\t67\tchr1\t1\t60\t5M\t=\t6\t10\tACGTA\tIIIII",
-        )
-        .unwrap();
+        let r1 =
+            record_from_sam(&header, b"r\t67\tchr1\t1\t60\t5M\t=\t6\t10\tACGTA\tIIIII").unwrap();
         assert_eq!(record_read_num(&r1), 1);
 
         // read_is_first_in_reference: unpaired returns true.
@@ -1410,16 +1385,11 @@ mod tests {
 
     #[test]
     fn test_compare_record_to_reference_counts_mismatches() {
-        let mut header = Header::new();
-        let mut sq = HeaderRecord::new(b"SQ");
-        sq.push_tag(b"SN", "chr1");
-        sq.push_tag(b"LN", 100);
-        header.push_record(&sq);
-        let header_view = HeaderView::from_header(&header);
+        let header = sam_header(&[("chr1", 100)]);
 
         // 4M: bases ACGT vs ref ACCT → position 2 is G vs C (mismatch).
         let record =
-            Record::from_sam(&header_view, b"r1\t0\tchr1\t1\t60\t4M\t*\t0\t0\tACGT\tIIII").unwrap();
+            record_from_sam(&header, b"r1\t0\tchr1\t1\t60\t4M\t*\t0\t0\tACGT\tIIII").unwrap();
 
         let mut reference = HashMap::new();
         reference.insert("chr1".to_string(), b"ACCTACGT".to_vec());
@@ -1464,16 +1434,11 @@ mod tests {
 
     #[test]
     fn test_compare_record_to_reference_restricts_to_position_range() {
-        let mut header = Header::new();
-        let mut sq = HeaderRecord::new(b"SQ");
-        sq.push_tag(b"SN", "chr1");
-        sq.push_tag(b"LN", 100);
-        header.push_record(&sq);
-        let header_view = HeaderView::from_header(&header);
+        let header = sam_header(&[("chr1", 100)]);
 
         // 10M, forward strand: read-mode base_position equals read_pos + 1 here.
-        let record = Record::from_sam(
-            &header_view,
+        let record = record_from_sam(
+            &header,
             b"r1\t0\tchr1\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII",
         )
         .unwrap();
@@ -1525,16 +1490,11 @@ mod tests {
 
     #[test]
     fn test_should_skip_record_branches() {
-        let mut header = Header::new();
-        let mut sq = HeaderRecord::new(b"SQ");
-        sq.push_tag(b"SN", "chr1");
-        sq.push_tag(b"LN", 100);
-        header.push_record(&sq);
-        let header_view = HeaderView::from_header(&header);
+        let header = sam_header(&[("chr1", 100)]);
 
         let make_record = |flags: u16| {
-            Record::from_sam(
-                &header_view,
+            record_from_sam(
+                &header,
                 &format!("r\t{flags}\tchr1\t1\t60\t4M\t*\t0\t0\tACGT\tIIII").into_bytes(),
             )
             .unwrap()
@@ -1583,16 +1543,11 @@ mod tests {
 
     #[test]
     fn test_should_skip_whole_read_for_bed_cursor_advances() {
-        let mut header = Header::new();
-        let mut sq = HeaderRecord::new(b"SQ");
-        sq.push_tag(b"SN", "chr1");
-        sq.push_tag(b"LN", 1000);
-        header.push_record(&sq);
-        let header_view = HeaderView::from_header(&header);
+        let header = sam_header(&[("chr1", 1000)]);
 
         // Record at position 50-58 (8M).
-        let record = Record::from_sam(
-            &header_view,
+        let record = record_from_sam(
+            &header,
             b"r\t0\tchr1\t51\t60\t8M\t*\t0\t0\tACGTACGT\tIIIIIIII",
         )
         .unwrap();
@@ -1616,16 +1571,11 @@ mod tests {
 
     #[test]
     fn test_should_skip_whole_read_for_bed_half_open_boundaries() {
-        let mut header = Header::new();
-        let mut sq = HeaderRecord::new(b"SQ");
-        sq.push_tag(b"SN", "chr1");
-        sq.push_tag(b"LN", 1000);
-        header.push_record(&sq);
-        let header_view = HeaderView::from_header(&header);
+        let header = sam_header(&[("chr1", 1000)]);
 
         // SAM POS 51 with 8M covers 0-based [50, 58).
-        let record = Record::from_sam(
-            &header_view,
+        let record = record_from_sam(
+            &header,
             b"r\t0\tchr1\t51\t60\t8M\t*\t0\t0\tACGTACGT\tIIIIIIII",
         )
         .unwrap();
@@ -1657,12 +1607,7 @@ mod tests {
 
     #[test]
     fn test_should_skip_whole_read_for_bed_cursor_across_intervals() {
-        let mut header = Header::new();
-        let mut sq = HeaderRecord::new(b"SQ");
-        sq.push_tag(b"SN", "chr1");
-        sq.push_tag(b"LN", 1000);
-        header.push_record(&sq);
-        let header_view = HeaderView::from_header(&header);
+        let header = sam_header(&[("chr1", 1000)]);
 
         let intervals = vec![
             BedInterval { start: 10, end: 20 },
@@ -1694,7 +1639,7 @@ mod tests {
                     "A".repeat(len),
                     "I".repeat(len)
                 );
-                let record = Record::from_sam(&header_view, sam.as_bytes()).unwrap();
+                let record = record_from_sam(&header, sam.as_bytes()).unwrap();
                 let skipped = should_skip_whole_read_for_bed(
                     &record,
                     true,
@@ -1715,16 +1660,11 @@ mod tests {
 
     #[test]
     fn test_should_skip_whole_read_for_bed_include_only() {
-        let mut header = Header::new();
-        let mut sq = HeaderRecord::new(b"SQ");
-        sq.push_tag(b"SN", "chr1");
-        sq.push_tag(b"LN", 1000);
-        header.push_record(&sq);
-        let header_view = HeaderView::from_header(&header);
+        let header = sam_header(&[("chr1", 1000)]);
 
         // Record at position 50-58 (8M).
-        let record = Record::from_sam(
-            &header_view,
+        let record = record_from_sam(
+            &header,
             b"r\t0\tchr1\t51\t60\t8M\t*\t0\t0\tACGTACGT\tIIIIIIII",
         )
         .unwrap();
@@ -1767,16 +1707,11 @@ mod tests {
 
     #[test]
     fn test_process_record_with_bed_mask_and_depth() {
-        let mut header = Header::new();
-        let mut sq = HeaderRecord::new(b"SQ");
-        sq.push_tag(b"SN", "chr1");
-        sq.push_tag(b"LN", 100);
-        header.push_record(&sq);
-        let header_view = HeaderView::from_header(&header);
+        let header = sam_header(&[("chr1", 100)]);
 
         // 4M: positions 0-3.
         let record =
-            Record::from_sam(&header_view, b"r\t0\tchr1\t1\t60\t4M\t*\t0\t0\tACGT\tIIII").unwrap();
+            record_from_sam(&header, b"r\t0\tchr1\t1\t60\t4M\t*\t0\t0\tACGT\tIIII").unwrap();
 
         let mut reference = HashMap::new();
         reference.insert("chr1".to_string(), b"ACGTACGT".to_vec());
@@ -1835,21 +1770,16 @@ mod tests {
 
     #[test]
     fn test_process_paired_reads_with_overlap_updates_overlap_and_inconsistency() {
-        let mut header = Header::new();
-        let mut sq = HeaderRecord::new(b"SQ");
-        sq.push_tag(b"SN", "chr1");
-        sq.push_tag(b"LN", 200);
-        header.push_record(&sq);
-        let header_view = HeaderView::from_header(&header);
+        let header = sam_header(&[("chr1", 200)]);
 
         // read1: pos 1-8 (0-based 0-7), read2: pos 5-12 (0-based 4-11). Overlap 4-7.
-        let read1 = Record::from_sam(
-            &header_view,
+        let read1 = record_from_sam(
+            &header,
             b"r\t99\tchr1\t1\t60\t8M\t=\t5\t12\tACGTACGT\tIIIIIIII\tMC:Z:8M",
         )
         .unwrap();
-        let read2 = Record::from_sam(
-            &header_view,
+        let read2 = record_from_sam(
+            &header,
             b"r\t147\tchr1\t5\t60\t8M\t=\t1\t-12\tACGTACGT\tIIIIIIII\tMC:Z:8M",
         )
         .unwrap();
@@ -1910,15 +1840,10 @@ mod tests {
 
     #[test]
     fn test_softclip_qualification_and_side_bounds() {
-        let mut header = Header::new();
-        let mut sq = HeaderRecord::new(b"SQ");
-        sq.push_tag(b"SN", "chr1");
-        sq.push_tag(b"LN", 1000);
-        header.push_record(&sq);
-        let header_view = HeaderView::from_header(&header);
+        let header = sam_header(&[("chr1", 1000)]);
 
-        let record = Record::from_sam(
-            &header_view,
+        let record = record_from_sam(
+            &header,
             b"read1\t0\tchr1\t3\t60\t2S6M2S\t*\t0\t0\tAACCCCGGGG\tIIIIIIIIII",
         )
         .unwrap();
@@ -1940,25 +1865,20 @@ mod tests {
 
     #[test]
     fn test_mate_end_overlap_and_fragment_helpers() {
-        let mut header = Header::new();
-        let mut sq = HeaderRecord::new(b"SQ");
-        sq.push_tag(b"SN", "chr1");
-        sq.push_tag(b"LN", 1000);
-        header.push_record(&sq);
-        let header_view = HeaderView::from_header(&header);
+        let header = sam_header(&[("chr1", 1000)]);
 
-        let paired = Record::from_sam(
-            &header_view,
+        let paired = record_from_sam(
+            &header,
             b"read1\t99\tchr1\t1\t60\t8M\t=\t5\t12\tACGTACGT\tIIIIIIII\tMC:Z:8M",
         )
         .unwrap();
-        let no_mc = Record::from_sam(
-            &header_view,
+        let no_mc = record_from_sam(
+            &header,
             b"read1\t99\tchr1\t1\t60\t8M\t=\t5\t12\tACGTACGT\tIIIIIIII",
         )
         .unwrap();
-        let unpaired = Record::from_sam(
-            &header_view,
+        let unpaired = record_from_sam(
+            &header,
             b"read1\t0\tchr1\t1\t60\t8M\t*\t0\t0\tACGTACGT\tIIIIIIII\tMC:Z:8M",
         )
         .unwrap();
@@ -1975,19 +1895,11 @@ mod tests {
 
     #[test]
     fn test_process_record_skips_secondary_records() {
-        let mut header = Header::new();
-        let mut sq = HeaderRecord::new(b"SQ");
-        sq.push_tag(b"SN", "chr1");
-        sq.push_tag(b"LN", 1000);
-        header.push_record(&sq);
-        let header_view = HeaderView::from_header(&header);
+        let header = sam_header(&[("chr1", 1000)]);
 
         // Flag 256 = secondary alignment.
-        let secondary = Record::from_sam(
-            &header_view,
-            b"read1\t256\tchr1\t1\t60\t4M\t*\t0\t0\tACGT\tIIII",
-        )
-        .unwrap();
+        let secondary =
+            record_from_sam(&header, b"read1\t256\tchr1\t1\t60\t4M\t*\t0\t0\tACGT\tIIII").unwrap();
 
         let mut reference = HashMap::new();
         reference.insert("chr1".to_string(), b"ACGTACGT".to_vec());
@@ -2037,17 +1949,12 @@ mod tests {
 
     #[test]
     fn test_compare_record_cut_vs_stretch_for_read2_overlap() {
-        let mut header = Header::new();
-        let mut sq = HeaderRecord::new(b"SQ");
-        sq.push_tag(b"SN", "chr1");
-        sq.push_tag(b"LN", 1000);
-        header.push_record(&sq);
-        let header_view = HeaderView::from_header(&header);
+        let header = sam_header(&[("chr1", 1000)]);
 
         // read2 (flag 0x93 = 0x80|0x10|0x2|0x1), positions 5-12 (0-based 4-11).
         // Mate is at pos 1-8. Overlap region [4, 8).
-        let read2 = Record::from_sam(
-            &header_view,
+        let read2 = record_from_sam(
+            &header,
             b"r\t147\tchr1\t5\t60\t8M\t=\t1\t-12\tACGTACGT\tIIIIIIII\tMC:Z:8M",
         )
         .unwrap();
@@ -2109,17 +2016,11 @@ mod tests {
 
     #[test]
     fn test_compare_record_to_reference_methylation_collapse() {
-        let mut header = Header::new();
-        let mut sq = HeaderRecord::new(b"SQ");
-        sq.push_tag(b"SN", "chr1");
-        sq.push_tag(b"LN", 100);
-        header.push_record(&sq);
-        let header_view = HeaderView::from_header(&header);
+        let header = sam_header(&[("chr1", 100)]);
 
         // Sequence: T at position 0 vs reference C at position 0.
         // With methylation=true: C>T should collapse to C>C.
-        let record =
-            Record::from_sam(&header_view, b"r1\t0\tchr1\t1\t60\t2M\t*\t0\t0\tTG\tII").unwrap();
+        let record = record_from_sam(&header, b"r1\t0\tchr1\t1\t60\t2M\t*\t0\t0\tTG\tII").unwrap();
 
         let mut reference = HashMap::new();
         reference.insert("chr1".to_string(), b"CGTACGT".to_vec());
@@ -2163,15 +2064,10 @@ mod tests {
 
     #[test]
     fn test_should_skip_whole_read_for_bed_early_returns() {
-        let mut header = Header::new();
-        let mut sq = HeaderRecord::new(b"SQ");
-        sq.push_tag(b"SN", "chr1");
-        sq.push_tag(b"LN", 1000);
-        header.push_record(&sq);
-        let header_view = HeaderView::from_header(&header);
+        let header = sam_header(&[("chr1", 1000)]);
 
-        let record = Record::from_sam(
-            &header_view,
+        let record = record_from_sam(
+            &header,
             b"read1\t0\tchr1\t21\t60\t8M\t*\t0\t0\tACGTACGT\tIIIIIIII",
         )
         .unwrap();
@@ -2199,17 +2095,12 @@ mod tests {
 
     #[test]
     fn test_count_softclip_mismatches_via_process_record() {
-        let mut header = Header::new();
-        let mut sq = HeaderRecord::new(b"SQ");
-        sq.push_tag(b"SN", "chr1");
-        sq.push_tag(b"LN", 100);
-        header.push_record(&sq);
-        let header_view = HeaderView::from_header(&header);
+        let header = sam_header(&[("chr1", 100)]);
 
         // pos=3 (1-based) → ref_pos=2 (0-based). Left clip 2 → genome 0,1 (AA).
         // 6M at ref 2-7 (CCCCGG). Right clip 2 → genome 8,9 (TT).
-        let record = Record::from_sam(
-            &header_view,
+        let record = record_from_sam(
+            &header,
             b"read1\t0\tchr1\t3\t60\t2S6M2S\t*\t0\t0\tAACCCCGGTT\tIIIIIIIIII",
         )
         .unwrap();
@@ -2266,8 +2157,8 @@ mod tests {
         );
 
         // Right clip CC vs TT → 0% match → below threshold → not added.
-        let record2 = Record::from_sam(
-            &header_view,
+        let record2 = record_from_sam(
+            &header,
             b"read2\t0\tchr1\t3\t60\t2S6M2S\t*\t0\t0\tAACCCCGGCC\tIIIIIIIIII",
         )
         .unwrap();
@@ -2326,18 +2217,17 @@ mod tests {
 
     #[test]
     fn test_compare_and_count_methylation_forward_strand_genomic_key() {
-        let header = Header::new();
-        let header_view = HeaderView::from_header(&header);
+        let header = Header::default();
         // Forward strand, read1: ref C, read T at position 0 → bisulfite collapse.
         let sam_line: &[u8] = b"read1\t0\t*\t1\t60\t8M\t*\t0\t0\tTAAAAAAA\tIIIIIIII";
-        let record = Record::from_sam(&header_view, sam_line).unwrap();
+        let record = record_from_sam(&header, sam_line).unwrap();
         let ref_seq: &[u8] = b"CAAAAAAA";
 
         let config = methylation_config(true);
-        let seq = record.seq();
+        let seq = record.sequence().as_ref();
         let read_ctx = ReadContext {
-            seq: &seq,
-            qual: record.qual(),
+            seq,
+            qual: &record.qual(),
             ref_seq,
             is_reverse: false,
             read_num: 1,
@@ -2373,21 +2263,20 @@ mod tests {
 
     #[test]
     fn test_compare_and_count_methylation_reverse_strand_read1_genomic_key_orientation() {
-        let header = Header::new();
-        let header_view = HeaderView::from_header(&header);
+        let header = Header::default();
         // Reverse strand, read1: reference G, read A at position 4 (forward
         // orientation). Strand-relative this is ref C / read T for read1,
         // which methylation mode collapses. The genomic key must stay in
         // reference orientation: G>G, not the strand-relative C>C.
         let sam_line: &[u8] = b"read1\t16\t*\t1\t60\t8M\t*\t0\t0\tAAAAAAAA\tIIIIIIII";
-        let record = Record::from_sam(&header_view, sam_line).unwrap();
+        let record = record_from_sam(&header, sam_line).unwrap();
         let ref_seq: &[u8] = b"AAAAGAAA";
 
         let config = methylation_config(true);
-        let seq = record.seq();
+        let seq = record.sequence().as_ref();
         let read_ctx = ReadContext {
-            seq: &seq,
-            qual: record.qual(),
+            seq,
+            qual: &record.qual(),
             ref_seq,
             is_reverse: true,
             read_num: 1,
@@ -2424,21 +2313,20 @@ mod tests {
 
     #[test]
     fn test_compare_and_count_methylation_reverse_strand_read2_genomic_key_orientation() {
-        let header = Header::new();
-        let header_view = HeaderView::from_header(&header);
+        let header = Header::default();
         // Reverse strand, read2: reference C, read T at position 4 (forward
         // orientation). Strand-relative this is ref G / read A for read2,
         // which methylation mode collapses. The genomic key must stay in
         // reference orientation: C>C, not the strand-relative G>G.
         let sam_line: &[u8] = b"read2\t16\t*\t1\t60\t8M\t*\t0\t0\tAAAATAAA\tIIIIIIII";
-        let record = Record::from_sam(&header_view, sam_line).unwrap();
+        let record = record_from_sam(&header, sam_line).unwrap();
         let ref_seq: &[u8] = b"AAAACAAA";
 
         let config = methylation_config(true);
-        let seq = record.seq();
+        let seq = record.sequence().as_ref();
         let read_ctx = ReadContext {
-            seq: &seq,
-            qual: record.qual(),
+            seq,
+            qual: &record.qual(),
             ref_seq,
             is_reverse: true,
             read_num: 2,
@@ -2478,17 +2366,16 @@ mod tests {
         // Same bisulfite-shaped mismatch as the reverse-strand read1 test
         // above, but with methylation mode disabled: no collapse should
         // occur, and the genomic key should report the raw G>A mismatch.
-        let header = Header::new();
-        let header_view = HeaderView::from_header(&header);
+        let header = Header::default();
         let sam_line: &[u8] = b"read1\t16\t*\t1\t60\t8M\t*\t0\t0\tAAAAAAAA\tIIIIIIII";
-        let record = Record::from_sam(&header_view, sam_line).unwrap();
+        let record = record_from_sam(&header, sam_line).unwrap();
         let ref_seq: &[u8] = b"AAAAGAAA";
 
         let config = methylation_config(false);
-        let seq = record.seq();
+        let seq = record.sequence().as_ref();
         let read_ctx = ReadContext {
-            seq: &seq,
-            qual: record.qual(),
+            seq,
+            qual: &record.qual(),
             ref_seq,
             is_reverse: true,
             read_num: 1,

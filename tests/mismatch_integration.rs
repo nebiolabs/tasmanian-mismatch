@@ -1,27 +1,19 @@
 mod test_utils;
 
-use rust_htslib::bam::header::HeaderRecord;
-use rust_htslib::bam::index;
-use rust_htslib::bam::{Format, Header, HeaderView, Record, Writer};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
-use test_utils::{log_command, log_line, repo_log_path, unique_temp_dir};
+use tasmanian_mismatch::bam::{BamWriter, record_from_sam};
+use test_utils::{index_bam, log_command, log_line, repo_log_path, sam_header, unique_temp_dir};
 
 fn write_test_bam(path: &Path) {
-    let mut header = Header::new();
-    let mut sq = HeaderRecord::new(b"SQ");
-    sq.push_tag(b"SN", "chr1");
-    sq.push_tag(b"LN", 8);
-    header.push_record(&sq);
-
-    let header_view = HeaderView::from_header(&header);
+    let header = sam_header(&[("chr1", 8)]);
     let mut writer =
-        Writer::from_path(path, &header, Format::Bam).expect("failed to open BAM writer");
+        BamWriter::create(Some(path), header.clone()).expect("failed to open BAM writer");
 
     // Reference is ACGTACGT. This read has one mismatch (A->T).
     let sam_line = b"read1\t0\tchr1\t1\t60\t8M\t*\t0\t0\tACGTTCGT\tIIIIIIII\tNM:i:1";
-    let record = Record::from_sam(&header_view, sam_line).expect("failed to parse SAM line");
+    let record = record_from_sam(&header, sam_line).expect("failed to parse SAM line");
     writer.write(&record).expect("failed to write BAM record");
 }
 
@@ -37,7 +29,7 @@ fn integration_mismatch_fixture_bam_produces_expected_counts() {
 
     fs::write(&reference_fa, ">chr1\nACGTACGT\n").expect("failed to write reference");
     write_test_bam(&fixture_bam);
-    index::build(&fixture_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
+    index_bam(&fixture_bam);
     log_line(
         &log_path,
         &format!(
@@ -110,31 +102,21 @@ fn integration_mismatch_fixture_bam_produces_expected_counts() {
 }
 
 fn write_two_chrom_bam(path: &Path) {
-    let mut header = Header::new();
-    let mut sq1 = HeaderRecord::new(b"SQ");
-    sq1.push_tag(b"SN", "chr1");
-    sq1.push_tag(b"LN", 8);
-    header.push_record(&sq1);
-    let mut sq2 = HeaderRecord::new(b"SQ");
-    sq2.push_tag(b"SN", "chr2");
-    sq2.push_tag(b"LN", 8);
-    header.push_record(&sq2);
-
-    let header_view = HeaderView::from_header(&header);
+    let header = sam_header(&[("chr1", 8), ("chr2", 8)]);
     let mut writer =
-        Writer::from_path(path, &header, Format::Bam).expect("failed to open BAM writer");
+        BamWriter::create(Some(path), header.clone()).expect("failed to open BAM writer");
 
     // chr1 reference ACGTACGT; read has one mismatch (A->T) at position 5.
-    let read1 = Record::from_sam(
-        &header_view,
+    let read1 = record_from_sam(
+        &header,
         b"read1\t0\tchr1\t1\t60\t8M\t*\t0\t0\tACGTTCGT\tIIIIIIII\tNM:i:1",
     )
     .expect("failed to parse SAM line");
     writer.write(&read1).expect("failed to write BAM record");
 
     // chr2 reference ACGTACGT; read has one mismatch (T->A) at position 8.
-    let read2 = Record::from_sam(
-        &header_view,
+    let read2 = record_from_sam(
+        &header,
         b"read2\t0\tchr2\t1\t60\t8M\t*\t0\t0\tACGTACGA\tIIIIIIII\tNM:i:1",
     )
     .expect("failed to parse SAM line");
@@ -157,7 +139,7 @@ fn integration_bed_filter_mode_include_keeps_only_overlapping_reads() {
     fs::write(&reference_fa, ">chr1\nACGTACGT\n>chr2\nACGTACGT\n")
         .expect("failed to write reference");
     write_two_chrom_bam(&fixture_bam);
-    index::build(&fixture_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
+    index_bam(&fixture_bam);
     // Covers all of chr1 (read1's mismatch A>T), none of chr2 (read2's mismatch T>A).
     fs::write(&bed_file, "chr1\t0\t8\n").expect("failed to write BED file");
 
@@ -237,7 +219,7 @@ fn integration_min_max_position_excludes_bases_outside_range() {
 
     fs::write(&reference_fa, ">chr1\nACGTACGT\n").expect("failed to write reference");
     write_test_bam(&fixture_bam);
-    index::build(&fixture_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
+    index_bam(&fixture_bam);
 
     let binary = env!("CARGO_BIN_EXE_tasmanian-mismatch");
     let args = [
@@ -340,7 +322,7 @@ fn prepare_two_chrom_inputs(name: &str) -> (std::path::PathBuf, std::path::PathB
     .expect("failed to write reference");
     let fixture_bam = temp_dir.join("input.bam");
     write_two_chrom_bam(&fixture_bam);
-    index::build(&fixture_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
+    index_bam(&fixture_bam);
     (temp_dir, log_path)
 }
 

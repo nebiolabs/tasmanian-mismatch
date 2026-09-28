@@ -107,18 +107,14 @@ pub fn correct_read_len_with_mode(
 ///
 /// # Returns
 /// * The exclusive genomic end position after consuming reference bases.
-pub fn calculate_end_pos(start_pos: i64, cigar: &rust_htslib::bam::record::CigarStringView) -> i64 {
-    use rust_htslib::bam::record::Cigar::*;
-    let mut end = start_pos;
-    for op in cigar.iter() {
-        match op {
-            Match(len) | Equal(len) | Diff(len) | Del(len) | RefSkip(len) => {
-                end += *len as i64;
-            }
-            _ => {}
-        }
-    }
-    end
+pub fn calculate_end_pos(start_pos: i64, cigar: &crate::bam::Cigar) -> i64 {
+    let ref_span: usize = cigar
+        .as_ref()
+        .iter()
+        .filter(|op| crate::bam::consumes_reference(op.kind()))
+        .map(|op| op.len())
+        .sum();
+    start_pos + ref_span as i64
 }
 
 /// Print the position-based mismatch table as CSV.
