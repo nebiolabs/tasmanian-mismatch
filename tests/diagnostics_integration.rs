@@ -6,7 +6,7 @@ use rust_htslib::bam::{Format, Header, HeaderView, Record, Writer};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
-use test_utils::{log_command, log_line, repo_log_path, unique_temp_dir};
+use test_utils::{log_command, log_line, repo_log_path, unique_temp_dir, write_two_chrom_bam};
 
 fn write_test_bam(path: &Path) {
     let mut header = Header::new();
@@ -313,29 +313,6 @@ fn integration_diagnostics_processes_paired_reads() {
 
     let discounts = fs::read_to_string(&discounts_tsv).expect("failed to read discounts output");
     assert!(discounts.contains("mismatch_type\tread_num\tread_position\tdiscount_count"));
-}
-
-fn write_two_chrom_bam(path: &Path) {
-    let mut header = Header::new();
-    for name in ["chr1", "chr2"] {
-        let mut sq = HeaderRecord::new(b"SQ");
-        sq.push_tag(b"SN", name);
-        sq.push_tag(b"LN", 8);
-        header.push_record(&sq);
-    }
-
-    let header_view = HeaderView::from_header(&header);
-    let mut writer =
-        Writer::from_path(path, &header, Format::Bam).expect("failed to open BAM writer");
-
-    // Both references are ACGTACGT. read1 on chr1 has A->T; read2 on chr2 has T->A.
-    for sam_line in [
-        &b"read1\t0\tchr1\t1\t60\t8M\t*\t0\t0\tACGTTCGT\tIIIIIIII\tNM:i:1"[..],
-        &b"read2\t0\tchr2\t1\t60\t8M\t*\t0\t0\tACGTACGA\tIIIIIIII\tNM:i:1"[..],
-    ] {
-        let record = Record::from_sam(&header_view, sam_line).expect("failed to parse SAM line");
-        writer.write(&record).expect("failed to write BAM record");
-    }
 }
 
 #[test]

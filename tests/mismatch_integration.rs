@@ -6,7 +6,7 @@ use rust_htslib::bam::{Format, Header, HeaderView, Record, Writer};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
-use test_utils::{log_command, log_line, repo_log_path, unique_temp_dir};
+use test_utils::{log_command, log_line, repo_log_path, unique_temp_dir, write_two_chrom_bam};
 
 fn write_test_bam(path: &Path) {
     let mut header = Header::new();
@@ -107,38 +107,6 @@ fn integration_mismatch_fixture_bam_produces_expected_counts() {
         "expected A>T mismatch row in output, got:\n{}",
         output
     );
-}
-
-fn write_two_chrom_bam(path: &Path) {
-    let mut header = Header::new();
-    let mut sq1 = HeaderRecord::new(b"SQ");
-    sq1.push_tag(b"SN", "chr1");
-    sq1.push_tag(b"LN", 8);
-    header.push_record(&sq1);
-    let mut sq2 = HeaderRecord::new(b"SQ");
-    sq2.push_tag(b"SN", "chr2");
-    sq2.push_tag(b"LN", 8);
-    header.push_record(&sq2);
-
-    let header_view = HeaderView::from_header(&header);
-    let mut writer =
-        Writer::from_path(path, &header, Format::Bam).expect("failed to open BAM writer");
-
-    // chr1 reference ACGTACGT; read has one mismatch (A->T) at position 5.
-    let read1 = Record::from_sam(
-        &header_view,
-        b"read1\t0\tchr1\t1\t60\t8M\t*\t0\t0\tACGTTCGT\tIIIIIIII\tNM:i:1",
-    )
-    .expect("failed to parse SAM line");
-    writer.write(&read1).expect("failed to write BAM record");
-
-    // chr2 reference ACGTACGT; read has one mismatch (T->A) at position 8.
-    let read2 = Record::from_sam(
-        &header_view,
-        b"read2\t0\tchr2\t1\t60\t8M\t*\t0\t0\tACGTACGA\tIIIIIIII\tNM:i:1",
-    )
-    .expect("failed to parse SAM line");
-    writer.write(&read2).expect("failed to write BAM record");
 }
 
 #[test]
