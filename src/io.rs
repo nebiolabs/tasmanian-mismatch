@@ -5,7 +5,7 @@ use crate::types::{
     ReferenceGenome, ReferenceOrder, RescalingMatrix,
 };
 use crate::utils::{ratio, split_base_change};
-use bio::io::fasta;
+use noodles_fasta as fasta;
 use rust_htslib::bam::{Read, Reader};
 use std::collections::HashMap;
 use std::error::Error;
@@ -26,15 +26,17 @@ use std::process;
 /// * If any FASTA record cannot be read.
 pub fn load_reference_genome(fasta_path: &str) -> ReferenceGenome {
     log::info!("Loading reference genome from: {}", fasta_path);
-    let reader = fasta::Reader::from_file(fasta_path).expect("Failed to open reference FASTA file");
+    let mut reader = fasta::io::reader::Builder
+        .build_from_path(fasta_path)
+        .expect("Failed to open reference FASTA file");
 
     let mut genome: ReferenceGenome = HashMap::new();
     for result in reader.records() {
         let record = result.expect("Failed to read FASTA record");
-        let chr_name = record.id().to_string();
+        let chr_name = String::from_utf8_lossy(record.name()).into_owned();
         // Uppercase so soft-masked (lowercase) bases are compared like any other; base
         // comparisons only accept uppercase ACGT and would otherwise skip them silently.
-        let sequence = record.seq().to_ascii_uppercase(); // Vec<u8> = byte, not UTF-8 char (overhead)
+        let sequence = record.sequence().as_ref().to_ascii_uppercase(); // Vec<u8> = byte, not UTF-8 char (overhead)
         genome.insert(chr_name, sequence);
     }
 
