@@ -75,12 +75,17 @@ Common options:
 -G <FLAGS>                        SAM flags that, if all present, skip a read
 --min-fragment-length <LEN>       Minimum fragment length for insert mode
 --max-fragment-length <LEN>       Maximum fragment length for insert mode
---min-position <N>                Minimum position-mode axis position (1-based, inclusive) to include
---max-position <N>                Maximum position-mode axis position (1-based, inclusive) to include
+--min-read-position <N>           Minimum position-mode axis position (1-based, inclusive) to include
+--max-read-position <N>           Maximum position-mode axis position (1-based, inclusive) to include
 --methylation-mode                Collapse methylation-driven mismatch classes
 --normalize                       Write normalized frequencies instead of raw counts
 --emit-rescaling-matrix           Emit matrix rows for tasmanian-rescale-quality
 --plot                            Launch the optional Bokeh visualization
+--window-size <BP>                Report per-window mismatch rates instead of the genome-wide table
+--bootstrap <N>                   Add 95% block-bootstrap confidence intervals (N replicates)
+--bootstrap-seed <SEED>           Seed for --bootstrap (default: 1)
+--bootstrap-diagnostics <TSV>     Write a per-class histogram of block residuals for --bootstrap
+--bootstrap-rates <TSV>           Write per-position class rates with --bootstrap intervals
 -o, --output-file <TSV>           Output path
 ```
 
@@ -113,8 +118,8 @@ tasmanian-mismatch sample.bam reference.fa \
 # Restrict to read positions 5-40 (e.g. to minimize sequencer read quality effects)
 tasmanian-mismatch sample.bam reference.fa \
   --position-mode read \
-  --min-position 5 \
-  --max-position 40 \
+  --min-read-position 5 \
+  --max-read-position 40 \
   -o mismatch_positions_5_40.tsv
 
 # Emit rescaling matrix rows to stdout (or -o file.tsv)  --> _Under development_
@@ -126,6 +131,16 @@ tasmanian-mismatch sample.bam reference.fa \
 tasmanian-mismatch sample.bam reference.fa \
   -b exome_targets.bed --bed-filter-mode include \
   -o mismatch_exome_only.tsv
+
+# Mismatch rates in 1 Mb windows along the genome
+tasmanian-mismatch sample.bam reference.fa \
+  --window-size 1000000 \
+  -o mismatch_windows.tsv
+
+# Genome-wide table with 95% confidence intervals from 1000 bootstrap replicates
+tasmanian-mismatch sample.bam reference.fa \
+  --bootstrap 1000 \
+  -o mismatch_with_ci.tsv
 ```
 
 ### `tasmanian-diagnostics`
@@ -269,6 +284,84 @@ C>T / (C>A + C>C + C>G + C>T)
 ```
 
 If a group's total count is zero (e.g. after `--discount-table` has reduced every count in the group to zero), its frequency is reported as `0.0` rather than `NaN`.
+
+### `tasmanian-mismatch --bootstrap N`
+
+The usual table gains a normalized `frequency` (as in `--normalize`) and its 95% confidence
+interval. With `--normalize`, the `count` and `frequency` columns are replaced by
+`normalized_frequency`.
+
+```tsv
+base_change	read_num	reference_order	read_position	count	frequency	ci_low	ci_high
+C>T	1	1	1	14	0.001409	0.000673	0.002399
+```
+
+The intervals come from a block bootstrap. The genome is cut into `--region-size` blocks
+(default 1 Mb). Each replicate redraws that many blocks, with replacement, from the blocks
+that contained counted reads, then recomputes every frequency. `ci_low` and `ci_high` are the
+2.5% and 97.5% quantiles across replicates. Resampling whole blocks rather than single reads
+keeps nearby observations together (real variants, duplicates and local sequence context all
+cluster), so the intervals aren't overconfident. A warning is logged when fewer than 20 blocks
+contain data, as with a small panel. Lowering `--region-size` gives more, smaller blocks.
+Discounts from `--discount-table` are subtracted from every replicate. The same
+`--bootstrap-seed` always gives the same intervals, whatever the thread count.
+
+`--bootstrap-diagnostics PATH` checks whether the blocks differ by more than counting noise.
+For each mismatch class (per read, pooled over positions), each block gets a Pearson residual
+against the pooled rate `p`:
+
+```text
+z = (count - ref_total * p) / sqrt(ref_total * p * (1 - p))
+```
+
+If blocks differ only by chance, `z` is roughly N(0, 1). The TSV holds each class's residual
+histogram (`bin_low`, `bin_high`, `blocks`) beside the count N(0, 1) predicts
+(`expected_blocks`), plus the dispersion `sum(z^2) / (blocks_used - 1)`. Dispersion near 1
+means the blocks are homogeneous. Well above 1 means some blocks really differ. The log names
+each class's most extreme block, which `--window-size` can narrow down. Blocks expecting fewer
+than 5 mismatches of a class are left out of that class, since small-count residuals are too
+skewed to compare with N(0, 1). The residuals use counts from before `--discount-table` is
+applied.
+
+### `tasmanian-mismatch --bootstrap N --bootstrap-rates PATH`
+
+Per-position mismatch rates with 95% intervals from the same bootstrap replicates, pooled
+over reference orders:
+
+```tsv
+read_num	fragment_position	class	count	ref_total	rate	ci_low	ci_high	all_bases	rate_all	rate_all_ci_low	rate_all_ci_high
+1	1	C>T/G>A	8648	7498201	1.153343e-3	1.071350e-3	1.267275e-3	19318046	4.476642e-4	...	...
+```
+
+`class` is one of the 12 A/C/G/T mismatch classes (`count / ref_total` of its reference
+base), one of the 6 strand-folded classes (`C>T/G>A` = `(C>T + G>A) / (C + G)`), or `N>N`
+(all mismatches over all bases). `rate_all` divides each class's count by every base observed
+at the position instead, so the classes' `rate_all` values add up to the `N>N` rate: the 12 raw
+classes do, and so do the 6 folded ones. Unlike the main table's per-row intervals, these can be
+compared across positions and libraries directly, since each row is a complete rate. Rows
+whose denominator is zero are omitted.
+
+### `tasmanian-mismatch --window-size BP`
+
+One row per window, read and mismatch class, pooled over all read/fragment positions:
+
+```tsv
+chrom	start	end	read_num	base_change	count	ref_total	rate	all_bases	rate_all
+chr7	0	1000000	1	C>T	2	3645	0.000549	14580	0.000137
+chr7	0	1000000	1	C>A	0	3645	0.000000	14580	0.000000
+```
+
+Windows are 0-based and half-open, tile each contig from position 0, and are written in BAM
+header order. A read belongs to the window containing its alignment start. `ref_total` counts
+every base read against the class's reference base (`C>A + C>C + C>G + C>T` for `C>T`), and
+`rate = count / ref_total`. `all_bases` counts every A/C/G/T base on that read in the window,
+and `rate_all = count / all_bases`, so a read's classes' `rate_all` values add up to its overall
+mismatch rate in the window. Every A/C/G/T mismatch class whose reference base was observed
+gets a row, with a zero count if it never occurred. Windows with no counted reads are
+omitted. Windows are counted inside the usual `--region-size` processing chunks, which are
+rounded up to whole windows, so small windows don't cost one BAM fetch each. `--window-size`
+can't be combined with `--normalize`, `--emit-rescaling-matrix`, `--discount-table`, `--plot`
+or `--bootstrap`.
 
 ### `potential_variants.tsv`
 

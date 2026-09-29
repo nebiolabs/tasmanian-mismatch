@@ -45,6 +45,29 @@ pub fn base_to_char(byte: u8) -> Option<char> {
     }
 }
 
+/// The four canonical bases, in the index order `base_index` uses.
+pub const BASES: [char; 4] = ['A', 'C', 'G', 'T'];
+
+/// Index of a canonical base in `BASES`, or `None` for anything else (e.g. `N`).
+pub fn base_index(base: char) -> Option<usize> {
+    BASES.iter().position(|&b| b == base)
+}
+
+/// Split a `base_change` such as `"C>T"` into its reference and read bases.
+pub fn split_base_change(base_change: &str) -> Option<(char, char)> {
+    let (ref_part, read_part) = base_change.split_once('>')?;
+    Some((ref_part.chars().next()?, read_part.chars().next()?))
+}
+
+/// `numerator / denominator`, or 0 when the denominator is 0.
+pub fn ratio(numerator: u64, denominator: u64) -> f64 {
+    if denominator == 0 {
+        0.0
+    } else {
+        numerator as f64 / denominator as f64
+    }
+}
+
 /// Normalize a read position using the modal read length.
 ///
 /// # Arguments

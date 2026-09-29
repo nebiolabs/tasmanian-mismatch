@@ -4,7 +4,8 @@ use crate::types::{
     DiscountKey, GenomicMismatchKey, InconsistencyKey, InsertKey, MismatchKey, PositionMode,
     ReferenceGenome, ReferenceOrder, RescalingMatrix,
 };
-use bio::io::fasta;
+use crate::utils::{ratio, split_base_change};
+use noodles_fasta as fasta;
 use rust_htslib::bam::{Read, Reader};
 use std::collections::HashMap;
 use std::error::Error;
@@ -25,13 +26,17 @@ use std::process;
 /// * If any FASTA record cannot be read.
 pub fn load_reference_genome(fasta_path: &str) -> ReferenceGenome {
     log::info!("Loading reference genome from: {}", fasta_path);
-    let reader = fasta::Reader::from_file(fasta_path).expect("Failed to open reference FASTA file");
+    let mut reader = fasta::io::reader::Builder
+        .build_from_path(fasta_path)
+        .expect("Failed to open reference FASTA file");
 
     let mut genome: ReferenceGenome = HashMap::new();
     for result in reader.records() {
         let record = result.expect("Failed to read FASTA record");
-        let chr_name = record.id().to_string();
-        let sequence = record.seq().to_vec(); // Vec<u8> = byte, not UTF-8 char (overhead)
+        let chr_name = String::from_utf8_lossy(record.name()).into_owned();
+        // Uppercase so soft-masked (lowercase) bases are compared like any other; base
+        // comparisons only accept uppercase ACGT and would otherwise skip them silently.
+        let sequence = record.sequence().as_ref().to_ascii_uppercase(); // Vec<u8> = byte, not UTF-8 char (overhead)
         genome.insert(chr_name, sequence);
     }
 
@@ -321,11 +326,16 @@ pub fn load_discount_table_from_reader<R: BufRead>(
     Ok(discounts)
 }
 
+/// Subtract `discounts` from `counts`, taking each from the larger of its two reference-order
+/// rows first, never below zero.
+///
+/// Returns the amount actually removed from each key, so callers that recount from raw data
+/// (the block bootstrap) can remove the same amounts.
 pub fn apply_external_discounts(
     counts: &mut HashMap<InsertKey, usize>,
     discounts: HashMap<DiscountKey, usize>,
-) -> usize {
-    let mut touched = 0usize;
+) -> HashMap<InsertKey, usize> {
+    let mut removed: HashMap<InsertKey, usize> = HashMap::new();
 
     for (discount_key, mut remaining) in discounts {
         let k1 = InsertKey {
@@ -343,43 +353,24 @@ pub fn apply_external_discounts(
 
         let c1 = counts.get(&k1).copied().unwrap_or(0);
         let c2 = counts.get(&k2).copied().unwrap_or(0);
+        let (first_key, second_key) = if c1 >= c2 { (k1, k2) } else { (k2, k1) };
 
-        if c1 == 0 && c2 == 0 {
-            continue;
-        }
-
-        let first_key = if c1 >= c2 { &k1 } else { &k2 };
-        if remaining > 0
-            && let Some(v) = counts.get_mut(first_key)
-        {
-            let take = remaining.min(*v);
-            *v -= take;
-            remaining -= take;
-        }
-
-        if remaining > 0 {
-            let second_key = if first_key.reference_order == ReferenceOrder::First {
-                &k2
-            } else {
-                &k1
-            };
-            if let Some(v) = counts.get_mut(second_key) {
+        for key in [first_key, second_key] {
+            if remaining == 0 {
+                break;
+            }
+            if let Some(v) = counts.get_mut(&key) {
                 let take = remaining.min(*v);
-                *v -= take;
+                if take > 0 {
+                    *v -= take;
+                    remaining -= take;
+                    *removed.entry(key).or_insert(0) += take;
+                }
             }
         }
-
-        touched += 1;
     }
 
-    touched
-}
-
-/// Extract the reference base from an `InsertKey`'s `base_change` field (e.g. `"C>T"` → `'C'`).
-fn ref_base_of(key: &InsertKey) -> Option<char> {
-    key.base_change
-        .split_once('>')
-        .and_then(|(ref_part, _)| ref_part.chars().next())
+    removed
 }
 
 /// Normalize mismatch counts within each `(read_num, position, ref_base)` group.
@@ -391,7 +382,7 @@ pub fn normalize_mismatch_counts(counts: &HashMap<InsertKey, usize>) -> HashMap<
     let mut group_totals: HashMap<(u8, usize, char), usize> = HashMap::new();
 
     for (key, count) in counts {
-        if let Some(ref_base) = ref_base_of(key) {
+        if let Some((ref_base, _)) = split_base_change(&key.base_change) {
             *group_totals
                 .entry((key.read_num, key.base_position, ref_base))
                 .or_insert(0) += count;
@@ -401,16 +392,10 @@ pub fn normalize_mismatch_counts(counts: &HashMap<InsertKey, usize>) -> HashMap<
     counts
         .iter()
         .filter_map(|(key, &count)| {
-            let ref_base = ref_base_of(key)?;
+            let (ref_base, _) = split_base_change(&key.base_change)?;
             let total = *group_totals.get(&(key.read_num, key.base_position, ref_base))?;
-            // If total is 0 (which can occur if apply_external_discounts has reduced
-            // every count in a group to zero), return 0.0 to guard against NaN.
-            let frequency = if total == 0 {
-                0.0
-            } else {
-                count as f64 / total as f64
-            };
-            Some((key.clone(), frequency))
+            // A total of 0 (apply_external_discounts can empty a whole group) gives 0.0, not NaN.
+            Some((key.clone(), ratio(count as u64, total as u64)))
         })
         .collect()
 }
@@ -695,15 +680,15 @@ pub fn write_rescaling_matrix_output(
     })
 }
 
-fn position_label(mode: PositionMode) -> &'static str {
+pub fn position_label(mode: PositionMode) -> &'static str {
     match mode {
         PositionMode::Read => "read_position",
         PositionMode::Insert => "fragment_position",
     }
 }
 
-fn sort_insert_rows<V>(rows: &mut Vec<(&InsertKey, V)>) {
-    rows.sort_by(|(a, _), (b, _)| {
+fn sort_insert_keys(keys: &mut [&InsertKey]) {
+    keys.sort_by(|a, b| {
         a.reference_order
             .cmp(&b.reference_order)
             .then(a.read_num.cmp(&b.read_num))
@@ -713,7 +698,7 @@ fn sort_insert_rows<V>(rows: &mut Vec<(&InsertKey, V)>) {
 }
 
 /// Open `output_file` for writing, or lock stdout when `None`, then call `f`.
-fn with_output_writer<F>(output_file: Option<&str>, f: F) -> std::io::Result<()>
+pub(crate) fn with_output_writer<F>(output_file: Option<&str>, f: F) -> std::io::Result<()>
 where
     F: FnOnce(&mut dyn Write) -> std::io::Result<()>,
 {
@@ -724,30 +709,49 @@ where
     }
 }
 
+/// Write the main per-key table: the key columns, then `value_columns` (tab-separated
+/// header names) filled per row by `write_values`, which writes the rest of the line.
+fn write_key_table<'a>(
+    keys: impl Iterator<Item = &'a InsertKey>,
+    output_file: Option<&str>,
+    position_mode: PositionMode,
+    value_columns: &str,
+    mut write_values: impl FnMut(&mut dyn Write, &InsertKey) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    let mut keys: Vec<&InsertKey> = keys.collect();
+    sort_insert_keys(&mut keys);
+
+    with_output_writer(output_file, |w| {
+        writeln!(
+            w,
+            "base_change\tread_num\treference_order\t{}\t{}",
+            position_label(position_mode),
+            value_columns
+        )?;
+        for key in keys {
+            write!(
+                w,
+                "{}\t{}\t{}\t{}\t",
+                key.base_change, key.read_num, key.reference_order, key.base_position
+            )?;
+            write_values(w, key)?;
+        }
+        Ok(())
+    })
+}
+
 pub fn write_output(
     counts: &HashMap<InsertKey, usize>,
     output_file: Option<&str>,
     position_mode: PositionMode,
 ) -> std::io::Result<()> {
-    let label = position_label(position_mode);
-    let mut rows: Vec<(&InsertKey, &usize)> = counts.iter().collect();
-    sort_insert_rows(&mut rows);
-
-    with_output_writer(output_file, |w| {
-        writeln!(
-            w,
-            "base_change\tread_num\treference_order\t{}\tcount",
-            label
-        )?;
-        for (key, count) in &rows {
-            writeln!(
-                w,
-                "{}\t{}\t{}\t{}\t{}",
-                key.base_change, key.read_num, key.reference_order, key.base_position, count
-            )?;
-        }
-        Ok(())
-    })
+    write_key_table(
+        counts.keys(),
+        output_file,
+        position_mode,
+        "count",
+        |w, key| writeln!(w, "{}", counts[key]),
+    )
 }
 
 /// Launch the embedded Bokeh visualization script on the given TSV file.
@@ -814,25 +818,50 @@ pub fn write_normalized_output(
     position_mode: PositionMode,
 ) -> std::io::Result<()> {
     let normalized = normalize_mismatch_counts(counts);
-    let label = position_label(position_mode);
-    let mut rows: Vec<(&InsertKey, &f64)> = normalized.iter().collect();
-    sort_insert_rows(&mut rows);
+    write_key_table(
+        normalized.keys(),
+        output_file,
+        position_mode,
+        "normalized_frequency",
+        |w, key| writeln!(w, "{:.6}", normalized[key]),
+    )
+}
 
-    with_output_writer(output_file, |w| {
-        writeln!(
-            w,
-            "base_change\tread_num\treference_order\t{}\tnormalized_frequency",
-            label
-        )?;
-        for (key, freq) in &rows {
-            writeln!(
-                w,
-                "{}\t{}\t{}\t{}\t{:.6}",
-                key.base_change, key.read_num, key.reference_order, key.base_position, freq
-            )?;
-        }
-        Ok(())
-    })
+/// Write the main table with block-bootstrap confidence intervals for each row's frequency.
+///
+/// With `normalize`, rows carry `normalized_frequency`, `ci_low`, `ci_high`; otherwise
+/// `count`, `frequency`, `ci_low`, `ci_high`. Rows without an interval print `NA`.
+pub fn write_bootstrap_output(
+    counts: &HashMap<InsertKey, usize>,
+    intervals: &HashMap<InsertKey, (f64, f64)>,
+    output_file: Option<&str>,
+    position_mode: PositionMode,
+    normalize: bool,
+) -> std::io::Result<()> {
+    let normalized = normalize_mismatch_counts(counts);
+    let value_columns = if normalize {
+        "normalized_frequency\tci_low\tci_high"
+    } else {
+        "count\tfrequency\tci_low\tci_high"
+    };
+    write_key_table(
+        counts.keys(),
+        output_file,
+        position_mode,
+        value_columns,
+        |w, key| {
+            if !normalize {
+                write!(w, "{}\t", counts[key])?;
+            }
+            match (normalized.get(key), intervals.get(key)) {
+                (Some(freq), Some((low, high))) => {
+                    writeln!(w, "{:.6}\t{:.6}\t{:.6}", freq, low, high)
+                }
+                (Some(freq), None) => writeln!(w, "{:.6}\tNA\tNA", freq),
+                _ => writeln!(w, "NA\tNA\tNA"),
+            }
+        },
+    )
 }
 
 #[cfg(test)]

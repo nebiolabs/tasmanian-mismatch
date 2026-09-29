@@ -1178,8 +1178,9 @@ pub fn build_tid_map_and_regions(bam_path: &str, region_size: usize) -> (TidName
             .collect(),
     );
 
+    // Regions in genomic order, so results collected per region come out sorted.
     let mut regions = Vec::new();
-    for &tid in tid_to_name.keys() {
+    for tid in 0..bam.header().target_count() as i32 {
         let chr_len = bam.header().target_len(tid as u32).unwrap_or(0) as i64;
         let mut start = 0i64;
         while start < chr_len {
@@ -1618,6 +1619,70 @@ pub fn process_region(
     config: ProcessingConfig,
     bed_filter: &crate::bed::BedFilter<'_>,
 ) -> (HashMap<InsertKey, usize>, usize) {
+    let mut counts: HashMap<InsertKey, usize> = HashMap::new();
+    let reads = for_each_region_read(
+        bam_path,
+        region,
+        context,
+        config,
+        bed_filter,
+        |record, mate_end| {
+            compare_record_to_reference(record, context, config, mate_end, &mut counts);
+        },
+    );
+    (counts, reads)
+}
+
+/// Like `process_region`, but counts each `window_size` bp window of the region separately,
+/// assigning reads by alignment start, and hands each window with counts to `finish_window`
+/// (with the window's start) in order. Reads arrive sorted by start, so a window is finished
+/// as soon as a read starts past it, and only one window's counts are held at a time.
+/// Returns the number of reads counted.
+pub fn process_region_windows(
+    bam_path: &str,
+    region: &GenomicRegion,
+    context: &ProcessingContext,
+    config: ProcessingConfig,
+    bed_filter: &crate::bed::BedFilter<'_>,
+    window_size: i64,
+    mut finish_window: impl FnMut(i64, &HashMap<InsertKey, usize>),
+) -> usize {
+    let mut window_start = region.start;
+    let mut counts: HashMap<InsertKey, usize> = HashMap::new();
+    let reads = for_each_region_read(
+        bam_path,
+        region,
+        context,
+        config,
+        bed_filter,
+        |record, mate_end| {
+            let start = region.start + (record.pos() - region.start) / window_size * window_size;
+            if start != window_start {
+                if !counts.is_empty() {
+                    finish_window(window_start, &counts);
+                    counts.clear();
+                }
+                window_start = start;
+            }
+            compare_record_to_reference(record, context, config, mate_end, &mut counts);
+        },
+    );
+    if !counts.is_empty() {
+        finish_window(window_start, &counts);
+    }
+    reads
+}
+
+/// Fetch `region` and call `count` on every read that starts in it and passes the BED and
+/// record filters, with the read's mate end. Returns the number of reads counted.
+fn for_each_region_read(
+    bam_path: &str,
+    region: &GenomicRegion,
+    context: &ProcessingContext,
+    config: ProcessingConfig,
+    bed_filter: &crate::bed::BedFilter<'_>,
+    mut count: impl FnMut(&Record, Option<i64>),
+) -> usize {
     let chr_name = context
         .tid_to_name
         .get(&region.tid)
@@ -1635,15 +1700,13 @@ pub fn process_region(
             region.end,
             error
         );
-        return (HashMap::new(), 0);
+        return 0;
     }
 
-    let mut local_counts: HashMap<InsertKey, usize> = HashMap::new();
     let mut local_read_count = 0usize;
-    let chunk_bed_intervals = bed_filter
-        .regions
-        .map(|bed| crate::filter_bed_for_region(bed, chr_name, region.start, region.end))
-        .unwrap_or_default();
+    let chunk_bed_intervals: &[crate::bed::BedInterval] = bed_filter.regions.map_or(&[], |bed| {
+        crate::bed_intervals_from(bed, chr_name, region.start)
+    });
     let mut bed_cursor = 0usize;
 
     for result in bam.records() {
@@ -1662,7 +1725,7 @@ pub fn process_region(
             &record,
             bed_filter.filter_whole_reads,
             bed_filter.include_only,
-            &chunk_bed_intervals,
+            chunk_bed_intervals,
             &mut bed_cursor,
         ) {
             continue;
@@ -1674,9 +1737,9 @@ pub fn process_region(
             continue;
         }
 
-        compare_record_to_reference(&record, context, config, mate_end, &mut local_counts);
+        count(&record, mate_end);
         local_read_count += 1;
     }
 
-    (local_counts, local_read_count)
+    local_read_count
 }

@@ -260,3 +260,149 @@ fn integration_min_max_position_excludes_bases_outside_range() {
         );
     }
 }
+
+fn run_mismatch(temp_dir: &Path, log_path: &Path, output_name: &str, extra: &[&str]) -> String {
+    let fixture_bam = temp_dir.join("input.bam");
+    let reference_fa = temp_dir.join("reference.fa");
+    let output_tsv = temp_dir.join(output_name);
+    let binary = env!("CARGO_BIN_EXE_tasmanian-mismatch");
+    let mut args = vec![
+        "-q".to_string(),
+        "0".to_string(),
+        "-m".to_string(),
+        "0".to_string(),
+        "--position-mode".to_string(),
+        "read".to_string(),
+    ];
+    args.extend(extra.iter().map(|a| a.to_string()));
+    args.extend([
+        "-o".to_string(),
+        output_tsv.to_string_lossy().to_string(),
+        fixture_bam.to_string_lossy().to_string(),
+        reference_fa.to_string_lossy().to_string(),
+    ]);
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    log_command(log_path, binary, &arg_refs);
+    let output = Command::new(binary)
+        .args(&args)
+        .output()
+        .expect("failed to execute mismatch binary");
+    log_line(
+        log_path,
+        &format!("stderr:\n{}", String::from_utf8_lossy(&output.stderr)),
+    );
+    assert!(
+        output.status.success(),
+        "mismatch command failed: {extra:?}"
+    );
+    fs::read_to_string(&output_tsv).expect("failed to read mismatch output")
+}
+
+fn prepare_two_chrom_inputs(name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+    let temp_dir = unique_temp_dir(name);
+    let log_path = repo_log_path(name);
+    fs::write(
+        temp_dir.join("reference.fa"),
+        ">chr1\nACGTACGT\n>chr2\nACGTACGT\n",
+    )
+    .expect("failed to write reference");
+    let fixture_bam = temp_dir.join("input.bam");
+    write_two_chrom_bam(&fixture_bam);
+    index::build(&fixture_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
+    (temp_dir, log_path)
+}
+
+#[test]
+fn integration_window_size_reports_each_window_separately() {
+    let (temp_dir, log_path) = prepare_two_chrom_inputs("mismatch_window_integration");
+    // 4 bp windows: each 8 bp read starts at 0, so it lands in the first window of its contig.
+    let output = run_mismatch(&temp_dir, &log_path, "windows.tsv", &["--window-size", "4"]);
+    log_line(&log_path, &format!("window output:\n{output}"));
+
+    let mut lines = output.lines();
+    assert_eq!(
+        lines.next(),
+        Some(
+            "chrom\tstart\tend\tread_num\tbase_change\tcount\tref_total\trate\tall_bases\trate_all"
+        )
+    );
+    // Each read covers two A and two T reference bases.
+    assert!(
+        output
+            .lines()
+            .any(|l| l == "chr1\t0\t4\t1\tA>T\t1\t2\t0.500000\t8\t0.125000"),
+        "expected chr1's A>T in its first window, got:\n{output}"
+    );
+    assert!(
+        output
+            .lines()
+            .any(|l| l == "chr2\t0\t4\t1\tT>A\t1\t2\t0.500000\t8\t0.125000"),
+        "expected chr2's T>A in its first window, got:\n{output}"
+    );
+    // Windows are written in contig order, and windows without reads are omitted.
+    let mut windows: Vec<String> = output
+        .lines()
+        .skip(1)
+        .map(|l| l.splitn(4, '\t').take(3).collect::<Vec<_>>().join("\t"))
+        .collect();
+    windows.dedup();
+    assert_eq!(windows, ["chr1\t0\t4", "chr2\t0\t4"]);
+}
+
+#[test]
+fn integration_window_output_does_not_depend_on_region_size() {
+    let (temp_dir, log_path) = prepare_two_chrom_inputs("mismatch_window_region_integration");
+    let default_chunks = run_mismatch(&temp_dir, &log_path, "default.tsv", &["--window-size", "4"]);
+    // A 3 bp chunk rounds up to one 4 bp window, so each window is its own chunk.
+    let small_chunks = run_mismatch(
+        &temp_dir,
+        &log_path,
+        "small.tsv",
+        &["--window-size", "4", "-r", "3"],
+    );
+    assert_eq!(default_chunks, small_chunks);
+}
+
+#[test]
+fn integration_bootstrap_adds_reproducible_interval_columns() {
+    let (temp_dir, log_path) = prepare_two_chrom_inputs("mismatch_bootstrap_integration");
+    let plain = run_mismatch(&temp_dir, &log_path, "plain.tsv", &[]);
+    let boot_args = ["-r", "4", "--bootstrap", "50"];
+    let boot = run_mismatch(&temp_dir, &log_path, "boot.tsv", &boot_args);
+    log_line(&log_path, &format!("bootstrap output:\n{boot}"));
+
+    assert_eq!(
+        boot.lines().next(),
+        Some(
+            "base_change\tread_num\treference_order\tread_position\tcount\tfrequency\tci_low\tci_high"
+        )
+    );
+    // The leading columns are the plain table's, row for row.
+    let leading = |table: &str| -> Vec<String> {
+        table
+            .lines()
+            .skip(1)
+            .map(|l| l.splitn(6, '\t').take(5).collect::<Vec<_>>().join("\t"))
+            .collect()
+    };
+    assert_eq!(leading(&boot), leading(&plain));
+
+    for line in boot.lines().skip(1) {
+        let fields: Vec<f64> = line
+            .split('\t')
+            .skip(5)
+            .map(|v| v.parse().expect("frequency/CI columns should be numeric"))
+            .collect();
+        let [freq, low, high] = fields[..] else {
+            panic!("expected frequency, ci_low, ci_high in: {line}");
+        };
+        assert!(
+            (0.0..=1.0).contains(&low) && low <= high && high <= 1.0,
+            "bad interval in: {line}"
+        );
+        assert!((0.0..=1.0).contains(&freq), "bad frequency in: {line}");
+    }
+
+    let again = run_mismatch(&temp_dir, &log_path, "boot_again.tsv", &boot_args);
+    assert_eq!(boot, again, "same seed should reproduce the same intervals");
+}
