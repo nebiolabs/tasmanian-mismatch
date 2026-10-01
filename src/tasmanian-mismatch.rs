@@ -26,12 +26,15 @@ fn main() {
     configure_thread_pool(args.threads);
 
     let (max_read_len, mut reference, bed_regions) = std::thread::scope(|s| {
-        let t1 = s.spawn(|| compute_read_len_max_from_sample_bam(&args.bam_path, 10_000));
+        let t1 = s.spawn(|| {
+            args.max_read_length
+                .unwrap_or_else(|| compute_read_len_max_from_sample_bam(&args.bam_path, 10_000))
+        });
         let t2 = s.spawn(|| load_reference_genome(&args.reference_path));
         let t3 = s.spawn(|| maybe_parse_bed_file(args.bed_file.as_deref()));
         (t1.join().unwrap(), t2.join().unwrap(), t3.join().unwrap())
     });
-    log::info!("Sampled max read length: {}", max_read_len);
+    log::info!("Max read length: {}", max_read_len);
 
     let bed_for_filtering = if let Some(regions) = bed_regions {
         log::info!("BED filter mode: {:?}", args.bed_filter_mode);

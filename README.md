@@ -77,6 +77,8 @@ Common options:
 --max-fragment-length <LEN>       Maximum fragment length for insert mode
 --min-position <N>                Minimum position-mode axis position (1-based, inclusive) to include
 --max-position <N>                Maximum position-mode axis position (1-based, inclusive) to include
+--max-read-length <LEN>           Read length for the position axis (default: longest of the first
+                                  10,000 reads); set it when combining runs or for long reads
 --methylation-mode                Collapse methylation-driven mismatch classes
 --normalize                       Write normalized frequencies instead of raw counts
 --emit-rescaling-matrix           Emit matrix rows for tasmanian-rescale-quality

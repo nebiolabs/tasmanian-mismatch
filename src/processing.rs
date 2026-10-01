@@ -1120,15 +1120,32 @@ pub fn read_mode_read_position(
     seq_len: usize,
     is_reverse: bool,
     max_read_len: usize,
-) -> usize {
+) -> Option<usize> {
+    // Reads longer than the axis keep a 5' and a 3' window of it; bases in between are skipped.
+    if seq_len > max_read_len {
+        let (from_5p, from_3p) = if is_reverse {
+            (seq_len - 1 - pos, pos)
+        } else {
+            (pos, seq_len - 1 - pos)
+        };
+        let five_prime_window = max_read_len / 2;
+        return if from_5p < five_prime_window {
+            Some(from_5p + 1)
+        } else if from_3p < max_read_len - five_prime_window {
+            Some(max_read_len - from_3p)
+        } else {
+            None
+        };
+    }
+
     let half = seq_len.div_ceil(2);
 
-    match (is_reverse, pos <= half) {
+    Some(match (is_reverse, pos <= half) {
         (true, true) => max_read_len - pos,
         (true, false) => seq_len - pos,
         (false, false) => pos + (max_read_len - seq_len) + 1,
         (false, true) => pos + 1,
-    }
+    })
 }
 
 pub fn base_position_for_mode(
@@ -1139,19 +1156,19 @@ pub fn base_position_for_mode(
     reference_order: ReferenceOrder,
     stretch: bool,
     fragment_len: Option<usize>,
-) -> usize {
+) -> Option<usize> {
     match config.position_mode {
         PositionMode::Read => {
             read_mode_read_position(read_pos, seq_len, is_reverse, config.mode_len)
         }
-        PositionMode::Insert => insert_mode_read_position(
+        PositionMode::Insert => Some(insert_mode_read_position(
             reference_order,
             read_pos,
             seq_len,
             config.mode_len,
             stretch,
             fragment_len,
-        ),
+        )),
     }
 }
 
@@ -1535,7 +1552,7 @@ pub fn compare_record_to_reference(
                         config.is_methylation,
                     );
 
-                    let base_position = base_position_for_mode(
+                    let Some(base_position) = base_position_for_mode(
                         &config,
                         rp,
                         seq_len,
@@ -1543,7 +1560,9 @@ pub fn compare_record_to_reference(
                         reference_order,
                         stretch,
                         estimated_fragment_length(record, mate_end),
-                    );
+                    ) else {
+                        continue;
+                    };
 
                     if base_position < config.min_read_position
                         || base_position > config.max_read_position
@@ -1588,7 +1607,7 @@ pub fn compare_record_to_reference(
             record.is_reverse(),
             config.is_methylation,
         );
-        let base_position = base_position_for_mode(
+        let Some(base_position) = base_position_for_mode(
             &config,
             comparison.read_pos,
             seq_len,
@@ -1596,7 +1615,9 @@ pub fn compare_record_to_reference(
             reference_order,
             stretch,
             frag_len,
-        );
+        ) else {
+            continue;
+        };
         if base_position < config.min_read_position || base_position > config.max_read_position {
             continue;
         }

@@ -1275,11 +1275,21 @@ mod tests {
         );
 
         // read_mode_read_position: forward, first half.
-        assert_eq!(read_mode_read_position(2, 10, false, 10), 3);
+        assert_eq!(read_mode_read_position(2, 10, false, 10), Some(3));
         // forward, second half.
-        assert_eq!(read_mode_read_position(7, 10, false, 10), 8);
+        assert_eq!(read_mode_read_position(7, 10, false, 10), Some(8));
         // reverse.
-        assert_eq!(read_mode_read_position(2, 10, true, 10), 8);
+        assert_eq!(read_mode_read_position(2, 10, true, 10), Some(8));
+        // reads longer than the axis keep 5 bases from each end of a 10-base axis.
+        assert_eq!(read_mode_read_position(0, 25, false, 10), Some(1));
+        assert_eq!(read_mode_read_position(4, 25, false, 10), Some(5));
+        assert_eq!(read_mode_read_position(5, 25, false, 10), None);
+        assert_eq!(read_mode_read_position(19, 25, false, 10), None);
+        assert_eq!(read_mode_read_position(20, 25, false, 10), Some(6));
+        assert_eq!(read_mode_read_position(24, 25, false, 10), Some(10));
+        assert_eq!(read_mode_read_position(24, 25, true, 10), Some(1));
+        assert_eq!(read_mode_read_position(0, 25, true, 10), Some(10));
+        assert_eq!(read_mode_read_position(12, 25, true, 10), None);
 
         // base_position_for_mode with Read mode.
         let config = ProcessingConfig {

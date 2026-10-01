@@ -249,6 +249,10 @@ pub struct Args {
     #[arg(long)]
     pub max_read_position: Option<usize>,
 
+    /// Read length for the position axis; omit to use the longest of the first 10,000 reads
+    #[arg(long, value_parser = clap::builder::RangedU64ValueParser::<usize>::new().range(1..))]
+    pub max_read_length: Option<usize>,
+
     /// read position (R1 and R2 split) or fragment (insert) position mode
     #[arg(long, value_enum, default_value = "insert")]
     pub position_mode: PositionMode,
