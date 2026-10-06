@@ -1306,6 +1306,22 @@ mod tests {
             insert_mode_read_position(ReferenceOrder::First, 2, 4, 5, false, Some(3)),
             Some(3)
         );
+        // short fragment (100 <= 150 - 10): both mates map the same reference base to the same axis position.
+        for order in [ReferenceOrder::First, ReferenceOrder::Second] {
+            assert_eq!(
+                insert_mode_read_position(order, 10, 100, 150, false, Some(100)),
+                Some(11)
+            );
+            assert_eq!(
+                insert_mode_read_position(order, 90, 100, 150, false, Some(100)),
+                Some(291)
+            );
+        }
+        // non-short fragment: second read stays anchored at the axis end.
+        assert_eq!(
+            insert_mode_read_position(ReferenceOrder::Second, 10, 100, 150, false, Some(300)),
+            Some(211)
+        );
 
         // read_mode_read_position: forward, first half.
         assert_eq!(read_mode_read_position(2, 10, false, 10), Some(3));

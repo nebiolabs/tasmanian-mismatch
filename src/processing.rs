@@ -1116,14 +1116,13 @@ pub fn insert_mode_read_position(
             let s = t * t * (3.0 - 2.0 * t);
             Some(axis_len - (s * (max_read_len - 1) as f64).round() as usize)
         }
-    } else if order == ReferenceOrder::First {
+    } else if order == ReferenceOrder::First || short_fragment {
+        // In a short fragment both mates span the whole fragment in reference orientation, so they share one mapping.
         if read_pos >= seq_len / 2 && short_fragment {
             from_axis_end()
         } else {
             Some(read_pos + 1)
         }
-    } else if read_pos >= seq_len / 2 && short_fragment {
-        Some(read_pos + 1)
     } else {
         from_axis_end()
     };
