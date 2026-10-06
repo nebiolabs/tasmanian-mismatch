@@ -163,7 +163,9 @@ Common options:
 -q, --min-base-quality <QUAL>         Minimum base quality
 --min-map-quality <MAPQ>              Minimum mapping quality
 -m, --methylation                     Convert C/T in read 1 back to C (bisulfite/EM-seq)
---use-insert-mode                     Use fragment-level instead of read-level positions
+--use-insert-mode                     Use fragment-level instead of read-level positions; the
+                                      discount table then does not match tasmanian-mismatch
+                                      (use read mode for --discount-table)
 --use-read-len-max [<LEN>]            Read length for the position axis (default: longest of the
                                       first 10,000 reads); use the same value as tasmanian-mismatch
                                       --max-read-length so discount rows line up

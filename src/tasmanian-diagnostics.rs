@@ -116,6 +116,13 @@ fn main() {
         None => compute_read_len_max_from_sample_bam(&args.bam_file, 10_000),
     };
     log::info!("Max read length: {}", mode_len);
+    if args.use_insert_mode {
+        log::warn!(
+            "--use-insert-mode: discount table positions use diagnostics' own insert axis and do not \
+             match tasmanian-mismatch --position-mode insert; use read mode (no --use-insert-mode) \
+             for a table to pass to --discount-table"
+        );
+    }
 
     let mut reference = load_reference_genome(&args.reference_fasta);
 
