@@ -1086,33 +1086,41 @@ pub fn insert_mode_read_position(
     max_read_len: usize,
     stretch: bool,
     fragment_len: Option<usize>,
-) -> usize {
-    let short_fragment = fragment_len.is_some_and(|fl| fl <= max_read_len - 10);
+) -> Option<usize> {
+    let short_fragment = fragment_len.is_some_and(|fl| {
+        max_read_len
+            .checked_sub(10)
+            .is_some_and(|limit| fl <= limit)
+    });
     let trailing_bases = seq_len - (read_pos + 1);
+    let axis_len = 2 * max_read_len;
+    // Bases of reads longer than the axis can fall outside it; they are skipped.
+    let from_axis_end = || axis_len.checked_sub(trailing_bases);
 
-    if stretch && seq_len > 1 {
+    let position = if stretch && seq_len > 1 {
         if order == ReferenceOrder::First {
             // Cubic smooth-step: s = t^2(3 - 2t), maps [0,1] to [0,1].let t = read_pos as f64 / (seq_len - 1) as f64;
             let t = read_pos as f64 / (seq_len - 1) as f64;
             let s = t * t * (3.0 - 2.0 * t);
-            1 + (s * (max_read_len - 1) as f64).round() as usize
+            Some(1 + (s * (max_read_len - 1) as f64).round() as usize)
         } else {
             let trailing = seq_len - 1 - read_pos;
             let t = trailing as f64 / (seq_len - 1) as f64;
             let s = t * t * (3.0 - 2.0 * t);
-            2 * max_read_len - (s * (max_read_len - 1) as f64).round() as usize
+            Some(axis_len - (s * (max_read_len - 1) as f64).round() as usize)
         }
     } else if order == ReferenceOrder::First {
         if read_pos >= seq_len / 2 && short_fragment {
-            2 * max_read_len - trailing_bases
+            from_axis_end()
         } else {
-            read_pos + 1
+            Some(read_pos + 1)
         }
     } else if read_pos >= seq_len / 2 && short_fragment {
-        read_pos + 1
+        Some(read_pos + 1)
     } else {
-        2 * max_read_len - trailing_bases
-    }
+        from_axis_end()
+    };
+    position.filter(|&p| (1..=axis_len).contains(&p))
 }
 
 pub fn read_mode_read_position(
@@ -1161,14 +1169,14 @@ pub fn base_position_for_mode(
         PositionMode::Read => {
             read_mode_read_position(read_pos, seq_len, is_reverse, config.mode_len)
         }
-        PositionMode::Insert => Some(insert_mode_read_position(
+        PositionMode::Insert => insert_mode_read_position(
             reference_order,
             read_pos,
             seq_len,
             config.mode_len,
             stretch,
             fragment_len,
-        )),
+        ),
     }
 }
 
@@ -1632,13 +1640,53 @@ pub fn compare_record_to_reference(
     }
 }
 
+/// Length of the position axis: `mode_len` in read mode, the R1 + R2 span in insert mode.
+pub fn position_axis_len(config: &ProcessingConfig) -> usize {
+    match config.position_mode {
+        PositionMode::Read => config.mode_len,
+        PositionMode::Insert => 2 * config.mode_len,
+    }
+}
+
+/// Log how many reads were longer than the position axis and had bases skipped.
+pub fn report_reads_longer_than_axis(reads: usize, config: &ProcessingConfig) {
+    if reads == 0 {
+        return;
+    }
+    let axis_len = position_axis_len(config);
+    match config.position_mode {
+        PositionMode::Read => log::info!(
+            "{} reads were longer than the {}-position axis; only their 5' and 3' ends were counted",
+            reads,
+            axis_len
+        ),
+        PositionMode::Insert => log::warn!(
+            "{} reads were longer than the {}-position insert axis; their bases outside it were skipped. \
+             For long-read data (ONT, PacBio) use --position-mode read --max-read-length <LEN>",
+            reads,
+            axis_len
+        ),
+    }
+}
+
+/// Per-region totals returned by [`process_region`].
+#[derive(Debug, Default)]
+pub struct RegionCounts {
+    /// Mismatch counts keyed by base change and axis position.
+    pub counts: HashMap<InsertKey, usize>,
+    /// Reads compared against the reference.
+    pub reads: usize,
+    /// Compared reads longer than the position axis; some of their bases were skipped.
+    pub reads_longer_than_axis: usize,
+}
+
 pub fn process_region(
     bam_path: &str,
     region: &GenomicRegion,
     context: &ProcessingContext,
     config: ProcessingConfig,
     bed_filter: &crate::bed::BedFilter<'_>,
-) -> (HashMap<InsertKey, usize>, usize) {
+) -> RegionCounts {
     let chr_name = context
         .tid_to_name
         .get(&region.tid)
@@ -1656,11 +1704,13 @@ pub fn process_region(
             region.end,
             error
         );
-        return (HashMap::new(), 0);
+        return RegionCounts::default();
     }
 
     let mut local_counts: HashMap<InsertKey, usize> = HashMap::new();
     let mut local_read_count = 0usize;
+    let mut reads_longer_than_axis = 0usize;
+    let axis_len = position_axis_len(&config);
     let chunk_bed_intervals = bed_filter
         .regions
         .map(|bed| crate::filter_bed_for_region(bed, chr_name, region.start, region.end))
@@ -1697,7 +1747,14 @@ pub fn process_region(
 
         compare_record_to_reference(&record, context, config, mate_end, &mut local_counts);
         local_read_count += 1;
+        if record.seq_len() > axis_len {
+            reads_longer_than_axis += 1;
+        }
     }
 
-    (local_counts, local_read_count)
+    RegionCounts {
+        counts: local_counts,
+        reads: local_read_count,
+        reads_longer_than_axis,
+    }
 }

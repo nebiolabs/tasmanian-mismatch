@@ -78,7 +78,9 @@ Common options:
 --min-position <N>                Minimum position-mode axis position (1-based, inclusive) to include
 --max-position <N>                Maximum position-mode axis position (1-based, inclusive) to include
 --max-read-length <LEN>           Read length for the position axis (default: longest of the first
-                                  10,000 reads); set it when combining runs or for long reads
+                                  10,000 reads); set it when combining runs. Long-read data
+                                  (ONT, PacBio) requires both --position-mode read and
+                                  --max-read-length <LEN>
 --methylation-mode                Collapse methylation-driven mismatch classes
 --normalize                       Write normalized frequencies instead of raw counts
 --emit-rescaling-matrix           Emit matrix rows for tasmanian-rescale-quality
@@ -118,6 +120,15 @@ tasmanian-mismatch sample.bam reference.fa \
   --min-position 5 \
   --max-position 40 \
   -o mismatch_positions_5_40.tsv
+
+# Long-read data (ONT, PacBio): always pass BOTH --position-mode read and
+# --max-read-length. Insert mode (the default) does not support long reads.
+# Reads longer than the axis keep their 5' and 3' ends (half the axis each)
+# and skip the bases in between.
+tasmanian-mismatch ont_sample.bam reference.fa \
+  --position-mode read \
+  --max-read-length 1000 \
+  -o mismatch_long_reads.tsv
 
 # Emit rescaling matrix rows to stdout (or -o file.tsv)  --> _Under development_
 tasmanian-mismatch sample.bam reference.fa \

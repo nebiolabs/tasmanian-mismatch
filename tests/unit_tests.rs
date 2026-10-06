@@ -1260,18 +1260,46 @@ mod tests {
         // insert_mode_read_position: non-stretch, first read.
         assert_eq!(
             insert_mode_read_position(ReferenceOrder::First, 0, 10, 10, false, None),
-            1
+            Some(1)
         );
         assert_eq!(
             insert_mode_read_position(ReferenceOrder::First, 9, 10, 10, false, None),
-            10
+            Some(10)
         );
         // second read, non-stretch.
         // read_pos=8 in a 10-base read (max=12): insert-facing end is at 2*12-9=15, external at 2*12-0=24.
         // Position 8 maps to 2*max_read_len - read_pos = 24 - 8 = 16.
         assert_eq!(
             insert_mode_read_position(ReferenceOrder::Second, 8, 10, 12, false, None),
-            23
+            Some(23)
+        );
+
+        // insert mode skips bases of reads longer than the 2 * max_read_len axis (20 here).
+        assert_eq!(
+            insert_mode_read_position(ReferenceOrder::First, 19, 25, 10, false, None),
+            Some(20)
+        );
+        assert_eq!(
+            insert_mode_read_position(ReferenceOrder::First, 20, 25, 10, false, None),
+            None
+        );
+        assert_eq!(
+            insert_mode_read_position(ReferenceOrder::Second, 4, 25, 10, false, None),
+            None
+        );
+        assert_eq!(
+            insert_mode_read_position(ReferenceOrder::Second, 5, 25, 10, false, None),
+            Some(1)
+        );
+        // stretch maps any read length onto the axis.
+        assert_eq!(
+            insert_mode_read_position(ReferenceOrder::First, 24, 25, 10, true, None),
+            Some(10)
+        );
+        // max_read_len below 10 no longer underflows the short-fragment check.
+        assert_eq!(
+            insert_mode_read_position(ReferenceOrder::First, 2, 4, 5, false, Some(3)),
+            Some(3)
         );
 
         // read_mode_read_position: forward, first half.
