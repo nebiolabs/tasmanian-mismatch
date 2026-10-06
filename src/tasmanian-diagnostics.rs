@@ -38,7 +38,9 @@ struct Args {
     #[arg(short = 'm', long)]
     methylation: bool,
 
-    /// Optional read-length normalization argument preserved for processing compatibility
+    /// Read length for the position axis; use the same value as tasmanian-mismatch
+    /// --max-read-length. Omitted or given without a value, the longest of the first
+    /// 10,000 reads is used, as in tasmanian-mismatch.
     #[arg(long, num_args = 0..=1, value_name = "LENGTH")]
     use_read_len_max: Option<Option<u32>>,
 
@@ -108,24 +110,19 @@ fn main() {
             .expect("Failed to set thread pool size");
     }
 
-    let mode_len = match args.use_read_len_max {
-        None => 0,
-        Some(None) => {
-            let max_l = compute_read_len_max_from_sample_bam(&args.bam_file, 100_000);
-            log::info!(
-                "Using max read length: {} for processing compatibility",
-                max_l
-            );
-            max_l
-        }
-        Some(Some(val)) => {
-            log::info!(
-                "Using max read length: {} for processing compatibility",
-                val
-            );
-            val as usize
-        }
+    // Sampled like tasmanian-mismatch so both tools use the same position axis.
+    let mode_len = match args.use_read_len_max.flatten() {
+        Some(val) => val as usize,
+        None => compute_read_len_max_from_sample_bam(&args.bam_file, 10_000),
     };
+    log::info!("Max read length: {}", mode_len);
+    if args.use_insert_mode {
+        log::warn!(
+            "--use-insert-mode: discount table positions use diagnostics' own insert axis and do not \
+             match tasmanian-mismatch --position-mode insert; use read mode (no --use-insert-mode) \
+             for a table to pass to --discount-table"
+        );
+    }
 
     let mut reference = load_reference_genome(&args.reference_fasta);
 

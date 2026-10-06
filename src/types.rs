@@ -8,8 +8,8 @@ use std::collections::{HashMap, HashSet};
 pub struct MismatchKey {
     /// Mismatch class such as `A>G` or `C>T`.
     pub mismatch_type: String, // e.g., "A>G", "C>T"
-    /// Position within the read in 0-based coordinates.
-    pub read_position: usize, // Position in the read (0-based)
+    /// Read-mode axis position (1-based, as in tasmanian-mismatch); insert mode keeps its own axis.
+    pub read_position: usize,
     /// Read number within a pair.
     pub read_num: u8, // 1 or 2 for paired-end reads
 }
@@ -248,6 +248,10 @@ pub struct Args {
     /// Maximum position-mode axis position (1-based, inclusive) to include in counts; omit for no upper bound
     #[arg(long)]
     pub max_read_position: Option<usize>,
+
+    /// Read length for the position axis; omit to use the longest of the first 10,000 reads
+    #[arg(long, value_parser = clap::builder::RangedU64ValueParser::<usize>::new().range(1..))]
+    pub max_read_length: Option<usize>,
 
     /// read position (R1 and R2 split) or fragment (insert) position mode
     #[arg(long, value_enum, default_value = "insert")]

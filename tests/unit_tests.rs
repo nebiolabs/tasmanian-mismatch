@@ -42,6 +42,10 @@ mod tests {
 
         // Insert mode, read 2: (2*100+10) - (90-30) = 150
         assert_eq!(correct_read_len_with_mode(30, 90, 100, true, 2), 150);
+
+        // Reads longer than the mode keep their raw position instead of underflowing.
+        assert_eq!(correct_read_len_with_mode(900, 1000, 150, false, 1), 900);
+        assert_eq!(correct_read_len_with_mode(100, 1000, 150, true, 2), 100);
     }
 
     #[test]
@@ -203,7 +207,7 @@ mod tests {
             softclip_threshold: 0.0,
             min_base_quality: 0,
             is_methylation: false,
-            mode_len: 0,
+            mode_len: 10,
             min_map_quality: 0,
             required_flags: 0,
             filter_flags: 0,
@@ -233,7 +237,8 @@ mod tests {
         );
 
         assert_eq!(key.mismatch_type, "G>A");
-        assert_eq!(key.read_position, 0);
+        // 1-based read-mode axis position, the same one tasmanian-mismatch reports.
+        assert_eq!(key.read_position, 1);
         assert_eq!(key.read_num, 1);
     }
 
@@ -1260,26 +1265,64 @@ mod tests {
         // insert_mode_read_position: non-stretch, first read.
         assert_eq!(
             insert_mode_read_position(ReferenceOrder::First, 0, 10, 10, false, None),
-            1
+            Some(1)
         );
         assert_eq!(
             insert_mode_read_position(ReferenceOrder::First, 9, 10, 10, false, None),
-            10
+            Some(10)
         );
         // second read, non-stretch.
         // read_pos=8 in a 10-base read (max=12): insert-facing end is at 2*12-9=15, external at 2*12-0=24.
         // Position 8 maps to 2*max_read_len - read_pos = 24 - 8 = 16.
         assert_eq!(
             insert_mode_read_position(ReferenceOrder::Second, 8, 10, 12, false, None),
-            23
+            Some(23)
+        );
+
+        // insert mode skips bases of reads longer than the 2 * max_read_len axis (20 here).
+        assert_eq!(
+            insert_mode_read_position(ReferenceOrder::First, 19, 25, 10, false, None),
+            Some(20)
+        );
+        assert_eq!(
+            insert_mode_read_position(ReferenceOrder::First, 20, 25, 10, false, None),
+            None
+        );
+        assert_eq!(
+            insert_mode_read_position(ReferenceOrder::Second, 4, 25, 10, false, None),
+            None
+        );
+        assert_eq!(
+            insert_mode_read_position(ReferenceOrder::Second, 5, 25, 10, false, None),
+            Some(1)
+        );
+        // stretch maps any read length onto the axis.
+        assert_eq!(
+            insert_mode_read_position(ReferenceOrder::First, 24, 25, 10, true, None),
+            Some(10)
+        );
+        // max_read_len below 10 no longer underflows the short-fragment check.
+        assert_eq!(
+            insert_mode_read_position(ReferenceOrder::First, 2, 4, 5, false, Some(3)),
+            Some(3)
         );
 
         // read_mode_read_position: forward, first half.
-        assert_eq!(read_mode_read_position(2, 10, false, 10), 3);
+        assert_eq!(read_mode_read_position(2, 10, false, 10), Some(3));
         // forward, second half.
-        assert_eq!(read_mode_read_position(7, 10, false, 10), 8);
+        assert_eq!(read_mode_read_position(7, 10, false, 10), Some(8));
         // reverse.
-        assert_eq!(read_mode_read_position(2, 10, true, 10), 8);
+        assert_eq!(read_mode_read_position(2, 10, true, 10), Some(8));
+        // reads longer than the axis keep 5 bases from each end of a 10-base axis.
+        assert_eq!(read_mode_read_position(0, 25, false, 10), Some(1));
+        assert_eq!(read_mode_read_position(4, 25, false, 10), Some(5));
+        assert_eq!(read_mode_read_position(5, 25, false, 10), None);
+        assert_eq!(read_mode_read_position(19, 25, false, 10), None);
+        assert_eq!(read_mode_read_position(20, 25, false, 10), Some(6));
+        assert_eq!(read_mode_read_position(24, 25, false, 10), Some(10));
+        assert_eq!(read_mode_read_position(24, 25, true, 10), Some(1));
+        assert_eq!(read_mode_read_position(0, 25, true, 10), Some(10));
+        assert_eq!(read_mode_read_position(12, 25, true, 10), None);
 
         // base_position_for_mode with Read mode.
         let config = ProcessingConfig {

@@ -77,6 +77,10 @@ Common options:
 --max-fragment-length <LEN>       Maximum fragment length for insert mode
 --min-position <N>                Minimum position-mode axis position (1-based, inclusive) to include
 --max-position <N>                Maximum position-mode axis position (1-based, inclusive) to include
+--max-read-length <LEN>           Read length for the position axis (default: longest of the first
+                                  10,000 reads); set it when combining runs. Long-read data
+                                  (ONT, PacBio) requires both --position-mode read and
+                                  --max-read-length <LEN>
 --methylation-mode                Collapse methylation-driven mismatch classes
 --normalize                       Write normalized frequencies instead of raw counts
 --emit-rescaling-matrix           Emit matrix rows for tasmanian-rescale-quality
@@ -117,6 +121,15 @@ tasmanian-mismatch sample.bam reference.fa \
   --max-position 40 \
   -o mismatch_positions_5_40.tsv
 
+# Long-read data (ONT, PacBio): always pass BOTH --position-mode read and
+# --max-read-length. Insert mode (the default) does not support long reads.
+# Reads longer than the axis keep their 5' and 3' ends (half the axis each)
+# and skip the bases in between.
+tasmanian-mismatch ont_sample.bam reference.fa \
+  --position-mode read \
+  --max-read-length 1000 \
+  -o mismatch_long_reads.tsv
+
 # Emit rescaling matrix rows to stdout (or -o file.tsv)  --> _Under development_
 tasmanian-mismatch sample.bam reference.fa \
   --position-mode read \
@@ -150,7 +163,12 @@ Common options:
 -q, --min-base-quality <QUAL>         Minimum base quality
 --min-map-quality <MAPQ>              Minimum mapping quality
 -m, --methylation                     Convert C/T in read 1 back to C (bisulfite/EM-seq)
---use-insert-mode                     Use fragment-level instead of read-level positions
+--use-insert-mode                     Use fragment-level instead of read-level positions; the
+                                      discount table then does not match tasmanian-mismatch
+                                      (use read mode for --discount-table)
+--use-read-len-max [<LEN>]            Read length for the position axis (default: longest of the
+                                      first 10,000 reads); use the same value as tasmanian-mismatch
+                                      --max-read-length so discount rows line up
 --min-fragment-length <LEN>           Minimum estimated fragment length for a read to be counted
 --max-fragment-length <LEN>           Maximum estimated fragment length for a read to be counted
 --genomic-threshold <N>               Minimum mismatch count for reporting a genomic site

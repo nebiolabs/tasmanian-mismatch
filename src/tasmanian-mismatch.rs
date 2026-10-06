@@ -7,8 +7,8 @@ use tasmanian_mismatch::{
     Args, BedFilter, BedFilterMode, InsertKey, PositionMode, ProcessingConfig, ProcessingContext,
     apply_external_discounts, build_tid_map_and_regions, compute_read_len_max_from_sample_bam,
     configure_thread_pool, launch_visualization, load_discount_table, load_reference_genome,
-    mask_reference_with_bed, maybe_parse_bed_file, process_region, write_normalized_output,
-    write_output, write_rescaling_matrix_output,
+    mask_reference_with_bed, maybe_parse_bed_file, process_region, report_reads_longer_than_axis,
+    write_normalized_output, write_output, write_rescaling_matrix_output,
 };
 
 fn main() {
@@ -26,12 +26,15 @@ fn main() {
     configure_thread_pool(args.threads);
 
     let (max_read_len, mut reference, bed_regions) = std::thread::scope(|s| {
-        let t1 = s.spawn(|| compute_read_len_max_from_sample_bam(&args.bam_path, 10_000));
+        let t1 = s.spawn(|| {
+            args.max_read_length
+                .unwrap_or_else(|| compute_read_len_max_from_sample_bam(&args.bam_path, 10_000))
+        });
         let t2 = s.spawn(|| load_reference_genome(&args.reference_path));
         let t3 = s.spawn(|| maybe_parse_bed_file(args.bed_file.as_deref()));
         (t1.join().unwrap(), t2.join().unwrap(), t3.join().unwrap())
     });
-    log::info!("Sampled max read length: {}", max_read_len);
+    log::info!("Max read length: {}", max_read_len);
 
     let bed_for_filtering = if let Some(regions) = bed_regions {
         log::info!("BED filter mode: {:?}", args.bed_filter_mode);
@@ -80,6 +83,7 @@ fn main() {
     };
 
     let total_reads = AtomicUsize::new(0);
+    let total_reads_longer_than_axis = AtomicUsize::new(0);
     let global_counts: Arc<Mutex<HashMap<InsertKey, usize>>> = Arc::new(Mutex::new(HashMap::new()));
 
     regions.par_iter().for_each(|region| {
@@ -93,12 +97,14 @@ fn main() {
             filter_whole_reads: args.bed_filter_mode.filters_whole_reads(),
             include_only: args.bed_filter_mode.include_only(),
         };
-        let (region_counts, region_reads) =
-            process_region(&args.bam_path, region, &context, config, &bed_filter);
+        let region_result = process_region(&args.bam_path, region, &context, config, &bed_filter);
+        let region_reads = region_result.reads;
+        total_reads_longer_than_axis
+            .fetch_add(region_result.reads_longer_than_axis, Ordering::Relaxed);
 
-        if !region_counts.is_empty() {
+        if !region_result.counts.is_empty() {
             let mut counts = global_counts.lock().expect("Lock poisoned");
-            for (key, count) in region_counts {
+            for (key, count) in region_result.counts {
                 *counts.entry(key).or_insert(0) += count;
             }
         }
@@ -112,6 +118,10 @@ fn main() {
     log::info!(
         "Total reads processed: {}",
         total_reads.load(Ordering::Relaxed)
+    );
+    report_reads_longer_than_axis(
+        total_reads_longer_than_axis.load(Ordering::Relaxed),
+        &config,
     );
 
     let mut counts = global_counts.lock().expect("Lock poisoned");
