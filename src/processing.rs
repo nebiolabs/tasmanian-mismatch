@@ -126,13 +126,20 @@ pub fn create_mismatch_key(
     } else {
         r_pos
     };
-    let mode_adjusted_r_pos = correct_read_len_with_mode(
-        adjusted_r_pos,
-        seq_len,
-        config.mode_len,
-        config.use_insert_mode,
-        read_ctx.read_num,
-    );
+    // Read mode uses the same axis as tasmanian-mismatch so discount rows match its keys.
+    // Bases of reads longer than the axis keep their raw 1-based position.
+    let mode_adjusted_r_pos = if config.use_insert_mode {
+        correct_read_len_with_mode(
+            adjusted_r_pos,
+            seq_len,
+            config.mode_len,
+            config.use_insert_mode,
+            read_ctx.read_num,
+        )
+    } else {
+        read_mode_read_position(r_pos, seq_len, read_ctx.is_reverse, config.mode_len)
+            .unwrap_or(adjusted_r_pos + 1)
+    };
 
     MismatchKey {
         mismatch_type: format!(

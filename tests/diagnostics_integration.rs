@@ -162,7 +162,8 @@ fn integration_diagnostics_fixture_bam_produces_expected_outputs() {
     log_line(&log_path, &format!("discounts.tsv:\n{}", discounts));
     assert!(discounts.contains("mismatch_type\tread_num\tread_position\tdiscount_count"));
     assert!(
-        discounts.lines().any(|line| line == "A>T\t1\t4\t1"),
+        // Same position tasmanian-mismatch reports for this mismatch (mismatch_integration.rs).
+        discounts.lines().any(|line| line == "A>T\t1\t5\t1"),
         "expected discount row in output, got:\n{}",
         discounts
     );
@@ -253,7 +254,8 @@ fn integration_diagnostics_can_write_discounts_to_stdout() {
         stdout
     );
     assert!(
-        stdout.lines().any(|line| line == "A>T\t1\t4\t1"),
+        // Same position tasmanian-mismatch reports for this mismatch (mismatch_integration.rs).
+        stdout.lines().any(|line| line == "A>T\t1\t5\t1"),
         "expected discount row in stdout, got:\n{}",
         stdout
     );

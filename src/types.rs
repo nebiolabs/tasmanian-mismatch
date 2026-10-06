@@ -8,8 +8,8 @@ use std::collections::{HashMap, HashSet};
 pub struct MismatchKey {
     /// Mismatch class such as `A>G` or `C>T`.
     pub mismatch_type: String, // e.g., "A>G", "C>T"
-    /// Position within the read in 0-based coordinates.
-    pub read_position: usize, // Position in the read (0-based)
+    /// Read-mode axis position (1-based, as in tasmanian-mismatch); insert mode keeps its own axis.
+    pub read_position: usize,
     /// Read number within a pair.
     pub read_num: u8, // 1 or 2 for paired-end reads
 }

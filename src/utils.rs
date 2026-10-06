@@ -53,7 +53,8 @@ pub fn base_to_char(byte: u8) -> Option<char> {
 /// * `mode_len` - Modal read length used for right-half adjustment.
 ///
 /// # Returns
-/// * The original position when no adjustment is needed.
+/// * The original position when no adjustment is needed, including for reads too long for
+///   the adjustment (`seq_len > mode_len`, or read 2 extending past the insert axis).
 /// * A mode-adjusted position for bases in the right half of shorter reads.
 // instead of this we can use start of read + tlen and call it reference_span
 pub fn correct_read_len_with_mode(
@@ -66,10 +67,12 @@ pub fn correct_read_len_with_mode(
     if use_insert_mode {
         match read_num {
             1 => read_pos,
-            2 => (2 * mode_len + 10) - (seq_len - read_pos),
+            2 => (2 * mode_len + 10)
+                .checked_sub(seq_len - read_pos)
+                .unwrap_or(read_pos),
             _ => read_pos,
         }
-    } else if mode_len > 0 && read_pos > seq_len / 2 {
+    } else if mode_len >= seq_len && read_pos > seq_len / 2 {
         read_pos + (mode_len - seq_len)
     } else {
         read_pos

@@ -164,6 +164,9 @@ Common options:
 --min-map-quality <MAPQ>              Minimum mapping quality
 -m, --methylation                     Convert C/T in read 1 back to C (bisulfite/EM-seq)
 --use-insert-mode                     Use fragment-level instead of read-level positions
+--use-read-len-max [<LEN>]            Read length for the position axis (default: longest of the
+                                      first 10,000 reads); use the same value as tasmanian-mismatch
+                                      --max-read-length so discount rows line up
 --min-fragment-length <LEN>           Minimum estimated fragment length for a read to be counted
 --max-fragment-length <LEN>           Maximum estimated fragment length for a read to be counted
 --genomic-threshold <N>               Minimum mismatch count for reporting a genomic site

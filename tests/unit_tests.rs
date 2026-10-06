@@ -42,6 +42,10 @@ mod tests {
 
         // Insert mode, read 2: (2*100+10) - (90-30) = 150
         assert_eq!(correct_read_len_with_mode(30, 90, 100, true, 2), 150);
+
+        // Reads longer than the mode keep their raw position instead of underflowing.
+        assert_eq!(correct_read_len_with_mode(900, 1000, 150, false, 1), 900);
+        assert_eq!(correct_read_len_with_mode(100, 1000, 150, true, 2), 100);
     }
 
     #[test]
@@ -203,7 +207,7 @@ mod tests {
             softclip_threshold: 0.0,
             min_base_quality: 0,
             is_methylation: false,
-            mode_len: 0,
+            mode_len: 10,
             min_map_quality: 0,
             required_flags: 0,
             filter_flags: 0,
@@ -233,7 +237,8 @@ mod tests {
         );
 
         assert_eq!(key.mismatch_type, "G>A");
-        assert_eq!(key.read_position, 0);
+        // 1-based read-mode axis position, the same one tasmanian-mismatch reports.
+        assert_eq!(key.read_position, 1);
         assert_eq!(key.read_num, 1);
     }
 
