@@ -6,8 +6,8 @@
 use crate::bed::position_overlaps_intervals;
 use crate::methylation::adjust_methylation_base;
 use crate::types::{
-    GenomicMismatchKey, GenomicMismatchValue, GenomicRegion, InconsistencyKey, InsertKey,
-    MismatchKey, OverlapMode, PositionMode, ProcessingConfig, ReadInfo, ReferenceGenome,
+    FragmentBase, GenomicMismatchKey, GenomicMismatchValue, GenomicRegion, InconsistencyKey,
+    InsertKey, MismatchKey, OverlapMode, PositionMode, ProcessingConfig, ReadInfo, ReferenceGenome,
     ReferenceOrder, RescalingMatrix, SoftclipComparison,
 };
 use crate::utils::{base_to_char, calculate_end_pos, complement, correct_read_len_with_mode};
@@ -1092,23 +1092,26 @@ pub fn insert_mode_read_position(
     seq_len: usize,
     max_read_len: usize,
     stretch: bool,
-    fragment_len: Option<usize>,
+    fragment: Option<FragmentBase>,
 ) -> Option<usize> {
-    // In a short fragment both mates span the whole fragment in reference orientation, so they share one mapping
-    // and both include both ends of the fragment.
-    let short_fragment = fragment_len.is_some_and(|fl| {
-        max_read_len
-            .checked_sub(10)
-            .is_some_and(|limit| fl <= limit)
-    });
     let trailing_bases = seq_len - (read_pos + 1);
     let axis_len = 2 * max_read_len;
     // Bases of reads longer than the axis can fall outside it; they are skipped.
     let from_axis_end = || axis_len.checked_sub(trailing_bases);
+    // Mates of a fragment shorter than the axis overlap, so bases are placed by their real offset in the
+    // fragment, split at its midpoint: both mates map a reference base to the same position, and each
+    // fragment end lands on its axis end.
+    let short_fragment = fragment.filter(|f| !stretch && f.len < axis_len && f.offset < f.len);
 
-    let position = if stretch && seq_len > 1 {
+    let position = if let Some(f) = short_fragment {
+        if 2 * f.offset < f.len {
+            Some(f.offset + 1)
+        } else {
+            Some(axis_len - (f.len - 1 - f.offset))
+        }
+    } else if stretch && seq_len > 1 {
         if order == ReferenceOrder::First {
-            // Cubic smooth-step: s = t^2(3 - 2t), maps [0,1] to [0,1].let t = read_pos as f64 / (seq_len - 1) as f64;
+            // Cubic smooth-step: s = t^2(3 - 2t), maps [0,1] to [0,1].
             let t = read_pos as f64 / (seq_len - 1) as f64;
             let s = t * t * (3.0 - 2.0 * t);
             Some(1 + (s * (max_read_len - 1) as f64).round() as usize)
@@ -1118,9 +1121,7 @@ pub fn insert_mode_read_position(
             let s = t * t * (3.0 - 2.0 * t);
             Some(axis_len - (s * (max_read_len - 1) as f64).round() as usize)
         }
-    } else if (order == ReferenceOrder::Second && !short_fragment)
-        || (short_fragment && read_pos >= seq_len / 2)
-    {
+    } else if order == ReferenceOrder::Second {
         from_axis_end()
     } else {
         Some(read_pos + 1)
@@ -1168,7 +1169,7 @@ pub fn base_position_for_mode(
     is_reverse: bool,
     reference_order: ReferenceOrder,
     stretch: bool,
-    fragment_len: Option<usize>,
+    fragment: Option<FragmentBase>,
 ) -> Option<usize> {
     match config.position_mode {
         PositionMode::Read => {
@@ -1180,7 +1181,7 @@ pub fn base_position_for_mode(
             seq_len,
             config.mode_len,
             stretch,
-            fragment_len,
+            fragment,
         ),
     }
 }
@@ -1373,6 +1374,19 @@ pub fn estimated_fragment_length(record: &Record, mate_end: Option<i64>) -> Opti
     }
 
     usize::try_from(fragment_end - fragment_start).ok()
+}
+
+/// Locate the reference base at `genome_pos` within the record's fragment, or `None` when the
+/// fragment length is unknown or the base lies outside the fragment.
+pub fn fragment_base(
+    record: &Record,
+    mate_end: Option<i64>,
+    genome_pos: usize,
+) -> Option<FragmentBase> {
+    let len = estimated_fragment_length(record, mate_end)?;
+    let start = usize::try_from(record.pos().min(record.mpos())).ok()?;
+    let offset = genome_pos.checked_sub(start).filter(|&o| o < len)?;
+    Some(FragmentBase { offset, len })
 }
 
 pub fn should_skip_record(record: &Record, config: ProcessingConfig) -> bool {
@@ -1572,7 +1586,7 @@ pub fn compare_record_to_reference(
                         record.is_reverse(),
                         reference_order,
                         stretch,
-                        estimated_fragment_length(record, mate_end),
+                        fragment_base(record, mate_end, gp),
                     ) else {
                         continue;
                     };
@@ -1606,7 +1620,6 @@ pub fn compare_record_to_reference(
         }
     }
 
-    let frag_len = estimated_fragment_length(record, mate_end);
     for comparison in softclip_comparisons {
         if comparison.read_pos >= qual.len() || qual[comparison.read_pos] < config.min_base_quality
         {
@@ -1627,7 +1640,7 @@ pub fn compare_record_to_reference(
             record.is_reverse(),
             reference_order,
             stretch,
-            frag_len,
+            fragment_base(record, mate_end, comparison.ref_pos),
         ) else {
             continue;
         };

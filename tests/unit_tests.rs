@@ -1301,26 +1301,48 @@ mod tests {
             insert_mode_read_position(ReferenceOrder::First, 24, 25, 10, true, None),
             Some(10)
         );
-        // max_read_len below 10 no longer underflows the short-fragment check.
-        assert_eq!(
-            insert_mode_read_position(ReferenceOrder::First, 2, 4, 5, false, Some(3)),
-            Some(3)
-        );
-        // short fragment (100 <= 150 - 10): both mates map the same reference base to the same axis position.
+        // Fragment shorter than the axis (100 < 2 * 150): both mates map a reference base by its offset
+        // in the fragment, whatever their read position.
+        let frag = |offset| Some(FragmentBase { offset, len: 100 });
         for order in [ReferenceOrder::First, ReferenceOrder::Second] {
             assert_eq!(
-                insert_mode_read_position(order, 10, 100, 150, false, Some(100)),
+                insert_mode_read_position(order, 10, 100, 150, false, frag(10)),
                 Some(11)
             );
             assert_eq!(
-                insert_mode_read_position(order, 90, 100, 150, false, Some(100)),
+                insert_mode_read_position(order, 90, 100, 150, false, frag(90)),
                 Some(291)
             );
         }
-        // non-short fragment: second read stays anchored at the axis end.
+        // Overlapping mates that do not span the fragment (100 bp fragment, 76 bp reads): read 1's 3' end
+        // at offset 75 lands near the axis end, next to read 2's 5' end, not mid-axis.
         assert_eq!(
-            insert_mode_read_position(ReferenceOrder::Second, 10, 100, 150, false, Some(300)),
+            insert_mode_read_position(ReferenceOrder::First, 75, 76, 76, false, frag(75)),
+            Some(128)
+        );
+        assert_eq!(
+            insert_mode_read_position(ReferenceOrder::Second, 75, 76, 76, false, frag(99)),
+            Some(152)
+        );
+        // Fragment at least as long as the axis: second read stays anchored at the axis end.
+        assert_eq!(
+            insert_mode_read_position(
+                ReferenceOrder::Second,
+                10,
+                100,
+                150,
+                false,
+                Some(FragmentBase {
+                    offset: 210,
+                    len: 300
+                })
+            ),
             Some(211)
+        );
+        // Stretch ignores the fragment.
+        assert_eq!(
+            insert_mode_read_position(ReferenceOrder::First, 24, 25, 10, true, frag(24)),
+            Some(10)
         );
 
         // read_mode_read_position: forward, first half.
@@ -1438,6 +1460,14 @@ mod tests {
         assert_eq!(mc_mate_end(&no_mc), None);
         assert_eq!(mc_mate_end(&unpaired), None);
         assert_eq!(estimated_fragment_length(&paired, None), None);
+
+        // fragment_base: fragment spans [0, 12); offsets are from its leftmost base.
+        assert_eq!(
+            fragment_base(&paired, Some(mate_end), 7),
+            Some(FragmentBase { offset: 7, len: 12 })
+        );
+        assert_eq!(fragment_base(&paired, Some(mate_end), 12), None);
+        assert_eq!(fragment_base(&paired, None, 7), None);
 
         // record_read_num: flag 0x40 = first in template.
         let r1 = Record::from_sam(

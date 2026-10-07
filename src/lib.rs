@@ -36,8 +36,8 @@ pub use processing::{
     OverlapCounts, ProcessingContext, ReadContext, RegionCounts, base_position_for_mode,
     build_base_change, build_tid_map_and_regions, cigar_reference_span, compare_and_count,
     compare_record_to_reference, configure_thread_pool, create_mismatch_key,
-    estimated_fragment_length, get_overlap_region, insert_mode_read_position, mc_mate_end,
-    merge_reads_into_insert_position_mode, overlap_interval, position_axis_len,
+    estimated_fragment_length, fragment_base, get_overlap_region, insert_mode_read_position,
+    mc_mate_end, merge_reads_into_insert_position_mode, overlap_interval, position_axis_len,
     process_overlap_region, process_paired_reads_with_overlap, process_record, process_region,
     process_single_record, qualifying_softclip_comparisons, read_is_first_in_reference,
     read_mode_read_position, record_read_num, report_reads_longer_than_axis, rescale_phred_scores,
@@ -45,9 +45,9 @@ pub use processing::{
     softclip_side_comparisons,
 };
 pub use types::{
-    Args, BedFilterMode, DiscountKey, GenomicMismatchKey, GenomicMismatchValue, GenomicRegion,
-    InconsistencyKey, InsertKey, MismatchKey, OverlapMode, PositionMode, ProcessingConfig,
-    ReadInfo, ReferenceGenome, ReferenceOrder, SoftclipComparison,
+    Args, BedFilterMode, DiscountKey, FragmentBase, GenomicMismatchKey, GenomicMismatchValue,
+    GenomicRegion, InconsistencyKey, InsertKey, MismatchKey, OverlapMode, PositionMode,
+    ProcessingConfig, ReadInfo, ReferenceGenome, ReferenceOrder, SoftclipComparison,
 };
 pub use utils::{
     base_to_char, calculate_end_pos, complement, correct_read_len_with_mode, parse_md_tag,

@@ -75,6 +75,13 @@ impl std::fmt::Display for ReferenceOrder {
     }
 }
 
+/// A reference base's place in its fragment: 0-based offset from the fragment's leftmost base, and fragment length.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FragmentBase {
+    pub offset: usize,
+    pub len: usize,
+}
+
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct InsertKey {
     pub base_change: String,
