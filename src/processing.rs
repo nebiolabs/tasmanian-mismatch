@@ -1094,6 +1094,8 @@ pub fn insert_mode_read_position(
     stretch: bool,
     fragment_len: Option<usize>,
 ) -> Option<usize> {
+    // In a short fragment both mates span the whole fragment in reference orientation, so they share one mapping
+    // and both include both ends of the fragment.
     let short_fragment = fragment_len.is_some_and(|fl| {
         max_read_len
             .checked_sub(10)
@@ -1116,15 +1118,12 @@ pub fn insert_mode_read_position(
             let s = t * t * (3.0 - 2.0 * t);
             Some(axis_len - (s * (max_read_len - 1) as f64).round() as usize)
         }
-    } else if order == ReferenceOrder::First || short_fragment {
-        // In a short fragment both mates span the whole fragment in reference orientation, so they share one mapping.
-        if read_pos >= seq_len / 2 && short_fragment {
-            from_axis_end()
-        } else {
-            Some(read_pos + 1)
-        }
-    } else {
+    } else if (order == ReferenceOrder::Second && !short_fragment)
+        || (short_fragment && read_pos >= seq_len / 2)
+    {
         from_axis_end()
+    } else {
+        Some(read_pos + 1)
     };
     position.filter(|&p| (1..=axis_len).contains(&p))
 }
