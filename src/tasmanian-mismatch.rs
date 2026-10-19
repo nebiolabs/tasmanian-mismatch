@@ -145,7 +145,7 @@ fn main() {
             log::warn!("--normalize is ignored when --emit-rescaling-matrix is enabled.");
         }
         log::info!("Writing rescaling matrix rows...");
-        write_rescaling_matrix_output(&counts, args.output_file.as_deref())
+        write_rescaling_matrix_output(&counts, args.output_file.as_deref(), args.rescaling_edge_bp)
             .expect("Failed to write rescaling matrix output");
     } else if args.normalize {
         log::info!("Writing normalized frequencies...");

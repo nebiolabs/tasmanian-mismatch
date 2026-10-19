@@ -415,10 +415,12 @@ pub fn normalize_mismatch_counts(counts: &HashMap<InsertKey, usize>) -> HashMap<
         .collect()
 }
 
-/// Fraction of the read length excluded from each end when computing a
-/// mismatch class's baseline rate (systematic damage, like FFPE, concentrates
-/// near read ends, so the ends are excluded from the "no excess signal" floor).
-const RESCALING_EDGE_FRACTION: f64 = 0.2;
+/// Default bases excluded from each read end when computing a mismatch
+/// class's baseline rate (`--rescaling-edge-bp`). End damage spans a fixed
+/// number of bases set by library-prep enzymes, not a fraction of read length.
+/// 30 matches the previous 20%-of-span exclusion on 150 bp reads.
+/// Next We should change this to 15 (closer to evidence-based values)
+pub const DEFAULT_RESCALING_EDGE_BP: usize = 30;
 
 /// Floor for scaling factors, so a hot position never fully zeroes quality.
 const RESCALING_MIN_SCALING: f32 = 0.05;
@@ -542,8 +544,8 @@ fn rolling_median(values: &[f64], window: usize) -> Vec<f64> {
 ///      separate systematic positional bias (e.g. FFPE damage rising at
 ///      read ends) from sampling noise.
 ///   3. Compared against that class's baseline rate (the median smoothed
-///      rate over the central read, away from the edges where damage
-///      concentrates): positions at or below baseline get a scaling factor
+///      rate over the central read, `edge_bp` bases away from either end
+///      where damage concentrates): positions at or below baseline get a scaling factor
 ///      of 1.0 (left untouched); positions with an elevated smoothed rate
 ///      -- more likely artifact than true variant -- get a proportionally
 ///      reduced factor, floored at [`RESCALING_MIN_SCALING`].
@@ -558,6 +560,8 @@ fn rolling_median(values: &[f64], window: usize) -> Vec<f64> {
 /// * `raw_counts` - The same raw mismatch counts `normalized_counts` was derived from
 ///   (i.e. what was passed to [`normalize_mismatch_counts`]), used only to weigh how much
 ///   to trust each position's deviation from baseline -- never to change the profile shape.
+/// * `edge_bp` - Bases excluded from each end of a class's position span when computing
+///   its baseline; capped at a quarter of the span so short spans keep a central region.
 ///
 /// # Returns
 /// * A HashMap keyed by `(read_num, position, ref_base, read_base)` with scaling factors.
@@ -567,6 +571,7 @@ fn rolling_median(values: &[f64], window: usize) -> Vec<f64> {
 pub fn frequencies_to_rescaling_matrix(
     normalized_counts: &HashMap<InsertKey, f64>,
     raw_counts: &HashMap<InsertKey, usize>,
+    edge_bp: usize,
 ) -> RescalingMatrix {
     // Collapse reference_order into (read_num, position, ref_base, alt_base),
     // pooling both the normalized frequency and the raw mismatch count the
@@ -635,17 +640,11 @@ pub fn frequencies_to_rescaling_matrix(
         let dense = densify_and_interpolate(&positions, &freqs, min_pos, max_pos);
         let smoothed = rolling_median(&dense, window);
 
-        let lo = min_pos as f64 + RESCALING_EDGE_FRACTION * n_positions as f64;
-        let hi = max_pos as f64 - RESCALING_EDGE_FRACTION * n_positions as f64;
-        let central: Vec<f64> = (min_pos..=max_pos)
-            .filter(|&p| (p as f64) >= lo && (p as f64) <= hi)
-            .map(|p| smoothed[p - min_pos])
-            .collect();
-        let baseline = if central.is_empty() {
-            median(&smoothed)
-        } else {
-            median(&central)
-        };
+        // Baseline region: `edge_bp` bases in from each end, capped at a
+        // quarter of the span so short spans still keep their central half
+        // (never empty, since at most n/4 is cut from each side).
+        let edge = edge_bp.min(n_positions / 4);
+        let baseline = median(&smoothed[edge..n_positions - edge]);
 
         const EPS: f64 = 1e-9;
         for (i, &pos) in positions.iter().enumerate() {
@@ -671,9 +670,10 @@ pub fn frequencies_to_rescaling_matrix(
 pub fn write_rescaling_matrix_output(
     counts: &HashMap<InsertKey, usize>,
     output_file: Option<&str>,
+    edge_bp: usize,
 ) -> std::io::Result<()> {
     let normalized = normalize_mismatch_counts(counts);
-    let matrix = frequencies_to_rescaling_matrix(&normalized, counts);
+    let matrix = frequencies_to_rescaling_matrix(&normalized, counts, edge_bp);
 
     let mut rows: Vec<_> = matrix.iter().collect();
     rows.sort_by(|(a, _), (b, _)| {
@@ -886,6 +886,7 @@ mod rescaling_matrix_tests {
         let matrix = frequencies_to_rescaling_matrix(
             &ffpe_like_normalized_counts(),
             &ffpe_like_raw_counts(),
+            DEFAULT_RESCALING_EDGE_BP,
         );
 
         let edge_factor = matrix[&(1, 0, 'C', 'T')];
@@ -906,6 +907,7 @@ mod rescaling_matrix_tests {
         let matrix = frequencies_to_rescaling_matrix(
             &ffpe_like_normalized_counts(),
             &ffpe_like_raw_counts(),
+            DEFAULT_RESCALING_EDGE_BP,
         );
         assert!(!matrix.contains_key(&(1, 0, 'C', 'C')));
     }
@@ -929,7 +931,8 @@ mod rescaling_matrix_tests {
             sparse_raw.insert(insert_key("C>C", 1, pos), 40);
         }
 
-        let matrix = frequencies_to_rescaling_matrix(&normalized, &sparse_raw);
+        let matrix =
+            frequencies_to_rescaling_matrix(&normalized, &sparse_raw, DEFAULT_RESCALING_EDGE_BP);
         let edge_factor = matrix[&(1, 0, 'C', 'T')];
 
         assert!(
@@ -954,7 +957,7 @@ mod rescaling_matrix_tests {
             raw.insert(insert_key("A>G", 2, pos), 50);
         }
 
-        let matrix = frequencies_to_rescaling_matrix(&normalized, &raw);
+        let matrix = frequencies_to_rescaling_matrix(&normalized, &raw, DEFAULT_RESCALING_EDGE_BP);
         assert_eq!(matrix[&(2, 0, 'A', 'G')], RESCALING_MIN_SCALING);
     }
 
@@ -984,10 +987,28 @@ mod rescaling_matrix_tests {
             raw.insert(key_second, 5);
         }
 
-        let matrix = frequencies_to_rescaling_matrix(&normalized, &raw);
+        let matrix = frequencies_to_rescaling_matrix(&normalized, &raw, DEFAULT_RESCALING_EDGE_BP);
         // Flat profile -> every position at its own class baseline -> 1.0,
         // regardless of the per-reference_order split.
         assert!((matrix[&(1, 5, 'A', 'G')] - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn edge_bp_wider_than_span_is_capped() {
+        // A 10-position span with edge_bp = 30: without the n/4 cap the
+        // baseline slice would be empty (or underflow). A flat profile must
+        // still come out at 1.0 everywhere.
+        let mut normalized = HashMap::new();
+        let mut raw = HashMap::new();
+        for pos in 0..10usize {
+            normalized.insert(insert_key("A>G", 1, pos), 0.01);
+            raw.insert(insert_key("A>G", 1, pos), 50);
+        }
+
+        let matrix = frequencies_to_rescaling_matrix(&normalized, &raw, 30);
+        for pos in 0..10u16 {
+            assert!((matrix[&(1, pos, 'A', 'G')] - 1.0).abs() < 1e-6);
+        }
     }
 
     #[test]

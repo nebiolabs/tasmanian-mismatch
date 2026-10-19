@@ -1177,7 +1177,8 @@ mod tests {
         );
 
         let output_path = "test_rescaling_matrix.tsv";
-        write_rescaling_matrix_output(&counts, Some(output_path)).unwrap();
+        write_rescaling_matrix_output(&counts, Some(output_path), DEFAULT_RESCALING_EDGE_BP)
+            .unwrap();
 
         let matrix = load_rescaling_matrix(output_path).unwrap();
         assert!(matrix.contains_key(&(1, 4, 'A', 'T')));
