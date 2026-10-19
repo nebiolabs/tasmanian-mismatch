@@ -418,9 +418,8 @@ pub fn normalize_mismatch_counts(counts: &HashMap<InsertKey, usize>) -> HashMap<
 /// Default bases excluded from each read end when computing a mismatch
 /// class's baseline rate (`--rescaling-edge-bp`). End damage spans a fixed
 /// number of bases set by library-prep enzymes, not a fraction of read length.
-/// 30 matches the previous 20%-of-span exclusion on 150 bp reads.
-/// Next We should change this to 15 (closer to evidence-based values)
-pub const DEFAULT_RESCALING_EDGE_BP: usize = 30;
+/// 15 bp is closer to evidence-based end-damage lengths than the earlier 30.
+pub const DEFAULT_RESCALING_EDGE_BP: usize = 15;
 
 /// Floor for scaling factors, so a hot position never fully zeroes quality.
 const RESCALING_MIN_SCALING: f32 = 0.05;

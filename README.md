@@ -84,6 +84,9 @@ Common options:
 --methylation-mode                Collapse methylation-driven mismatch classes
 --normalize                       Write normalized frequencies instead of raw counts
 --emit-rescaling-matrix           Emit matrix rows for tasmanian-rescale-quality
+--rescaling-edge-bp <N>           Bases excluded from each read end when estimating the
+                                  baseline rate for --emit-rescaling-matrix (default: 15);
+                                  set to the extent of library-prep end damage
 --plot                            Launch the optional Bokeh visualization
 -o, --output-file <TSV>           Output path
 ```
