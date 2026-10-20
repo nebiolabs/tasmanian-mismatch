@@ -285,6 +285,12 @@ pub struct Args {
     #[arg(long, default_value_t = false)]
     pub emit_rescaling_matrix: bool,
 
+    /// Bases excluded from each read end when estimating a mismatch class's
+    /// baseline rate for --emit-rescaling-matrix. Set to the extent of
+    /// library-prep end damage, which depends on the enzymes, not read length.
+    #[arg(long, default_value_t = crate::io::DEFAULT_RESCALING_EDGE_BP)]
+    pub rescaling_edge_bp: usize,
+
     /// Launch an interactive Bokeh plot after writing output.
     /// Requires python3 with bokeh and pandas installed.
     #[arg(long, default_value_t = false)]

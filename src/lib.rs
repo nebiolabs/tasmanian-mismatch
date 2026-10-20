@@ -23,7 +23,7 @@ pub use bed::{
     maybe_parse_bed_file, parse_bed_file, position_overlaps_intervals,
 };
 pub use io::{
-    apply_external_discounts, compute_read_len_max_from_sample_bam,
+    DEFAULT_RESCALING_EDGE_BP, apply_external_discounts, compute_read_len_max_from_sample_bam,
     frequencies_to_rescaling_matrix, launch_visualization, load_discount_table,
     load_discount_table_from_reader, load_reference_genome, load_rescaling_matrix,
     load_rescaling_matrix_from_reader, normalize_mismatch_counts,
