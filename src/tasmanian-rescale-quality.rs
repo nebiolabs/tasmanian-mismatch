@@ -116,62 +116,65 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tid_to_name_arc = Arc::clone(&tid_to_name);
     let reference_arc = Arc::new(reference);
 
-    let processed_records: Vec<Vec<Record>> = regions
-        .par_iter()
-        .map(|(tid, start, end, chr_name)| {
-            let mut region_records = Vec::new();
-
-            match IndexedReader::from_path(bam_path_arc.as_str()) {
-                Ok(mut bam) => {
-                    if bam
-                        .fetch(FetchDefinition::Region(*tid, *start, *end))
-                        .is_ok()
-                    {
-                        for mut record in bam.records().flatten() {
-                            // Avoid boundary duplicates from region-based fetch.
-                            let rec_start = record.pos();
-                            if rec_start < *start || rec_start >= *end {
-                                continue;
-                            }
-
-                            rescale_phred_scores(
-                                &mut record,
-                                &reference_arc,
-                                &tid_to_name_arc,
-                                &matrix_arc,
-                            );
-                            region_records.push(record);
-                        }
-                    }
-                }
-                Err(e) => {
-                    log::warn!(
-                        "Failed to fetch region {}:{}-{}: {}",
-                        chr_name,
-                        start,
-                        end,
-                        e
-                    );
-                }
-            }
-
-            region_records
-        })
-        .collect();
-
-    // Write all records in order
-    log::info!("Writing rescaled records to output...");
     let mut writer = if let Some(output_path) = output_path {
         Writer::from_path(output_path, &out_header, Format::Bam)?
     } else {
         Writer::from_stdout(&out_header, Format::Bam)?
     };
 
+    // Process regions in genome-ordered batches and write each batch before
+    // starting the next, so memory holds one batch rather than the whole BAM.
+    let batch_size = rayon::current_num_threads().max(1);
     let mut total_records = 0usize;
-    for region_records in processed_records {
-        for record in region_records {
-            writer.write(&record)?;
-            total_records += 1;
+    for batch in regions.chunks(batch_size) {
+        let processed_records: Vec<Vec<Record>> = batch
+            .par_iter()
+            .map(|(tid, start, end, chr_name)| {
+                let mut region_records = Vec::new();
+
+                match IndexedReader::from_path(bam_path_arc.as_str()) {
+                    Ok(mut bam) => {
+                        if bam
+                            .fetch(FetchDefinition::Region(*tid, *start, *end))
+                            .is_ok()
+                        {
+                            for mut record in bam.records().flatten() {
+                                // Avoid boundary duplicates from region-based fetch.
+                                let rec_start = record.pos();
+                                if rec_start < *start || rec_start >= *end {
+                                    continue;
+                                }
+
+                                rescale_phred_scores(
+                                    &mut record,
+                                    &reference_arc,
+                                    &tid_to_name_arc,
+                                    &matrix_arc,
+                                );
+                                region_records.push(record);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "Failed to fetch region {}:{}-{}: {}",
+                            chr_name,
+                            start,
+                            end,
+                            e
+                        );
+                    }
+                }
+
+                region_records
+            })
+            .collect();
+
+        for region_records in processed_records {
+            for record in region_records {
+                writer.write(&record)?;
+                total_records += 1;
+            }
         }
     }
 
