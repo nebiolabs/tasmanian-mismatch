@@ -1076,7 +1076,7 @@ mod tests {
 
         assert_eq!(
             lines[0],
-            "read1_position\tread2_position\tdiscordance_type\tcount"
+            "r1_position\tr2_position\tdiscordance_type\tcount"
         );
         assert_eq!(lines[1], "3\t9\tR1:A_R2:G\t4");
         assert_eq!(lines[2], "8\t5\tR1:C_R2:T\t2");
@@ -1993,8 +1993,9 @@ mod tests {
         header.push_record(&sq);
         let header_view = HeaderView::from_header(&header);
 
-        // Overlap is ref 4..8: read1 positions 4..7 vs read2 positions 0..3.
-        // read2 quals: Q20, Q40, Q10 (below -q 20, not compared), Q30; read2 pos 3 is A vs T.
+        // Overlap is ref 4..8: read1 (forward) stored 4..7 vs read2 (reverse) stored 0..3.
+        // On the read axis (mode_len 8, from each read's 5' end) that is R1 5..8 vs R2 8..5.
+        // read2 quals: Q20, Q40, Q10 (below -q 20, not compared), Q30; read2 stored 3 is A vs T.
         let read1 = Record::from_sam(
             &header_view,
             b"r\t99\tchr1\t1\t60\t8M\t=\t5\t12\tACGTACGT\tIIIIIIII\tMC:Z:8M",
@@ -2056,9 +2057,9 @@ mod tests {
             min_quality_bin: bin,
         };
         let expected: HashMap<_, _> = [
-            (key(4, 0, 'A', 20), (1, 0)),
-            (key(5, 1, 'C', 40), (1, 0)),
-            (key(7, 3, 'T', 30), (1, 1)),
+            (key(5, 8, 'A', 20), (1, 0)),
+            (key(6, 7, 'C', 40), (1, 0)),
+            (key(8, 5, 'T', 30), (1, 1)),
         ]
         .into_iter()
         .map(|(k, (compared, discordant))| {
@@ -2082,8 +2083,8 @@ mod tests {
         assert_eq!(
             inconsistency_counts.get(&InconsistencyKey {
                 discordance_type: "R1:T_R2:A".to_string(),
-                read1_position: 7,
-                read2_position: 3,
+                read1_position: 8,
+                read2_position: 5,
             }),
             Some(&1)
         );
@@ -2092,11 +2093,125 @@ mod tests {
         write_overlap_opportunities_to_writer(&opportunity_counts, &mut buf).unwrap();
         assert_eq!(
             String::from_utf8(buf).unwrap(),
-            "read1_position\tread2_position\tread1_base\tmin_quality_bin\tcompared\tdiscordant\n\
-             4\t0\tA\t20\t1\t0\n\
-             5\t1\tC\t40\t1\t0\n\
-             7\t3\tT\t30\t1\t1\n"
+            "r1_position\tr2_position\tr1_base\tmin_quality_bin\tcompared\tdiscordant\n\
+             5\t8\tA\t20\t1\t0\n\
+             6\t7\tC\t40\t1\t0\n\
+             8\t5\tT\t30\t1\t1\n"
         );
+    }
+
+    #[test]
+    fn test_overlap_comparisons_label_mates_by_flag_not_bam_order() {
+        let mut header = Header::new();
+        let mut sq = HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", "chr1");
+        sq.push_tag(b"LN", 200);
+        header.push_record(&sq);
+        let header_view = HeaderView::from_header(&header);
+
+        // Leftmost mate is read 2 (163: forward); rightmost is read 1 (83: reverse).
+        // Overlap ref 4..8. At ref 7 read 2 has G and read 1 has T (stored, forward strand).
+        let left_r2 = Record::from_sam(
+            &header_view,
+            b"r\t163\tchr1\t1\t60\t8M\t=\t5\t12\tACGTACGG\tIIIIIIII\tMC:Z:8M",
+        )
+        .unwrap();
+        let right_r1 = Record::from_sam(
+            &header_view,
+            b"r\t83\tchr1\t5\t60\t8M\t=\t1\t-12\tACGTACGT\tIIIIIIII\tMC:Z:8M",
+        )
+        .unwrap();
+
+        let mut reference = HashMap::new();
+        reference.insert("chr1".to_string(), b"ACGTACGTACGTACGTACGT".to_vec());
+        let mut tid_to_name = HashMap::new();
+        tid_to_name.insert(0i32, "chr1".to_string());
+        let context = ProcessingContext {
+            reference: &reference,
+            tid_to_name: &tid_to_name,
+            bed_intervals: &[],
+        };
+        let config = ProcessingConfig {
+            softclip_threshold: 0.0,
+            min_base_quality: 20,
+            is_methylation: false,
+            mode_len: 8,
+            min_map_quality: 0,
+            required_flags: 0,
+            filter_flags: 0,
+            excl_flags: 0,
+            use_insert_mode: false,
+            position_mode: PositionMode::Read,
+            overlap_mode: OverlapMode::Cut,
+            min_fragment_length: 0,
+            max_fragment_length: usize::MAX,
+            min_read_position: 0,
+            max_read_position: usize::MAX,
+        };
+
+        let mut local_counts: HashMap<MismatchKey, usize> = HashMap::new();
+        let mut overlap_counts: HashMap<MismatchKey, usize> = HashMap::new();
+        let mut inconsistency_counts: HashMap<InconsistencyKey, usize> = HashMap::new();
+        let mut opportunity_counts: HashMap<OverlapOpportunityKey, OverlapOpportunityCounts> =
+            HashMap::new();
+        let mut counts = OverlapCounts {
+            local_counts: &mut local_counts,
+            overlap_counts: &mut overlap_counts,
+            inconsistency_counts: &mut inconsistency_counts,
+            opportunity_counts: Some(&mut opportunity_counts),
+            genomic_counts: None,
+            genomic_depth: None,
+        };
+
+        // BAM order: leftmost (read 2) first, as tasmanian-diagnostics passes them.
+        process_paired_reads_with_overlap(
+            &left_r2,
+            &right_r1,
+            (4, 8),
+            &mut counts,
+            &context,
+            config,
+        );
+
+        // Read 1 is reverse: its stored index 3 (ref 7) is 5th from its 5' end; read 2's
+        // stored index 7 is 8th from its 5' end. Bases are complemented into read 1's
+        // orientation: T/G on the forward strand reads as A/C.
+        let expected_inconsistencies: HashMap<InconsistencyKey, usize> = [(
+            InconsistencyKey {
+                discordance_type: "R1:A_R2:C".to_string(),
+                read1_position: 5,
+                read2_position: 8,
+            },
+            1,
+        )]
+        .into_iter()
+        .collect();
+        assert_eq!(inconsistency_counts, expected_inconsistencies);
+
+        let key = |r1, r2, base| OverlapOpportunityKey {
+            read1_position: r1,
+            read2_position: r2,
+            read1_base: base,
+            min_quality_bin: 40,
+        };
+        let expected: HashMap<_, _> = [
+            (key(8, 5, 'T'), (1, 0)),
+            (key(7, 6, 'G'), (1, 0)),
+            (key(6, 7, 'C'), (1, 0)),
+            (key(5, 8, 'A'), (1, 1)),
+        ]
+        .into_iter()
+        .map(|(k, (compared, discordant))| {
+            (
+                k,
+                OverlapOpportunityCounts {
+                    compared,
+                    discordant,
+                },
+            )
+        })
+        .collect();
+        assert_eq!(opportunity_counts, expected);
     }
 
     #[test]

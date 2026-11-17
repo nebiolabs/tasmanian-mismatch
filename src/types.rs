@@ -17,11 +17,11 @@ pub struct MismatchKey {
 /// Key for counting read-pair inconsistencies inside overlap regions.
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct InconsistencyKey {
-    /// Encoded discordant base combination, for example `R1:A_R2:G`.
+    /// Discordant bases, both in read 1's sequencing orientation, for example `R1:A_R2:G`.
     pub discordance_type: String, // e.g., "R1:A_R2:G"
-    /// Read 1 position in 0-based coordinates.
+    /// Read 1 (by SAM flag) position on the tasmanian-mismatch read-mode axis (1-based, from 5').
     pub read1_position: usize,
-    /// Read 2 position in 0-based coordinates.
+    /// Read 2 (by SAM flag) position on the tasmanian-mismatch read-mode axis (1-based, from 5').
     pub read2_position: usize,
 }
 
@@ -32,11 +32,11 @@ pub const OVERLAP_QUALITY_BIN_WIDTH: u8 = 10;
 /// for [`InconsistencyKey`] counts). Positions use the same axis as `InconsistencyKey`.
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
 pub struct OverlapOpportunityKey {
-    /// Read 1 position in 0-based coordinates.
+    /// Read 1 (by SAM flag) position on the tasmanian-mismatch read-mode axis (1-based, from 5').
     pub read1_position: usize,
-    /// Read 2 position in 0-based coordinates.
+    /// Read 2 (by SAM flag) position on the tasmanian-mismatch read-mode axis (1-based, from 5').
     pub read2_position: usize,
-    /// Read 1 base as stored in the BAM (`N` for anything other than A/C/G/T).
+    /// Read 1 base in its sequencing orientation (`N` for anything other than A/C/G/T).
     pub read1_base: char,
     /// Lower bound of the bin holding min(R1 quality, R2 quality),
     /// in steps of [`OVERLAP_QUALITY_BIN_WIDTH`].

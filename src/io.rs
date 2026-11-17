@@ -164,10 +164,7 @@ pub fn write_inconsistencies_tsv(
 
     let file = File::create(output_path)?;
     let mut writer = BufWriter::new(file);
-    writeln!(
-        writer,
-        "read1_position\tread2_position\tdiscordance_type\tcount"
-    )?;
+    writeln!(writer, "r1_position\tr2_position\tdiscordance_type\tcount")?;
 
     for (key, count) in rows {
         writeln!(
@@ -204,7 +201,7 @@ pub fn write_overlap_opportunities_to_writer<W: Write>(
 
     writeln!(
         writer,
-        "read1_position\tread2_position\tread1_base\tmin_quality_bin\tcompared\tdiscordant"
+        "r1_position\tr2_position\tr1_base\tmin_quality_bin\tcompared\tdiscordant"
     )?;
     for (key, value) in rows {
         writeln!(

@@ -40,10 +40,10 @@ pub use processing::{
     estimated_fragment_length, fragment_base, get_overlap_region, insert_mode_read_position,
     mc_mate_end, merge_reads_into_insert_position_mode, overlap_interval, position_axis_len,
     process_overlap_region, process_paired_reads_with_overlap, process_record, process_region,
-    process_single_record, qualifying_softclip_comparisons, read_is_first_in_reference,
-    read_mode_read_position, record_read_num, report_reads_longer_than_axis, rescale_phred_scores,
-    should_skip_record, should_skip_whole_read_for_bed, softclip_identity,
-    softclip_side_comparisons,
+    process_single_record, qualifying_softclip_comparisons, read_axis_position,
+    read_is_first_in_reference, read_mode_read_position, record_read_num,
+    report_reads_longer_than_axis, rescale_phred_scores, should_skip_record,
+    should_skip_whole_read_for_bed, softclip_identity, softclip_side_comparisons,
 };
 pub use types::{
     Args, BedFilterMode, DiscountKey, FragmentBase, GenomicMismatchKey, GenomicMismatchValue,

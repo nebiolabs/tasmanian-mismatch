@@ -305,28 +305,42 @@ chr2	450103	A	C	15	41
 ### `read_pair_inconsistencies.tsv`
 
 ```tsv
-read1_position	read2_position	discordance_type	count
+r1_position	r2_position	discordance_type	count
 18	83	R1:A_R2:G	5
 19	82	R1:C_R2:T	3
 20	81	R1:G_R2:A	7
 ```
 
+One row per overlapping base pair where both mates passed `-q` and their bases differ.
+
+- `R1` and `R2` are read 1 and read 2 as flagged in the BAM (the instrument's reads), not the
+  leftmost and rightmost mate.
+- `r1_position` and `r2_position` are on the same read-mode axis as `tasmanian-mismatch
+  --position-mode read` and the discount table: 1-based, counted from each read's own 5' end,
+  with length set by `--use-read-len-max`. This holds with `--use-insert-mode` too.
+- Both bases in `discordance_type` are written in read 1's sequencing orientation (complemented
+  when read 1 maps to the reverse strand). `R1:C_R2:T` means read 1 read C and read 2 reported
+  T for the same base, on read 1's strand; agreement would be the same letter.
+
+Files written before this layout used `read1_position`/`read2_position` headers, the leftmost
+mate as "R1", 0-based stored-sequence indexes and forward-strand bases. Do not mix the two.
+
 ### `read_pair_overlap_opportunities.tsv`
 
 ```tsv
-read1_position	read2_position	read1_base	min_quality_bin	compared	discordant
+r1_position	r2_position	r1_base	min_quality_bin	compared	discordant
 18	83	A	30	1204	2
 18	83	A	40	51873	3
 19	82	C	40	49920	3
 ```
 
 One row per overlapping base pair where both bases passed `-q`, keyed by the same
-`(read1_position, read2_position)` as `read_pair_inconsistencies.tsv`, the R1 base, and
-`min(R1 quality, R2 quality)` in bins of 10 (`30` = Q30–39). `discordant / compared` is the
-discordance rate. Summed over `read1_base` and `min_quality_bin`, `discordant` equals the
-inconsistency `count` summed over `discordance_type` at the same positions. Use `compared` as
-the denominator when comparing inconsistency counts across samples with different depth,
-overlap fraction or insert-size distribution.
+`(r1_position, r2_position)` as `read_pair_inconsistencies.tsv`, the read 1 base (in read 1's
+orientation), and `min(R1 quality, R2 quality)` in bins of 10 (`30` = Q30–39).
+`discordant / compared` is the discordance rate. Summed over `r1_base` and `min_quality_bin`,
+`discordant` equals the inconsistency `count` summed over `discordance_type` at the same
+positions. Use `compared` as the denominator when comparing inconsistency counts across samples
+with different depth, overlap fraction or insert-size distribution.
 
 ### `variant_discounts.tsv`
 

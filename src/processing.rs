@@ -142,8 +142,7 @@ pub fn create_mismatch_key(
             read_ctx.read_num,
         )
     } else {
-        read_mode_read_position(r_pos, seq_len, read_ctx.is_reverse, config.mode_len)
-            .unwrap_or(adjusted_r_pos + 1)
+        read_axis_position(r_pos, seq_len, read_ctx.is_reverse, config.mode_len)
     };
 
     MismatchKey {
@@ -524,27 +523,13 @@ pub fn process_overlap_region(
         );
     }
 
-    // Compare bases at overlapping genomic positions
-    for (genome_pos, (r1_pos, r1_base, r1_qual)) in read1_map.iter() {
-        if let Some((r2_pos, r2_base, r2_qual)) = read2_map.get(genome_pos) {
-            // Both reads cover this position - check for inconsistency
-            if r1_qual >= &config.min_base_quality
-                && r2_qual >= &config.min_base_quality
-                && r1_base != r2_base
-            {
-                // Bases disagree - record inconsistency
-                let r1_char = base_to_char(*r1_base).unwrap_or('N');
-                let r2_char = base_to_char(*r2_base).unwrap_or('N');
-
-                let key = InconsistencyKey {
-                    discordance_type: format!("R1:{}_R2:{}", r1_char, r2_char),
-                    read1_position: *r1_pos,
-                    read2_position: *r2_pos,
-                };
-                *inconsistency_counts.entry(key).or_insert(0) += 1;
-            }
-        }
-    }
+    count_overlap_comparisons(
+        [record1, record2],
+        [&read1_map, &read2_map],
+        config,
+        inconsistency_counts,
+        None,
+    );
 
     // Process mismatch counts for both reads
     for record in [record1, record2] {
@@ -922,23 +907,64 @@ pub fn process_paired_reads_with_overlap(
         }
     }
 
-    // Detect inconsistencies in the overlap region, counting every compared pair as an
-    // opportunity so the inconsistency counts can be turned into rates.
-    for (genome_pos, (r1_pos, r1_base, r1_qual)) in read1_overlap_map.iter() {
-        let Some((r2_pos, r2_base, r2_qual)) = read2_overlap_map.get(genome_pos) else {
+    count_overlap_comparisons(
+        [record1, record2],
+        [&read1_overlap_map, &read2_overlap_map],
+        &config,
+        counts.inconsistency_counts,
+        counts.opportunity_counts.as_deref_mut(),
+    );
+}
+
+/// Overlap base map for one mate: genome position -> (read index as stored, base, quality).
+type OverlapBaseMap = HashMap<usize, (usize, u8, u8)>;
+
+/// Compare the two mates' bases at every genomic position both cover and count
+/// inconsistencies (and, if given, compared/discordant opportunities).
+///
+/// Mates are labelled by their SAM flags, so `R1` is the instrument's read 1 whatever its
+/// strand or BAM order. Positions use the tasmanian-mismatch read-mode axis
+/// ([`read_axis_position`]), counted from each read's own 5' end. Both bases are written in
+/// R1's sequencing orientation, so agreement is the same letter (`R1:A_R2:A`) and
+/// `R1:C_R2:T` means R2 reported T where R1 read C, on R1's strand.
+fn count_overlap_comparisons(
+    records: [&Record; 2],
+    maps: [&OverlapBaseMap; 2],
+    config: &ProcessingConfig,
+    inconsistency_counts: &mut HashMap<InconsistencyKey, usize>,
+    mut opportunity_counts: Option<&mut HashMap<OverlapOpportunityKey, OverlapOpportunityCounts>>,
+) {
+    let [mut rec1, mut rec2] = records;
+    let [mut map1, mut map2] = maps;
+    // BAM order puts the leftmost mate first; swap when that mate is read 2.
+    if record_read_num(rec1) == 2 && record_read_num(rec2) == 1 {
+        std::mem::swap(&mut rec1, &mut rec2);
+        std::mem::swap(&mut map1, &mut map2);
+    }
+    let (r1_len, r1_reverse) = (rec1.seq_len(), rec1.is_reverse());
+    let (r2_len, r2_reverse) = (rec2.seq_len(), rec2.is_reverse());
+    let in_r1_orientation = |base: u8| {
+        let c = base_to_char(base).unwrap_or('N');
+        if r1_reverse { complement(c) } else { c }
+    };
+
+    for (genome_pos, &(r1_idx, r1_byte, r1_qual)) in map1 {
+        let Some(&(r2_idx, r2_byte, r2_qual)) = map2.get(genome_pos) else {
             continue;
         };
-        if *r1_qual < config.min_base_quality || *r2_qual < config.min_base_quality {
+        if r1_qual < config.min_base_quality || r2_qual < config.min_base_quality {
             continue;
         }
-        let discordant = r1_base != r2_base;
-        let r1_char = base_to_char(*r1_base).unwrap_or('N');
+        let discordant = r1_byte != r2_byte;
+        let r1_position = read_axis_position(r1_idx, r1_len, r1_reverse, config.mode_len);
+        let r2_position = read_axis_position(r2_idx, r2_len, r2_reverse, config.mode_len);
+        let r1_char = in_r1_orientation(r1_byte);
 
-        if let Some(opportunities) = counts.opportunity_counts.as_deref_mut() {
-            let min_qual = (*r1_qual).min(*r2_qual);
+        if let Some(opportunities) = opportunity_counts.as_deref_mut() {
+            let min_qual = r1_qual.min(r2_qual);
             let key = OverlapOpportunityKey {
-                read1_position: *r1_pos,
-                read2_position: *r2_pos,
+                read1_position: r1_position,
+                read2_position: r2_position,
                 read1_base: r1_char,
                 min_quality_bin: min_qual - min_qual % OVERLAP_QUALITY_BIN_WIDTH,
             };
@@ -948,13 +974,12 @@ pub fn process_paired_reads_with_overlap(
         }
 
         if discordant {
-            let r2_char = base_to_char(*r2_base).unwrap_or('N');
             let key = InconsistencyKey {
-                discordance_type: format!("R1:{}_R2:{}", r1_char, r2_char),
-                read1_position: *r1_pos,
-                read2_position: *r2_pos,
+                discordance_type: format!("R1:{}_R2:{}", r1_char, in_r1_orientation(r2_byte)),
+                read1_position: r1_position,
+                read2_position: r2_position,
             };
-            *counts.inconsistency_counts.entry(key).or_insert(0) += 1;
+            *inconsistency_counts.entry(key).or_insert(0) += 1;
         }
     }
 }
@@ -1149,6 +1174,24 @@ pub fn insert_mode_read_position(
         Some(read_pos + 1)
     };
     position.filter(|&p| (1..=axis_len).contains(&p))
+}
+
+/// Position of a stored-sequence index on the tasmanian-mismatch read-mode axis (1-based,
+/// from the read's 5' end). Bases of reads longer than the axis that fall between its
+/// 5' and 3' windows keep their raw 1-based distance from the 5' end.
+pub fn read_axis_position(
+    r_pos: usize,
+    seq_len: usize,
+    is_reverse: bool,
+    max_read_len: usize,
+) -> usize {
+    read_mode_read_position(r_pos, seq_len, is_reverse, max_read_len).unwrap_or(
+        if is_reverse {
+            seq_len - 1 - r_pos
+        } else {
+            r_pos
+        } + 1,
+    )
 }
 
 pub fn read_mode_read_position(

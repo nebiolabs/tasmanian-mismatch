@@ -157,7 +157,7 @@ fn integration_diagnostics_fixture_bam_produces_expected_outputs() {
     );
     assert_eq!(
         inconsistencies,
-        "read1_position\tread2_position\tdiscordance_type\tcount\n"
+        "r1_position\tr2_position\tdiscordance_type\tcount\n"
     );
 
     let discounts = fs::read_to_string(&discounts_tsv).expect("failed to read discount output");
@@ -315,21 +315,20 @@ fn integration_diagnostics_processes_paired_reads() {
 
     let inconsistencies =
         fs::read_to_string(&inconsistencies_tsv).expect("failed to read inconsistencies output");
-    assert!(
-        inconsistencies.starts_with("read1_position\tread2_position\tdiscordance_type\tcount\n")
-    );
+    assert!(inconsistencies.starts_with("r1_position\tr2_position\tdiscordance_type\tcount\n"));
 
-    // Overlap is ref 4..8: read1 positions 4..7 pair with read2 positions 0..3, all Q40, all
-    // concordant. Each pair is one comparison.
+    // Overlap is ref 4..8: read1 (forward) stored 4..7 pairs with read2 (reverse) stored 0..3.
+    // On the 8-bp read axis, counted from each read's 5' end, that is R1 5..8 vs R2 8..5.
+    // All Q40 and concordant, one comparison each.
     let opportunities = fs::read_to_string(inconsistencies_tsv.with_extension("opportunities.tsv"))
         .expect("failed to read opportunities output");
     assert_eq!(
         opportunities,
-        "read1_position\tread2_position\tread1_base\tmin_quality_bin\tcompared\tdiscordant\n\
-         4\t0\tA\t40\t1\t0\n\
-         5\t1\tC\t40\t1\t0\n\
-         6\t2\tG\t40\t1\t0\n\
-         7\t3\tT\t40\t1\t0\n"
+        "r1_position\tr2_position\tr1_base\tmin_quality_bin\tcompared\tdiscordant\n\
+         5\t8\tA\t40\t1\t0\n\
+         6\t7\tC\t40\t1\t0\n\
+         7\t6\tG\t40\t1\t0\n\
+         8\t5\tT\t40\t1\t0\n"
     );
 
     let discounts = fs::read_to_string(&discounts_tsv).expect("failed to read discounts output");
