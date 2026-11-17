@@ -878,6 +878,7 @@ mod tests {
             local_counts: &mut local_counts,
             overlap_counts: &mut overlap_counts,
             inconsistency_counts: &mut inconsistency_counts,
+            opportunity_counts: None,
             genomic_counts: Some(&mut genomic_counts),
             genomic_depth: Some(&mut genomic_depth),
         };
@@ -1966,6 +1967,7 @@ mod tests {
             local_counts: &mut local_counts,
             overlap_counts: &mut overlap_counts,
             inconsistency_counts: &mut inconsistency_counts,
+            opportunity_counts: None,
             genomic_counts: Some(&mut genomic_counts),
             genomic_depth: Some(&mut depth),
         };
@@ -1980,6 +1982,121 @@ mod tests {
         assert!(local_total > 0);
         // Depth map should have entries.
         assert!(!depth.is_empty());
+    }
+
+    #[test]
+    fn test_process_paired_reads_with_overlap_counts_opportunities() {
+        let mut header = Header::new();
+        let mut sq = HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", "chr1");
+        sq.push_tag(b"LN", 200);
+        header.push_record(&sq);
+        let header_view = HeaderView::from_header(&header);
+
+        // Overlap is ref 4..8: read1 positions 4..7 vs read2 positions 0..3.
+        // read2 quals: Q20, Q40, Q10 (below -q 20, not compared), Q30; read2 pos 3 is A vs T.
+        let read1 = Record::from_sam(
+            &header_view,
+            b"r\t99\tchr1\t1\t60\t8M\t=\t5\t12\tACGTACGT\tIIIIIIII\tMC:Z:8M",
+        )
+        .unwrap();
+        let read2 = Record::from_sam(
+            &header_view,
+            b"r\t147\tchr1\t5\t60\t8M\t=\t1\t-12\tACGAACGT\t5I+?IIII\tMC:Z:8M",
+        )
+        .unwrap();
+
+        let mut reference = HashMap::new();
+        reference.insert("chr1".to_string(), b"ACGTACGTACGTACGTACGT".to_vec());
+        let mut tid_to_name = HashMap::new();
+        tid_to_name.insert(0i32, "chr1".to_string());
+        let context = ProcessingContext {
+            reference: &reference,
+            tid_to_name: &tid_to_name,
+            bed_intervals: &[],
+        };
+        let config = ProcessingConfig {
+            softclip_threshold: 0.0,
+            min_base_quality: 20,
+            is_methylation: false,
+            mode_len: 8,
+            min_map_quality: 0,
+            required_flags: 0,
+            filter_flags: 0,
+            excl_flags: 0,
+            use_insert_mode: false,
+            position_mode: PositionMode::Read,
+            overlap_mode: OverlapMode::Cut,
+            min_fragment_length: 0,
+            max_fragment_length: usize::MAX,
+            min_read_position: 0,
+            max_read_position: usize::MAX,
+        };
+
+        let mut local_counts: HashMap<MismatchKey, usize> = HashMap::new();
+        let mut overlap_counts: HashMap<MismatchKey, usize> = HashMap::new();
+        let mut inconsistency_counts: HashMap<InconsistencyKey, usize> = HashMap::new();
+        let mut opportunity_counts: HashMap<OverlapOpportunityKey, OverlapOpportunityCounts> =
+            HashMap::new();
+        let mut counts = OverlapCounts {
+            local_counts: &mut local_counts,
+            overlap_counts: &mut overlap_counts,
+            inconsistency_counts: &mut inconsistency_counts,
+            opportunity_counts: Some(&mut opportunity_counts),
+            genomic_counts: None,
+            genomic_depth: None,
+        };
+
+        process_paired_reads_with_overlap(&read1, &read2, (4, 8), &mut counts, &context, config);
+
+        let key = |r1, r2, base, bin| OverlapOpportunityKey {
+            read1_position: r1,
+            read2_position: r2,
+            read1_base: base,
+            min_quality_bin: bin,
+        };
+        let expected: HashMap<_, _> = [
+            (key(4, 0, 'A', 20), (1, 0)),
+            (key(5, 1, 'C', 40), (1, 0)),
+            (key(7, 3, 'T', 30), (1, 1)),
+        ]
+        .into_iter()
+        .map(|(k, (compared, discordant))| {
+            (
+                k,
+                OverlapOpportunityCounts {
+                    compared,
+                    discordant,
+                },
+            )
+        })
+        .collect();
+        assert_eq!(opportunity_counts, expected);
+
+        // Every discordant opportunity appears in the inconsistency table and vice versa.
+        let discordant_total: usize = opportunity_counts.values().map(|v| v.discordant).sum();
+        assert_eq!(
+            inconsistency_counts.values().sum::<usize>(),
+            discordant_total
+        );
+        assert_eq!(
+            inconsistency_counts.get(&InconsistencyKey {
+                discordance_type: "R1:T_R2:A".to_string(),
+                read1_position: 7,
+                read2_position: 3,
+            }),
+            Some(&1)
+        );
+
+        let mut buf = Vec::new();
+        write_overlap_opportunities_to_writer(&opportunity_counts, &mut buf).unwrap();
+        assert_eq!(
+            String::from_utf8(buf).unwrap(),
+            "read1_position\tread2_position\tread1_base\tmin_quality_bin\tcompared\tdiscordant\n\
+             4\t0\tA\t20\t1\t0\n\
+             5\t1\tC\t40\t1\t0\n\
+             7\t3\tT\t30\t1\t1\n"
+        );
     }
 
     #[test]

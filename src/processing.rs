@@ -7,7 +7,8 @@ use crate::bed::position_overlaps_intervals;
 use crate::methylation::adjust_methylation_base;
 use crate::types::{
     FragmentBase, GenomicMismatchKey, GenomicMismatchValue, GenomicRegion, InconsistencyKey,
-    InsertKey, MismatchKey, OverlapMode, PositionMode, ProcessingConfig, ReadInfo, ReferenceGenome,
+    InsertKey, MismatchKey, OVERLAP_QUALITY_BIN_WIDTH, OverlapMode, OverlapOpportunityCounts,
+    OverlapOpportunityKey, PositionMode, ProcessingConfig, ReadInfo, ReferenceGenome,
     ReferenceOrder, RescalingMatrix, SoftclipComparison,
 };
 use crate::utils::{base_to_char, calculate_end_pos, complement, correct_read_len_with_mode};
@@ -53,6 +54,10 @@ pub struct OverlapCounts<'a> {
     pub overlap_counts: &'a mut HashMap<MismatchKey, usize>,
     /// Read-pair inconsistency counts within the overlap.
     pub inconsistency_counts: &'a mut HashMap<InconsistencyKey, usize>,
+    /// Optional per-(R1 pos, R2 pos, R1 base, quality bin) compared/discordant counts,
+    /// the denominator for `inconsistency_counts`.
+    pub opportunity_counts:
+        Option<&'a mut HashMap<OverlapOpportunityKey, OverlapOpportunityCounts>>,
     /// Optional genomic mismatch summary.
     pub genomic_counts: Option<&'a mut HashMap<GenomicMismatchKey, GenomicMismatchValue>>,
     /// Optional per-position depth counter.
@@ -917,16 +922,33 @@ pub fn process_paired_reads_with_overlap(
         }
     }
 
-    // Detect inconsistencies in the overlap region
+    // Detect inconsistencies in the overlap region, counting every compared pair as an
+    // opportunity so the inconsistency counts can be turned into rates.
     for (genome_pos, (r1_pos, r1_base, r1_qual)) in read1_overlap_map.iter() {
-        if let Some((r2_pos, r2_base, r2_qual)) = read2_overlap_map.get(genome_pos)
-            && r1_qual >= &config.min_base_quality
-            && r2_qual >= &config.min_base_quality
-            && r1_base != r2_base
-        {
-            let r1_char = base_to_char(*r1_base).unwrap_or('N');
-            let r2_char = base_to_char(*r2_base).unwrap_or('N');
+        let Some((r2_pos, r2_base, r2_qual)) = read2_overlap_map.get(genome_pos) else {
+            continue;
+        };
+        if *r1_qual < config.min_base_quality || *r2_qual < config.min_base_quality {
+            continue;
+        }
+        let discordant = r1_base != r2_base;
+        let r1_char = base_to_char(*r1_base).unwrap_or('N');
 
+        if let Some(opportunities) = counts.opportunity_counts.as_deref_mut() {
+            let min_qual = (*r1_qual).min(*r2_qual);
+            let key = OverlapOpportunityKey {
+                read1_position: *r1_pos,
+                read2_position: *r2_pos,
+                read1_base: r1_char,
+                min_quality_bin: min_qual - min_qual % OVERLAP_QUALITY_BIN_WIDTH,
+            };
+            let entry = opportunities.entry(key).or_default();
+            entry.compared += 1;
+            entry.discordant += usize::from(discordant);
+        }
+
+        if discordant {
+            let r2_char = base_to_char(*r2_base).unwrap_or('N');
             let key = InconsistencyKey {
                 discordance_type: format!("R1:{}_R2:{}", r1_char, r2_char),
                 read1_position: *r1_pos,

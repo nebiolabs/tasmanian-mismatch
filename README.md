@@ -146,10 +146,11 @@ tasmanian-mismatch sample.bam reference.fa \
 
 ### `tasmanian-diagnostics`
 
-Produce three diagnostic outputs:
+Produce four diagnostic outputs:
 
 - genomic mismatch sites (`potential_variants.tsv`)
 - paired-read overlap inconsistencies (`read_pair_inconsistencies.tsv`)
+- paired-read overlap opportunities, the denominator for the inconsistencies (`read_pair_overlap_opportunities.tsv`)
 - mismatch discount table (`variant_discounts.tsv`)
 
 Basic usage:
@@ -183,6 +184,7 @@ Common options:
 -G <FLAGS>                            SAM flags that, if all present, skip a read
 --variants-output <TSV>               Genomic variants output (default: potential_variants.tsv)
 --inconsistencies-output <TSV>        Overlap inconsistencies output (default: read_pair_inconsistencies.tsv)
+--opportunities-output <TSV>          Overlap opportunities output (default: read_pair_overlap_opportunities.tsv)
 --discount-output <TSV>               Discount table output (default: variant_discounts.tsv), use '-' for stdout
 ```
 
@@ -308,6 +310,23 @@ read1_position	read2_position	discordance_type	count
 19	82	R1:C_R2:T	3
 20	81	R1:G_R2:A	7
 ```
+
+### `read_pair_overlap_opportunities.tsv`
+
+```tsv
+read1_position	read2_position	read1_base	min_quality_bin	compared	discordant
+18	83	A	30	1204	2
+18	83	A	40	51873	3
+19	82	C	40	49920	3
+```
+
+One row per overlapping base pair where both bases passed `-q`, keyed by the same
+`(read1_position, read2_position)` as `read_pair_inconsistencies.tsv`, the R1 base, and
+`min(R1 quality, R2 quality)` in bins of 10 (`30` = Q30–39). `discordant / compared` is the
+discordance rate. Summed over `read1_base` and `min_quality_bin`, `discordant` equals the
+inconsistency `count` summed over `discordance_type` at the same positions. Use `compared` as
+the denominator when comparing inconsistency counts across samples with different depth,
+overlap fraction or insert-size distribution.
 
 ### `variant_discounts.tsv`
 

@@ -114,6 +114,8 @@ fn integration_diagnostics_fixture_bam_produces_expected_outputs() {
         .arg(&variants_tsv)
         .arg("--inconsistencies-output")
         .arg(&inconsistencies_tsv)
+        .arg("--opportunities-output")
+        .arg(inconsistencies_tsv.with_extension("opportunities.tsv"))
         .arg("--discount-output")
         .arg(&discounts_tsv)
         .arg(&fixture_bam)
@@ -223,6 +225,8 @@ fn integration_diagnostics_can_write_discounts_to_stdout() {
         .arg(&variants_tsv)
         .arg("--inconsistencies-output")
         .arg(&inconsistencies_tsv)
+        .arg("--opportunities-output")
+        .arg(inconsistencies_tsv.with_extension("opportunities.tsv"))
         .arg("--discount-output")
         .arg("-")
         .arg(&fixture_bam)
@@ -295,6 +299,8 @@ fn integration_diagnostics_processes_paired_reads() {
         .arg(&variants_tsv)
         .arg("--inconsistencies-output")
         .arg(&inconsistencies_tsv)
+        .arg("--opportunities-output")
+        .arg(inconsistencies_tsv.with_extension("opportunities.tsv"))
         .arg("--discount-output")
         .arg(&discounts_tsv)
         .arg(&fixture_bam)
@@ -311,6 +317,19 @@ fn integration_diagnostics_processes_paired_reads() {
         fs::read_to_string(&inconsistencies_tsv).expect("failed to read inconsistencies output");
     assert!(
         inconsistencies.starts_with("read1_position\tread2_position\tdiscordance_type\tcount\n")
+    );
+
+    // Overlap is ref 4..8: read1 positions 4..7 pair with read2 positions 0..3, all Q40, all
+    // concordant. Each pair is one comparison.
+    let opportunities = fs::read_to_string(inconsistencies_tsv.with_extension("opportunities.tsv"))
+        .expect("failed to read opportunities output");
+    assert_eq!(
+        opportunities,
+        "read1_position\tread2_position\tread1_base\tmin_quality_bin\tcompared\tdiscordant\n\
+         4\t0\tA\t40\t1\t0\n\
+         5\t1\tC\t40\t1\t0\n\
+         6\t2\tG\t40\t1\t0\n\
+         7\t3\tT\t40\t1\t0\n"
     );
 
     let discounts = fs::read_to_string(&discounts_tsv).expect("failed to read discounts output");
@@ -343,6 +362,7 @@ fn integration_diagnostics_bed_filter_mode_include_and_filter_are_inverses() {
         let variants_tsv = temp_dir.join(format!("{mode}_variants.tsv"));
         let inconsistencies_tsv = temp_dir.join(format!("{mode}_inconsistencies.tsv"));
         let discounts_tsv = temp_dir.join(format!("{mode}_discounts.tsv"));
+        let opportunities_tsv = inconsistencies_tsv.with_extension("opportunities.tsv");
         let args = [
             "-q",
             "0",
@@ -360,6 +380,8 @@ fn integration_diagnostics_bed_filter_mode_include_and_filter_are_inverses() {
             &variants_tsv.to_string_lossy(),
             "--inconsistencies-output",
             &inconsistencies_tsv.to_string_lossy(),
+            "--opportunities-output",
+            &opportunities_tsv.to_string_lossy(),
             "--discount-output",
             &discounts_tsv.to_string_lossy(),
             &fixture_bam.to_string_lossy(),

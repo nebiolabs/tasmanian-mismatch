@@ -25,6 +25,33 @@ pub struct InconsistencyKey {
     pub read2_position: usize,
 }
 
+/// Width of the base-quality bins in the overlap opportunities table.
+pub const OVERLAP_QUALITY_BIN_WIDTH: u8 = 10;
+
+/// Key for counting R1/R2 base comparisons inside overlap regions (the denominator
+/// for [`InconsistencyKey`] counts). Positions use the same axis as `InconsistencyKey`.
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
+pub struct OverlapOpportunityKey {
+    /// Read 1 position in 0-based coordinates.
+    pub read1_position: usize,
+    /// Read 2 position in 0-based coordinates.
+    pub read2_position: usize,
+    /// Read 1 base as stored in the BAM (`N` for anything other than A/C/G/T).
+    pub read1_base: char,
+    /// Lower bound of the bin holding min(R1 quality, R2 quality),
+    /// in steps of [`OVERLAP_QUALITY_BIN_WIDTH`].
+    pub min_quality_bin: u8,
+}
+
+/// Compared and discordant base pairs for one [`OverlapOpportunityKey`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct OverlapOpportunityCounts {
+    /// Overlapping base pairs where both bases passed the minimum base quality.
+    pub compared: usize,
+    /// The subset of `compared` where the R1 and R2 bases differ.
+    pub discordant: usize,
+}
+
 /// Minimal read placement information for overlap detection.
 #[derive(Debug, Clone)]
 pub struct ReadInfo {

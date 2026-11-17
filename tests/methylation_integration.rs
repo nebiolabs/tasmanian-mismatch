@@ -86,6 +86,11 @@ fn run_diagnostics(
     }
     let variants_str = outputs.variants_tsv.to_string_lossy().to_string();
     let inconsistencies_str = outputs.inconsistencies_tsv.to_string_lossy().to_string();
+    let opportunities_str = outputs
+        .inconsistencies_tsv
+        .with_extension("opportunities.tsv")
+        .to_string_lossy()
+        .to_string();
     let discounts_str = outputs.discounts_tsv.to_string_lossy().to_string();
     let bam_str = fixture_bam.to_string_lossy().to_string();
     let reference_str = reference_fa.to_string_lossy().to_string();
@@ -94,6 +99,8 @@ fn run_diagnostics(
         &variants_str,
         "--inconsistencies-output",
         &inconsistencies_str,
+        "--opportunities-output",
+        &opportunities_str,
         "--discount-output",
         &discounts_str,
         &bam_str,

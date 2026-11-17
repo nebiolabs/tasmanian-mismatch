@@ -1,8 +1,9 @@
 //! Input helpers for reference FASTA and BAM-derived metadata.
 
 use crate::types::{
-    DiscountKey, GenomicMismatchKey, InconsistencyKey, InsertKey, MismatchKey, PositionMode,
-    ReferenceGenome, ReferenceOrder, RescalingMatrix,
+    DiscountKey, GenomicMismatchKey, InconsistencyKey, InsertKey, MismatchKey,
+    OverlapOpportunityCounts, OverlapOpportunityKey, PositionMode, ReferenceGenome, ReferenceOrder,
+    RescalingMatrix,
 };
 use bio::io::fasta;
 use rust_htslib::bam::{Read, Reader};
@@ -176,6 +177,47 @@ pub fn write_inconsistencies_tsv(
         )?;
     }
 
+    Ok(())
+}
+
+/// Write overlap opportunities (compared and discordant R1/R2 base pairs) to a TSV file.
+///
+/// Rows are keyed like `read_pair_inconsistencies.tsv` plus the R1 base and the bin of
+/// min(R1 quality, R2 quality); `discordant / compared` is the discordance rate.
+pub fn write_overlap_opportunities_tsv(
+    opportunity_counts: &HashMap<OverlapOpportunityKey, OverlapOpportunityCounts>,
+    output_path: &str,
+) -> std::io::Result<()> {
+    let file = File::create(output_path)?;
+    let mut writer = BufWriter::new(file);
+    write_overlap_opportunities_to_writer(opportunity_counts, &mut writer)?;
+    writer.flush()
+}
+
+/// Write overlap opportunities to any writer (see [`write_overlap_opportunities_tsv`]).
+pub fn write_overlap_opportunities_to_writer<W: Write>(
+    opportunity_counts: &HashMap<OverlapOpportunityKey, OverlapOpportunityCounts>,
+    writer: &mut W,
+) -> std::io::Result<()> {
+    let mut rows: Vec<_> = opportunity_counts.iter().collect();
+    rows.sort_unstable_by_key(|&(key, _)| key);
+
+    writeln!(
+        writer,
+        "read1_position\tread2_position\tread1_base\tmin_quality_bin\tcompared\tdiscordant"
+    )?;
+    for (key, value) in rows {
+        writeln!(
+            writer,
+            "{}\t{}\t{}\t{}\t{}\t{}",
+            key.read1_position,
+            key.read2_position,
+            key.read1_base,
+            key.min_quality_bin,
+            value.compared,
+            value.discordant
+        )?;
+    }
     Ok(())
 }
 

@@ -90,6 +90,12 @@ struct Args {
     #[arg(long, default_value = "read_pair_inconsistencies.tsv")]
     inconsistencies_output: String,
 
+    /// Output path for overlap opportunities: compared and discordant R1/R2 base pairs per
+    /// (read1_position, read2_position, read1_base, min_quality_bin). The denominator for
+    /// the inconsistencies table.
+    #[arg(long, default_value = "read_pair_overlap_opportunities.tsv")]
+    opportunities_output: String,
+
     /// Output path for mismatch-key discounts to be consumed by tasmanian-mismatch.
     /// Use '-' to write the discount table to stdout.
     #[arg(long, default_value = "variant_discounts.tsv")]
@@ -175,6 +181,8 @@ fn main() {
         Arc::new(Mutex::new(HashMap::new()));
     let mismatch_discounts: Arc<Mutex<HashMap<MismatchKey, usize>>> =
         Arc::new(Mutex::new(HashMap::new()));
+    let opportunity_counts: Mutex<HashMap<OverlapOpportunityKey, OverlapOpportunityCounts>> =
+        Mutex::new(HashMap::new());
 
     let processing_config = ProcessingConfig {
         softclip_threshold: args.softclip_threshold,
@@ -241,6 +249,10 @@ fn main() {
         let mut dummy_mismatch_counts: HashMap<MismatchKey, usize> = HashMap::new();
         let mut dummy_overlap_mismatch_counts: HashMap<MismatchKey, usize> = HashMap::new();
         let mut inconsistency_region_counts: HashMap<InconsistencyKey, usize> = HashMap::new();
+        let mut opportunity_region_counts: HashMap<
+            OverlapOpportunityKey,
+            OverlapOpportunityCounts,
+        > = HashMap::new();
         let mut genomic_region_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> =
             HashMap::new();
         let mut genomic_position_depth: HashMap<i64, usize> = HashMap::new();
@@ -309,6 +321,7 @@ fn main() {
                         local_counts: &mut dummy_mismatch_counts,
                         overlap_counts: &mut dummy_overlap_mismatch_counts,
                         inconsistency_counts: &mut inconsistency_region_counts,
+                        opportunity_counts: Some(&mut opportunity_region_counts),
                         genomic_counts: Some(&mut genomic_region_counts),
                         genomic_depth: Some(&mut genomic_position_depth),
                     };
@@ -380,6 +393,15 @@ fn main() {
             }
         }
 
+        if !opportunity_region_counts.is_empty() {
+            let mut global_opportunities = opportunity_counts.lock().expect("Lock poisoned");
+            for (key, value) in opportunity_region_counts {
+                let entry = global_opportunities.entry(key).or_default();
+                entry.compared += value.compared;
+                entry.discordant += value.discordant;
+            }
+        }
+
         if local_overlap_count > 0 {
             overlap_pairs_count.fetch_add(local_overlap_count, Ordering::Relaxed);
         }
@@ -414,6 +436,31 @@ fn main() {
             "Wrote {} inconsistency keys to {}",
             incons_counts.len(),
             args.inconsistencies_output
+        );
+    }
+
+    {
+        let opportunities = opportunity_counts.lock().expect("Lock poisoned");
+        let (compared, discordant) = opportunities.values().fold((0usize, 0usize), |(c, d), v| {
+            (c + v.compared, d + v.discordant)
+        });
+        log::info!(
+            "Overlap base pairs compared (both Q>={}): {}, discordant: {} ({:.3e})",
+            args.min_base_quality,
+            compared,
+            discordant,
+            if compared > 0 {
+                discordant as f64 / compared as f64
+            } else {
+                0.0
+            }
+        );
+        write_overlap_opportunities_tsv(&opportunities, &args.opportunities_output)
+            .expect("Failed to write overlap opportunities output");
+        log::info!(
+            "Wrote {} overlap opportunity keys to {}",
+            opportunities.len(),
+            args.opportunities_output
         );
     }
 

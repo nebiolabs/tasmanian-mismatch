@@ -29,7 +29,8 @@ pub use io::{
     load_rescaling_matrix_from_reader, normalize_mismatch_counts,
     print_read_pair_inconsistency_table, write_inconsistencies_tsv,
     write_mismatch_discounts_to_writer, write_mismatch_discounts_tsv, write_normalized_output,
-    write_output, write_potential_variants_tsv, write_rescaling_matrix_output,
+    write_output, write_overlap_opportunities_to_writer, write_overlap_opportunities_tsv,
+    write_potential_variants_tsv, write_rescaling_matrix_output,
 };
 pub use methylation::adjust_methylation_base;
 pub use processing::{
@@ -46,8 +47,9 @@ pub use processing::{
 };
 pub use types::{
     Args, BedFilterMode, DiscountKey, FragmentBase, GenomicMismatchKey, GenomicMismatchValue,
-    GenomicRegion, InconsistencyKey, InsertKey, MismatchKey, OverlapMode, PositionMode,
-    ProcessingConfig, ReadInfo, ReferenceGenome, ReferenceOrder, SoftclipComparison,
+    GenomicRegion, InconsistencyKey, InsertKey, MismatchKey, OVERLAP_QUALITY_BIN_WIDTH,
+    OverlapMode, OverlapOpportunityCounts, OverlapOpportunityKey, PositionMode, ProcessingConfig,
+    ReadInfo, ReferenceGenome, ReferenceOrder, SoftclipComparison,
 };
 pub use utils::{
     base_to_char, calculate_end_pos, complement, correct_read_len_with_mode, parse_md_tag,
