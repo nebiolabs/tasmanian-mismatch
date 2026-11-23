@@ -152,6 +152,7 @@ Produce four diagnostic outputs:
 - paired-read overlap inconsistencies (`read_pair_inconsistencies.tsv`)
 - paired-read overlap opportunities, the denominator for the inconsistencies (`read_pair_overlap_opportunities.tsv`)
 - mismatch discount table (`variant_discounts.tsv`)
+- optionally, optical duplicates compared with their originals (`--optical-duplicates-output`)
 
 Basic usage:
 
@@ -185,6 +186,7 @@ Common options:
 --variants-output <TSV>               Genomic variants output (default: potential_variants.tsv)
 --inconsistencies-output <TSV>        Overlap inconsistencies output (default: read_pair_inconsistencies.tsv)
 --opportunities-output <TSV>          Overlap opportunities output (default: read_pair_overlap_opportunities.tsv)
+--optical-duplicates-output <TSV>     Compare optical duplicates with their originals (off unless given)
 --discount-output <TSV>               Discount table output (default: variant_discounts.tsv), use '-' for stdout
 ```
 
@@ -341,6 +343,35 @@ orientation), and `min(R1 quality, R2 quality)` in bins of 10 (`30` = Q30–39).
 `discordant` equals the inconsistency `count` summed over `discordance_type` at the same
 positions. Use `compared` as the denominator when comparing inconsistency counts across samples
 with different depth, overlap fraction or insert-size distribution.
+
+### Optical duplicates (`--optical-duplicates-output`)
+
+```tsv
+read_num	position	original_base	duplicate_base	min_quality_bin	count
+1	6	T	T	40	1822
+1	6	T	A	40	1
+```
+
+An optical duplicate and its original are two clusters grown from one library molecule, so
+where they differ the error comes from the sequencer (on-flowcell amplification, imaging, base
+calling), not from the library. Compare it with the R1/R2 overlap inconsistencies, which also
+include single-strand damage present in the library molecule.
+
+- Needs duplicates marked with their type: `samtools markdup -d <optical distance>` (writes
+  `dt:Z:SQ`/`dt:Z:LB`) or Picard MarkDuplicates with `TAGGING_POLICY=All` (writes
+  `DT:Z:SQ`/`DT:Z:LB`). Without such tags nothing is collected and a warning is logged.
+- Duplicate sets are rebuilt from each mate's unclipped 5' end and strand (the mate's from the
+  `MC` tag). A set is compared only if it has exactly one unflagged read (the original) and all
+  its duplicates are optical. Sets that also hold library (`LB`) or untagged duplicates are
+  skipped: there the optical copy may be of a PCR duplicate, which would let library errors in.
+  The log reports how many sets were compared and why others were skipped.
+- Reads are compared cycle by cycle from the 5' end, independent of how each was aligned or
+  clipped. `position` is the duplicate's position on the read-mode axis; bases are in read
+  orientation; `min_quality_bin` is min(original, duplicate quality) in bins of 10. Only bases
+  where both pass `-q` are counted, and concordant comparisons are included, so
+  `sum(count where bases differ) / sum(count)` is the discordance rate for any stratum.
+- `-f`/`-F`/`-G` do not apply to this table (`-F 1024` would remove the duplicates);
+  mapping quality, unmapped, secondary, supplementary and QC-fail filters do.
 
 ### `variant_discounts.tsv`
 

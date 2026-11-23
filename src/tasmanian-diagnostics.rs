@@ -96,6 +96,12 @@ struct Args {
     #[arg(long, default_value = "read_pair_overlap_opportunities.tsv")]
     opportunities_output: String,
 
+    /// Also compare each optical duplicate (DT:Z:SQ from Picard, dt:Z:SQ from
+    /// samtools markdup -d) with its original, cycle by cycle, and write the counts here.
+    /// Differences between them come from the sequencer, not the library. Off unless given.
+    #[arg(long, value_name = "TSV")]
+    optical_duplicates_output: Option<String>,
+
     /// Output path for mismatch-key discounts to be consumed by tasmanian-mismatch.
     /// Use '-' to write the discount table to stdout.
     #[arg(long, default_value = "variant_discounts.tsv")]
@@ -183,6 +189,9 @@ fn main() {
         Arc::new(Mutex::new(HashMap::new()));
     let opportunity_counts: Mutex<HashMap<OverlapOpportunityKey, OverlapOpportunityCounts>> =
         Mutex::new(HashMap::new());
+    let optical_counts: Mutex<HashMap<OpticalDuplicateKey, usize>> = Mutex::new(HashMap::new());
+    let optical_stats: Mutex<OpticalDuplicateStats> = Mutex::new(OpticalDuplicateStats::default());
+    let collect_optical = args.optical_duplicates_output.is_some();
 
     let processing_config = ProcessingConfig {
         softclip_threshold: args.softclip_threshold,
@@ -297,6 +306,25 @@ fn main() {
                 processing_config,
             );
             local_count += 1;
+        }
+
+        // Duplicates and their originals start at the same 5' end, so both are in this region.
+        if collect_optical {
+            let mut region_counts: HashMap<OpticalDuplicateKey, usize> = HashMap::new();
+            let mut region_stats = OpticalDuplicateStats::default();
+            collect_optical_duplicate_comparisons(
+                read_groups.values().flatten(),
+                &processing_config,
+                &mut region_counts,
+                &mut region_stats,
+            );
+            *optical_stats.lock().expect("Lock poisoned") += region_stats;
+            if !region_counts.is_empty() {
+                let mut global = optical_counts.lock().expect("Lock poisoned");
+                for (key, count) in region_counts {
+                    *global.entry(key).or_insert(0) += count;
+                }
+            }
         }
 
         for (_qname, records) in read_groups {
@@ -462,6 +490,52 @@ fn main() {
             opportunities.len(),
             args.opportunities_output
         );
+    }
+
+    if let Some(path) = &args.optical_duplicates_output {
+        let stats = *optical_stats.lock().expect("Lock poisoned");
+        let counts = optical_counts.lock().expect("Lock poisoned");
+        let (compared, discordant) = counts.iter().fold((0usize, 0usize), |(c, d), (k, n)| {
+            (
+                c + n,
+                d + if k.original_base != k.duplicate_base {
+                    *n
+                } else {
+                    0
+                },
+            )
+        });
+        log::info!(
+            "Optical duplicates: {} SQ-tagged reads; {} sets compared ({} duplicates); skipped {} \
+             sets with library/untagged duplicates, {} without an original, {} with several",
+            stats.optical_reads,
+            stats.sets_compared,
+            stats.duplicates_compared,
+            stats.sets_skipped_mixed,
+            stats.sets_skipped_no_original,
+            stats.sets_skipped_multiple_originals
+        );
+        log::info!(
+            "Optical duplicate bases compared (both Q>={}): {}, discordant: {} ({:.3e})",
+            args.min_base_quality,
+            compared,
+            discordant,
+            if compared > 0 {
+                discordant as f64 / compared as f64
+            } else {
+                0.0
+            }
+        );
+        if stats.optical_reads == 0 {
+            log::warn!(
+                "--optical-duplicates-output: no reads tagged as optical duplicates. Mark them with \
+                 `samtools markdup -d <distance>` or Picard MarkDuplicates TAGGING_POLICY=All \
+                 (with an optical pixel distance suited to the flowcell)"
+            );
+        }
+        write_optical_duplicates_tsv(&counts, path)
+            .expect("Failed to write optical duplicates output");
+        log::info!("Wrote {} optical duplicate keys to {}", counts.len(), path);
     }
 
     {

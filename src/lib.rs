@@ -6,6 +6,8 @@
 
 /// BED parsing and region masking/filtering utilities.
 pub mod bed;
+/// Optical-duplicate vs original comparisons (sequencer-side discordance).
+pub mod duplicates;
 /// FASTA and BAM input helpers.
 pub mod io;
 /// Methylation-aware base adjustment logic.
@@ -21,6 +23,11 @@ pub mod utils;
 pub use bed::{
     BedFilter, BedInterval, BedRegions, filter_bed_for_region, mask_reference_with_bed,
     maybe_parse_bed_file, parse_bed_file, position_overlaps_intervals,
+};
+pub use duplicates::{
+    DuplicateKind, DuplicateSetKey, OpticalDuplicateKey, OpticalDuplicateStats,
+    collect_optical_duplicate_comparisons, compare_optical_duplicate, duplicate_kind,
+    duplicate_set_key, write_optical_duplicates_to_writer, write_optical_duplicates_tsv,
 };
 pub use io::{
     DEFAULT_RESCALING_EDGE_BP, apply_external_discounts, compute_read_len_max_from_sample_bam,

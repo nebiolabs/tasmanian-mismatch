@@ -2215,6 +2215,132 @@ mod tests {
     }
 
     #[test]
+    fn test_optical_duplicates_compared_with_original_by_cycle() {
+        let mut header = Header::new();
+        let mut sq = HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", "chr1");
+        sq.push_tag(b"LN", 400);
+        header.push_record(&sq);
+        let hv = HeaderView::from_header(&header);
+        let rec = |line: &str| Record::from_sam(&hv, line.as_bytes()).unwrap();
+        let q = "I".repeat(20);
+
+        let reference = "ACGT".repeat(100);
+        let r1_seq = &reference[10..30]; // forward, 5' at ref 10
+        let r2_seq = &reference[50..70]; // reverse, 5' at ref 69
+        // R1 duplicate: cycle 2 A->C, and soft-clipped 2 bp at its 5' end (same unclipped start).
+        let mut r1_dup = r1_seq.as_bytes().to_vec();
+        r1_dup[2] = b'C';
+        let r1_dup = String::from_utf8(r1_dup).unwrap();
+        // R2 duplicate: stored index 19 (its cycle 0) C->A.
+        let mut r2_dup = r2_seq.as_bytes().to_vec();
+        r2_dup[19] = b'A';
+        let r2_dup = String::from_utf8(r2_dup).unwrap();
+
+        let records = vec![
+            // Set A: original pair and its optical duplicate pair -> compared.
+            rec(&format!(
+                "o\t99\tchr1\t11\t60\t20M\t=\t51\t60\t{r1_seq}\t{q}\tMC:Z:20M"
+            )),
+            rec(&format!(
+                "o\t147\tchr1\t51\t60\t20M\t=\t11\t-60\t{r2_seq}\t{q}\tMC:Z:20M"
+            )),
+            rec(&format!(
+                "d\t1123\tchr1\t13\t60\t2S18M\t=\t51\t58\t{r1_dup}\t{q}\tMC:Z:20M\tdt:Z:SQ"
+            )),
+            rec(&format!(
+                "d\t1171\tchr1\t51\t60\t20M\t=\t13\t-58\t{r2_dup}\t{q}\tMC:Z:2S18M\tdt:Z:SQ"
+            )),
+            // Set B: optical and library duplicate of one original -> skipped as mixed.
+            rec(&format!(
+                "b\t99\tchr1\t101\t60\t20M\t=\t151\t70\t{r1_seq}\t{q}\tMC:Z:20M"
+            )),
+            rec(&format!(
+                "bs\t1123\tchr1\t101\t60\t20M\t=\t151\t70\t{r1_seq}\t{q}\tMC:Z:20M\tDT:Z:SQ"
+            )),
+            rec(&format!(
+                "bl\t1123\tchr1\t101\t60\t20M\t=\t151\t70\t{r1_seq}\t{q}\tMC:Z:20M\tDT:Z:LB"
+            )),
+            // Set C: optical duplicate whose original is absent -> skipped.
+            rec(&format!(
+                "c\t1123\tchr1\t201\t60\t20M\t=\t251\t70\t{r1_seq}\t{q}\tMC:Z:20M\tdt:Z:SQ"
+            )),
+        ];
+        assert_eq!(duplicate_kind(&records[0]), DuplicateKind::NotDuplicate);
+        assert_eq!(duplicate_kind(&records[2]), DuplicateKind::Optical);
+        assert_eq!(duplicate_kind(&records[6]), DuplicateKind::Library);
+        assert_eq!(
+            duplicate_set_key(&records[0]),
+            duplicate_set_key(&records[2])
+        );
+        assert_eq!(
+            duplicate_set_key(&records[1]),
+            duplicate_set_key(&records[3])
+        );
+
+        let config = ProcessingConfig {
+            softclip_threshold: 0.0,
+            min_base_quality: 20,
+            is_methylation: false,
+            mode_len: 20,
+            min_map_quality: 0,
+            required_flags: 0,
+            filter_flags: 0,
+            excl_flags: 0,
+            use_insert_mode: false,
+            position_mode: PositionMode::Read,
+            overlap_mode: OverlapMode::Cut,
+            min_fragment_length: 0,
+            max_fragment_length: usize::MAX,
+            min_read_position: 0,
+            max_read_position: usize::MAX,
+        };
+        let mut counts: HashMap<OpticalDuplicateKey, usize> = HashMap::new();
+        let mut stats = OpticalDuplicateStats::default();
+        collect_optical_duplicate_comparisons(&records, &config, &mut counts, &mut stats);
+
+        assert_eq!(
+            stats,
+            OpticalDuplicateStats {
+                optical_reads: 4,
+                sets_compared: 2,
+                duplicates_compared: 2,
+                sets_skipped_mixed: 1,
+                sets_skipped_no_original: 1,
+                sets_skipped_multiple_originals: 0,
+            }
+        );
+        // Every cycle of both reads was compared once.
+        assert_eq!(counts.values().sum::<usize>(), 40);
+        // R1 cycle 2 is axis position 3. R2's cycle 0 is axis position 1, and its bases are
+        // complemented into read orientation (stored C/A read as G/T).
+        let discordant: HashMap<_, _> = counts
+            .iter()
+            .filter(|(k, _)| k.original_base != k.duplicate_base)
+            .map(|(k, v)| (k.clone(), *v))
+            .collect();
+        let key = |read_num, position, original_base, duplicate_base| OpticalDuplicateKey {
+            read_num,
+            position,
+            original_base,
+            duplicate_base,
+            min_quality_bin: 40,
+        };
+        assert_eq!(
+            discordant,
+            HashMap::from([(key(1, 3, 'A', 'C'), 1), (key(2, 1, 'G', 'T'), 1)])
+        );
+
+        let mut buf = Vec::new();
+        write_optical_duplicates_to_writer(&counts, &mut buf).unwrap();
+        let text = String::from_utf8(buf).unwrap();
+        assert!(text.starts_with(
+            "read_num\tposition\toriginal_base\tduplicate_base\tmin_quality_bin\tcount\n"
+        ));
+        assert!(text.contains("\n1\t3\tA\tC\t40\t1\n"));
+    }
+
+    #[test]
     fn test_softclip_qualification_and_side_bounds() {
         let mut header = Header::new();
         let mut sq = HeaderRecord::new(b"SQ");
