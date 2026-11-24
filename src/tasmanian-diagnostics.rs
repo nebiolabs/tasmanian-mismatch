@@ -1,9 +1,9 @@
 use clap::Parser;
 use rayon::prelude::*;
 use rust_htslib::bam::{FetchDefinition, IndexedReader, Read, Reader, Record};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
 use tasmanian_mismatch::{OverlapMode, PositionMode, *};
 
 #[derive(Parser, Debug)]
@@ -108,6 +108,127 @@ struct Args {
     discount_output: String,
 }
 
+/// Mates whose start positions are further apart than this are not paired. A read can only
+/// overlap a mate that starts inside its own reference span, so only reads spanning more
+/// than this (very large deletions) lose an overlap; the window also bounds how far past
+/// its end each region reads to find mates of the pairs it owns.
+const PAIR_WINDOW: i64 = 1_000;
+/// Reference span allowed for a read beyond PAIR_WINDOW when deciding which positions near
+/// a region start may also receive bases from the previous region's reads.
+const SPAN_MARGIN: i64 = 1_000;
+
+#[derive(Clone, Copy)]
+struct SiteThresholds {
+    count: usize,
+    depth: usize,
+}
+
+/// Raw counts for genomic sites near region edges, merged across regions.
+#[derive(Default)]
+struct BoundaryCounts {
+    genomic: HashMap<GenomicMismatchKey, HashSet<MismatchKey>>,
+    depth: HashMap<(i32, i64), usize>,
+}
+
+/// Per-region accumulators.
+#[derive(Default)]
+struct RegionCounts {
+    mismatch: HashMap<MismatchKey, usize>,
+    overlap_mismatch: HashMap<MismatchKey, usize>,
+    inconsistency: HashMap<InconsistencyKey, usize>,
+    opportunity: HashMap<OverlapOpportunityKey, OverlapOpportunityCounts>,
+    genomic: HashMap<GenomicMismatchKey, GenomicMismatchValue>,
+    depth: HashMap<i64, usize>,
+    records: usize,
+    overlap_pairs: usize,
+}
+
+impl RegionCounts {
+    fn single(&mut self, record: &Record, context: &ProcessingContext, config: ProcessingConfig) {
+        process_single_record(
+            record,
+            &mut self.mismatch,
+            &mut self.genomic,
+            &mut self.depth,
+            context,
+            config,
+        );
+        self.records += 1;
+    }
+
+    fn pair(
+        &mut self,
+        record1: &Record,
+        record2: &Record,
+        context: &ProcessingContext,
+        config: ProcessingConfig,
+    ) {
+        let info1 = ReadInfo {
+            tid: record1.tid(),
+            pos: record1.pos(),
+        };
+        let info2 = ReadInfo {
+            tid: record2.tid(),
+            pos: record2.pos(),
+        };
+        let Some(overlap) = get_overlap_region(&info1, &info2, record1, record2) else {
+            self.single(record1, context, config);
+            self.single(record2, context, config);
+            return;
+        };
+        self.overlap_pairs += 1;
+        let mut overlap_counts = OverlapCounts {
+            local_counts: &mut self.mismatch,
+            overlap_counts: &mut self.overlap_mismatch,
+            inconsistency_counts: &mut self.inconsistency,
+            opportunity_counts: Some(&mut self.opportunity),
+            genomic_counts: Some(&mut self.genomic),
+            genomic_depth: Some(&mut self.depth),
+        };
+        process_paired_reads_with_overlap(
+            record1,
+            record2,
+            overlap,
+            &mut overlap_counts,
+            context,
+            config,
+        );
+        self.records += 2;
+    }
+}
+
+fn has_mapped_pair(record: &Record) -> bool {
+    record.is_paired() && !record.is_unmapped() && !record.is_mate_unmapped()
+}
+
+/// Primary alignments whose mate is close enough on the same contig to overlap them.
+fn is_pairable(record: &Record) -> bool {
+    has_mapped_pair(record)
+        && !record.is_secondary()
+        && !record.is_supplementary()
+        && record.tid() == record.mtid()
+        && (record.pos() - record.mpos()).abs() < PAIR_WINDOW
+}
+
+/// Keep a genomic site that passes both thresholds and count its mismatch keys as discounts.
+fn report_site(
+    key: GenomicMismatchKey,
+    mismatch_keys: HashSet<MismatchKey>,
+    depth: usize,
+    thresholds: SiteThresholds,
+    genomic_counts: &mut HashMap<GenomicMismatchKey, (usize, usize)>,
+    discounts: &mut HashMap<MismatchKey, usize>,
+) {
+    let count = mismatch_keys.len();
+    if count < thresholds.count || depth < thresholds.depth {
+        return;
+    }
+    genomic_counts.insert(key, (count, depth));
+    for mismatch_key in mismatch_keys {
+        *discounts.entry(mismatch_key).or_insert(0) += 1;
+    }
+}
+
 fn main() {
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Info)
@@ -140,7 +261,7 @@ fn main() {
 
     let bed_for_filtering = if let Some(regions) = maybe_parse_bed_file(args.bed_file.as_deref()) {
         match args.bed_filter_mode {
-            BedFilterMode::Filter | BedFilterMode::Include => Some(Arc::new(regions)),
+            BedFilterMode::Filter | BedFilterMode::Include => Some(regions),
             BedFilterMode::Mask => {
                 let masked_bases = mask_reference_with_bed(&mut reference, &regions);
                 log::info!("Masked {} bases in reference genome", masked_bases);
@@ -151,19 +272,16 @@ fn main() {
         None
     };
 
-    let reference = Arc::new(reference);
     let bam = Reader::from_path(&args.bam_file).expect("Failed to open BAM file");
 
-    let tid_to_name: Arc<HashMap<i32, String>> = Arc::new(
-        (0..bam.header().target_count())
-            .map(|i| {
-                (
-                    i as i32,
-                    String::from_utf8_lossy(bam.header().tid2name(i)).to_string(),
-                )
-            })
-            .collect(),
-    );
+    let tid_to_name: HashMap<i32, String> = (0..bam.header().target_count())
+        .map(|i| {
+            (
+                i as i32,
+                String::from_utf8_lossy(bam.header().tid2name(i)).to_string(),
+            )
+        })
+        .collect();
 
     let mut regions = Vec::new();
     for (&tid, chr_name) in tid_to_name.iter() {
@@ -171,7 +289,7 @@ fn main() {
         let mut start = 0i64;
         while start < chr_len {
             let end = std::cmp::min(start + args.region_size as i64, chr_len);
-            regions.push((tid, start, end, chr_name.clone()));
+            regions.push((tid, start, end, chr_len, chr_name.clone()));
             start = end;
         }
     }
@@ -181,17 +299,21 @@ fn main() {
 
     let total_count = AtomicUsize::new(0);
     let overlap_pairs_count = AtomicUsize::new(0);
-    let genomic_mismatch_counts: Arc<Mutex<HashMap<GenomicMismatchKey, (usize, usize)>>> =
-        Arc::new(Mutex::new(HashMap::new()));
-    let inconsistency_counts: Arc<Mutex<HashMap<InconsistencyKey, usize>>> =
-        Arc::new(Mutex::new(HashMap::new()));
-    let mismatch_discounts: Arc<Mutex<HashMap<MismatchKey, usize>>> =
-        Arc::new(Mutex::new(HashMap::new()));
+    let overreach_positions = AtomicUsize::new(0);
+    let genomic_mismatch_counts: Mutex<HashMap<GenomicMismatchKey, (usize, usize)>> =
+        Mutex::new(HashMap::new());
+    let inconsistency_counts: Mutex<HashMap<InconsistencyKey, usize>> = Mutex::new(HashMap::new());
+    let mismatch_discounts: Mutex<HashMap<MismatchKey, usize>> = Mutex::new(HashMap::new());
     let opportunity_counts: Mutex<HashMap<OverlapOpportunityKey, OverlapOpportunityCounts>> =
         Mutex::new(HashMap::new());
+    let boundary_counts: Mutex<BoundaryCounts> = Mutex::new(BoundaryCounts::default());
     let optical_counts: Mutex<HashMap<OpticalDuplicateKey, usize>> = Mutex::new(HashMap::new());
     let optical_stats: Mutex<OpticalDuplicateStats> = Mutex::new(OpticalDuplicateStats::default());
     let collect_optical = args.optical_duplicates_output.is_some();
+    let thresholds = SiteThresholds {
+        count: args.genomic_threshold,
+        depth: args.genomic_depth_threshold,
+    };
 
     let processing_config = ProcessingConfig {
         softclip_threshold: args.softclip_threshold,
@@ -215,230 +337,256 @@ fn main() {
         max_read_position: usize::MAX,
     };
 
-    let bam_path_arc = Arc::new(args.bam_file.clone());
+    regions
+        .par_iter()
+        .for_each(|(tid, start, end, chr_len, chr_name)| {
+            let (tid, start, end) = (*tid, *start, *end);
+            // Read past the region end so mates of pairs owned here (leftmost mate starts in
+            // [start, end)) are found; every such mate starts before end + PAIR_WINDOW.
+            let fetch_end = std::cmp::min(end + PAIR_WINDOW, *chr_len);
 
-    regions.par_iter().for_each(|(tid, start, end, chr_name)| {
-        let mut bam =
-            IndexedReader::from_path(bam_path_arc.as_str()).expect("Failed to open BAM file");
+            let mut bam =
+                IndexedReader::from_path(args.bam_file.as_str()).expect("Failed to open BAM file");
+            if let Err(e) = bam.fetch(FetchDefinition::Region(tid, start, fetch_end)) {
+                log::warn!(
+                    "Failed to fetch region {}:{}-{}: {}",
+                    chr_name,
+                    start,
+                    end,
+                    e
+                );
+                return;
+            }
 
-        if let Err(e) = bam.fetch(FetchDefinition::Region(*tid, *start, *end)) {
-            log::warn!(
-                "Failed to fetch region {}:{}-{}: {}",
-                chr_name,
-                start,
-                end,
-                e
-            );
-            return;
-        }
-
-        let ref_clone = Arc::clone(&reference);
-        let tid_clone = Arc::clone(&tid_to_name);
-        let inconsistency_clone = Arc::clone(&inconsistency_counts);
-        let discount_clone = Arc::clone(&mismatch_discounts);
-
-        let chunk_bed_intervals = if let Some(bed) = bed_for_filtering.as_ref() {
-            filter_bed_for_region(bed, chr_name, *start, *end)
-        } else {
-            Vec::new()
-        };
-
-        let processing_context = ProcessingContext {
-            reference: &ref_clone,
-            tid_to_name: &tid_clone,
-            // BED regions act per read (skip check below), never per base: mask mode masks
-            // the reference instead, and per-base masking would erase every read `include` keeps.
-            bed_intervals: &[],
-        };
-
-        let mut bed_cursor = 0usize;
-        let mut local_count = 0usize;
-        let mut local_overlap_count = 0usize;
-
-        let mut dummy_mismatch_counts: HashMap<MismatchKey, usize> = HashMap::new();
-        let mut dummy_overlap_mismatch_counts: HashMap<MismatchKey, usize> = HashMap::new();
-        let mut inconsistency_region_counts: HashMap<InconsistencyKey, usize> = HashMap::new();
-        let mut opportunity_region_counts: HashMap<
-            OverlapOpportunityKey,
-            OverlapOpportunityCounts,
-        > = HashMap::new();
-        let mut genomic_region_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> =
-            HashMap::new();
-        let mut genomic_position_depth: HashMap<i64, usize> = HashMap::new();
-
-        let mut read_groups: HashMap<Vec<u8>, Vec<Record>> = HashMap::new();
-
-        for result in bam.records() {
-            let Ok(record) = result else {
-                continue;
+            let (core_bed, extension_bed) = match bed_for_filtering.as_ref() {
+                Some(bed) => (
+                    filter_bed_for_region(bed, chr_name, start, end),
+                    filter_bed_for_region(bed, chr_name, end, fetch_end),
+                ),
+                None => (Vec::new(), Vec::new()),
             };
+            let filters_whole_reads = args.bed_filter_mode.filters_whole_reads();
+            let include_only = args.bed_filter_mode.include_only();
+            let mut core_cursor = 0usize;
+            let mut extension_cursor = 0usize;
 
-            let read_start = record.pos();
-            let starts_in_chunk = read_start >= *start && read_start < *end;
-            if !starts_in_chunk {
-                continue;
+            let processing_context = ProcessingContext {
+                reference: &reference,
+                tid_to_name: &tid_to_name,
+                // BED regions act per read (skip check below), never per base: mask mode masks
+                // the reference instead, and per-base masking would erase every read `include` keeps.
+                bed_intervals: &[],
+            };
+            let cfg = processing_config;
+
+            let mut counts = RegionCounts::default();
+            // First-seen mate of each pair owned by this region, until its mate arrives.
+            let mut pending: HashMap<Vec<u8>, Record> = HashMap::new();
+            // Optical-duplicate comparison groups whole regions, so it alone still buffers reads.
+            let mut optical_records: Vec<Record> = Vec::new();
+
+            for result in bam.records() {
+                let Ok(record) = result else {
+                    continue;
+                };
+                let pos = record.pos();
+                if pos < start {
+                    continue;
+                }
+
+                if pos < end {
+                    if should_skip_whole_read_for_bed(
+                        &record,
+                        filters_whole_reads,
+                        include_only,
+                        &core_bed,
+                        &mut core_cursor,
+                    ) {
+                        continue;
+                    }
+                    if collect_optical && has_mapped_pair(&record) {
+                        optical_records.push(record.clone());
+                    }
+                    if !is_pairable(&record) {
+                        counts.single(&record, &processing_context, cfg);
+                        continue;
+                    }
+                    let mate_pos = record.mpos();
+                    if mate_pos < start {
+                        // The region holding the mate owns this pair and reads it from there.
+                        continue;
+                    }
+                    if let Some(mate) = pending.remove(record.qname()) {
+                        counts.pair(&mate, &record, &processing_context, cfg);
+                    } else if mate_pos >= pos {
+                        pending.insert(record.qname().to_vec(), record);
+                    } else {
+                        // Mate should already have been read but was filtered or is absent.
+                        counts.single(&record, &processing_context, cfg);
+                    }
+                } else {
+                    // Extension: only mates of pairs owned by this region. Their own region
+                    // skipped them, so each is processed here exactly once.
+                    if !is_pairable(&record) || record.mpos() < start || record.mpos() >= end {
+                        continue;
+                    }
+                    if should_skip_whole_read_for_bed(
+                        &record,
+                        filters_whole_reads,
+                        include_only,
+                        &extension_bed,
+                        &mut extension_cursor,
+                    ) {
+                        continue;
+                    }
+                    if let Some(mate) = pending.remove(record.qname()) {
+                        counts.pair(&mate, &record, &processing_context, cfg);
+                    } else {
+                        counts.single(&record, &processing_context, cfg);
+                    }
+                }
+            }
+            for (_qname, record) in pending.drain() {
+                counts.single(&record, &processing_context, cfg);
             }
 
-            if should_skip_whole_read_for_bed(
-                &record,
-                args.bed_filter_mode.filters_whole_reads(),
-                args.bed_filter_mode.include_only(),
-                &chunk_bed_intervals,
-                &mut bed_cursor,
-            ) {
-                continue;
+            // Duplicates and their originals start at the same 5' end, so both are in this region.
+            if collect_optical {
+                let mut region_counts: HashMap<OpticalDuplicateKey, usize> = HashMap::new();
+                let mut region_stats = OpticalDuplicateStats::default();
+                collect_optical_duplicate_comparisons(
+                    optical_records.iter(),
+                    &processing_config,
+                    &mut region_counts,
+                    &mut region_stats,
+                );
+                *optical_stats.lock().expect("Lock poisoned") += region_stats;
+                if !region_counts.is_empty() {
+                    let mut global = optical_counts.lock().expect("Lock poisoned");
+                    for (key, count) in region_counts {
+                        *global.entry(key).or_insert(0) += count;
+                    }
+                }
             }
 
-            let has_mapped_pair =
-                record.is_paired() && !record.is_unmapped() && !record.is_mate_unmapped();
-            if has_mapped_pair {
-                let qname = record.qname().to_vec();
-                read_groups.entry(qname).or_default().push(record);
-                continue;
+            // Genomic sites near either edge also get reads from the neighbouring region, so
+            // they are merged across regions and thresholded only once all regions are done.
+            // Reads from the previous region reach at most PAIR_WINDOW + a read span past its end.
+            let core_start = start + PAIR_WINDOW + SPAN_MARGIN;
+            let in_core = |p: i64| p >= core_start && p < end;
+            let overreach_limit = end + PAIR_WINDOW + SPAN_MARGIN;
+            let RegionCounts {
+                inconsistency: inconsistency_region_counts,
+                opportunity: opportunity_region_counts,
+                genomic: genomic_region_counts,
+                depth: genomic_position_depth,
+                records: local_count,
+                overlap_pairs: local_overlap_count,
+                ..
+            } = counts;
+
+            let mut boundary_sites = Vec::new();
+            if !genomic_region_counts.is_empty() {
+                let mut global_genomic_counts =
+                    genomic_mismatch_counts.lock().expect("Lock poisoned");
+                let mut global_discount_counts = mismatch_discounts.lock().expect("Lock poisoned");
+                for (genomic_key, genomic_value) in genomic_region_counts {
+                    let position = genomic_key.genomic_position;
+                    if !in_core(position) {
+                        boundary_sites.push((genomic_key, genomic_value.mismatch_keys));
+                        continue;
+                    }
+                    let depth = genomic_position_depth.get(&position).copied().unwrap_or(0);
+                    report_site(
+                        genomic_key,
+                        genomic_value.mismatch_keys,
+                        depth,
+                        thresholds,
+                        &mut global_genomic_counts,
+                        &mut global_discount_counts,
+                    );
+                }
+            }
+            {
+                let mut boundary = boundary_counts.lock().expect("Lock poisoned");
+                for (key, keys) in boundary_sites {
+                    boundary.genomic.entry(key).or_default().extend(keys);
+                }
+                let mut overreach = 0usize;
+                for (&position, &depth) in genomic_position_depth.iter() {
+                    if !in_core(position) {
+                        *boundary.depth.entry((tid, position)).or_insert(0) += depth;
+                        if position >= overreach_limit {
+                            overreach += 1;
+                        }
+                    }
+                }
+                if overreach > 0 {
+                    overreach_positions.fetch_add(overreach, Ordering::Relaxed);
+                }
             }
 
-            process_single_record(
-                &record,
-                &mut dummy_mismatch_counts,
-                &mut genomic_region_counts,
-                &mut genomic_position_depth,
-                &processing_context,
-                processing_config,
-            );
-            local_count += 1;
-        }
-
-        // Duplicates and their originals start at the same 5' end, so both are in this region.
-        if collect_optical {
-            let mut region_counts: HashMap<OpticalDuplicateKey, usize> = HashMap::new();
-            let mut region_stats = OpticalDuplicateStats::default();
-            collect_optical_duplicate_comparisons(
-                read_groups.values().flatten(),
-                &processing_config,
-                &mut region_counts,
-                &mut region_stats,
-            );
-            *optical_stats.lock().expect("Lock poisoned") += region_stats;
-            if !region_counts.is_empty() {
-                let mut global = optical_counts.lock().expect("Lock poisoned");
-                for (key, count) in region_counts {
+            if !inconsistency_region_counts.is_empty() {
+                let mut global = inconsistency_counts.lock().expect("Lock poisoned");
+                for (key, count) in inconsistency_region_counts {
                     *global.entry(key).or_insert(0) += count;
                 }
             }
-        }
 
-        for (_qname, records) in read_groups {
-            if records.len() == 2 {
-                let record1 = &records[0];
-                let record2 = &records[1];
-
-                let info1 = ReadInfo {
-                    tid: record1.tid(),
-                    pos: record1.pos(),
-                };
-                let info2 = ReadInfo {
-                    tid: record2.tid(),
-                    pos: record2.pos(),
-                };
-
-                if let Some((overlap_start, overlap_end)) =
-                    get_overlap_region(&info1, &info2, record1, record2)
-                {
-                    local_overlap_count += 1;
-                    let mut overlap_counts = OverlapCounts {
-                        local_counts: &mut dummy_mismatch_counts,
-                        overlap_counts: &mut dummy_overlap_mismatch_counts,
-                        inconsistency_counts: &mut inconsistency_region_counts,
-                        opportunity_counts: Some(&mut opportunity_region_counts),
-                        genomic_counts: Some(&mut genomic_region_counts),
-                        genomic_depth: Some(&mut genomic_position_depth),
-                    };
-                    process_paired_reads_with_overlap(
-                        record1,
-                        record2,
-                        (overlap_start, overlap_end),
-                        &mut overlap_counts,
-                        &processing_context,
-                        processing_config,
-                    );
-                    local_count += 2;
-                } else {
-                    for record in &records {
-                        process_single_record(
-                            record,
-                            &mut dummy_mismatch_counts,
-                            &mut genomic_region_counts,
-                            &mut genomic_position_depth,
-                            &processing_context,
-                            processing_config,
-                        );
-                        local_count += 1;
-                    }
-                }
-            } else {
-                for record in &records {
-                    process_single_record(
-                        record,
-                        &mut dummy_mismatch_counts,
-                        &mut genomic_region_counts,
-                        &mut genomic_position_depth,
-                        &processing_context,
-                        processing_config,
-                    );
-                    local_count += 1;
+            if !opportunity_region_counts.is_empty() {
+                let mut global_opportunities = opportunity_counts.lock().expect("Lock poisoned");
+                for (key, value) in opportunity_region_counts {
+                    let entry = global_opportunities.entry(key).or_default();
+                    entry.compared += value.compared;
+                    entry.discordant += value.discordant;
                 }
             }
-        }
 
-        if !genomic_region_counts.is_empty() {
-            let mut global_genomic_counts = genomic_mismatch_counts.lock().expect("Lock poisoned");
-            let mut global_discount_counts = discount_clone.lock().expect("Lock poisoned");
-
-            for (genomic_key, genomic_value) in genomic_region_counts {
-                let genomic_depth = genomic_position_depth
-                    .get(&genomic_key.genomic_position)
-                    .copied()
-                    .unwrap_or(0);
-
-                if genomic_value.count >= args.genomic_threshold
-                    && genomic_depth >= args.genomic_depth_threshold
-                {
-                    *global_genomic_counts.entry(genomic_key).or_insert((0, 0)) =
-                        (genomic_value.count, genomic_depth);
-
-                    for mismatch_key in genomic_value.mismatch_keys {
-                        *global_discount_counts.entry(mismatch_key).or_insert(0) += 1;
-                    }
-                }
+            if local_overlap_count > 0 {
+                overlap_pairs_count.fetch_add(local_overlap_count, Ordering::Relaxed);
             }
-        }
 
-        if !inconsistency_region_counts.is_empty() {
-            let mut global_inconsistency_counts =
-                inconsistency_clone.lock().expect("Lock poisoned");
-            for (key, count) in inconsistency_region_counts {
-                *global_inconsistency_counts.entry(key).or_insert(0) += count;
+            let prev_total = total_count.fetch_add(local_count, Ordering::Relaxed);
+            if (prev_total + local_count) / 100_000 > prev_total / 100_000 {
+                log::info!("Processed {} records...", prev_total + local_count);
             }
-        }
+        });
 
-        if !opportunity_region_counts.is_empty() {
-            let mut global_opportunities = opportunity_counts.lock().expect("Lock poisoned");
-            for (key, value) in opportunity_region_counts {
-                let entry = global_opportunities.entry(key).or_default();
-                entry.compared += value.compared;
-                entry.discordant += value.discordant;
-            }
+    // Sites near region edges, now complete across regions.
+    {
+        let boundary = boundary_counts.into_inner().expect("Lock poisoned");
+        let name_to_tid: HashMap<&str, i32> = tid_to_name
+            .iter()
+            .map(|(&tid, name)| (name.as_str(), tid))
+            .collect();
+        let mut global_genomic_counts = genomic_mismatch_counts.lock().expect("Lock poisoned");
+        let mut global_discount_counts = mismatch_discounts.lock().expect("Lock poisoned");
+        for (genomic_key, keys) in boundary.genomic {
+            let tid = name_to_tid[genomic_key.chromosome.as_str()];
+            let depth = boundary
+                .depth
+                .get(&(tid, genomic_key.genomic_position))
+                .copied()
+                .unwrap_or(0);
+            report_site(
+                genomic_key,
+                keys,
+                depth,
+                thresholds,
+                &mut global_genomic_counts,
+                &mut global_discount_counts,
+            );
         }
-
-        if local_overlap_count > 0 {
-            overlap_pairs_count.fetch_add(local_overlap_count, Ordering::Relaxed);
-        }
-
-        let prev_total = total_count.fetch_add(local_count, Ordering::Relaxed);
-        if (prev_total + local_count) / 100_000 > prev_total / 100_000 {
-            log::info!("Processed {} records...", prev_total + local_count);
-        }
-    });
+    }
+    let overreach = overreach_positions.load(Ordering::Relaxed);
+    if overreach > 0 {
+        log::warn!(
+            "{} genomic positions were covered by reads reaching more than {} bp past their \
+             region end; their depth near region edges may be split between regions",
+            overreach,
+            PAIR_WINDOW + SPAN_MARGIN
+        );
+    }
 
     log::info!(
         "Total records processed: {}",

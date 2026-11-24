@@ -428,3 +428,175 @@ fn integration_diagnostics_bed_filter_mode_include_and_filter_are_inverses() {
         "filter mode should keep chr2's variant, got:\n{filter_variants}"
     );
 }
+
+/// Deterministic pseudo-random reference of `len` bases.
+fn synthetic_reference(len: usize) -> Vec<u8> {
+    let mut state: u64 = 0x9E37_79B9_7F4A_7C15;
+    (0..len)
+        .map(|_| {
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            b"ACGT"[(state >> 33) as usize % 4]
+        })
+        .collect()
+}
+
+fn substitute(base: u8) -> u8 {
+    match base {
+        b'A' => b'G',
+        b'C' => b'T',
+        b'G' => b'A',
+        _ => b'C',
+    }
+}
+
+/// Overlapping 100-bp pairs tiled across a 6 kb contig, so every region boundary cuts
+/// through pairs and sites. Shared "variant" sites are mutated in every read covering
+/// them; each read also carries one private error, plus one R1/R2 disagreement per pair.
+fn write_boundary_test_bam(path: &Path, reference: &[u8]) {
+    const READ_LEN: usize = 100;
+    const MATE_OFFSET: usize = 60;
+    let variant_sites = [950usize, 1000, 1001, 1050, 2990, 3000, 4500];
+
+    let mut header = Header::new();
+    let mut sq = HeaderRecord::new(b"SQ");
+    sq.push_tag(b"SN", "chr1");
+    sq.push_tag(b"LN", reference.len());
+    header.push_record(&sq);
+    let header_view = HeaderView::from_header(&header);
+
+    let read_seq = |start: usize, private_error: usize| -> String {
+        let mut seq = reference[start..start + READ_LEN].to_vec();
+        for &site in &variant_sites {
+            if (start..start + READ_LEN).contains(&site) {
+                seq[site - start] = substitute(reference[site]);
+            }
+        }
+        seq[private_error] = substitute(seq[private_error]);
+        String::from_utf8(seq).unwrap()
+    };
+
+    let mut lines: Vec<(usize, String)> = Vec::new();
+    let mut start = 0usize;
+    let mut i = 0usize;
+    while start + MATE_OFFSET + READ_LEN <= reference.len() {
+        let mate = start + MATE_OFFSET;
+        let template_len = MATE_OFFSET + READ_LEN;
+        let qual = "I".repeat(READ_LEN);
+        lines.push((
+            start,
+            format!(
+                "p{i}\t99\tchr1\t{}\t60\t{READ_LEN}M\t=\t{}\t{template_len}\t{}\t{qual}\tMC:Z:{READ_LEN}M",
+                start + 1,
+                mate + 1,
+                read_seq(start, (i * 7) % READ_LEN)
+            ),
+        ));
+        lines.push((
+            mate,
+            format!(
+                "p{i}\t147\tchr1\t{}\t60\t{READ_LEN}M\t=\t{}\t-{template_len}\t{}\t{qual}\tMC:Z:{READ_LEN}M",
+                mate + 1,
+                start + 1,
+                read_seq(mate, (i * 13 + 3) % READ_LEN)
+            ),
+        ));
+        start += 19;
+        i += 1;
+    }
+    lines.sort_by_key(|(pos, _)| *pos);
+
+    let mut writer =
+        Writer::from_path(path, &header, Format::Bam).expect("failed to open BAM writer");
+    for (_, line) in lines {
+        let record = Record::from_sam(&header_view, line.as_bytes()).expect("bad SAM line");
+        writer.write(&record).expect("failed to write record");
+    }
+}
+
+fn sorted_lines(path: &Path) -> Vec<String> {
+    let mut lines: Vec<String> = fs::read_to_string(path)
+        .expect("failed to read output")
+        .lines()
+        .map(str::to_owned)
+        .collect();
+    lines.sort();
+    lines
+}
+
+/// Regions are a unit of parallel work only: pairs and genomic sites that straddle region
+/// boundaries must give the same tables whatever the region size.
+#[test]
+fn integration_diagnostics_outputs_do_not_depend_on_region_size() {
+    let temp_dir = unique_temp_dir("diagnostics_region_size");
+    let fixture_bam = temp_dir.join("input.bam");
+    let reference_fa = temp_dir.join("reference.fa");
+
+    let reference = synthetic_reference(6_000);
+    fs::write(
+        &reference_fa,
+        format!(">chr1\n{}\n", String::from_utf8_lossy(&reference)),
+    )
+    .expect("failed to write reference");
+    write_boundary_test_bam(&fixture_bam, &reference);
+    index::build(&fixture_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");
+
+    let binary = env!("CARGO_BIN_EXE_tasmanian-diagnostics");
+    let tables = ["variants", "inconsistencies", "opportunities", "discounts"];
+    let run = |region_size: &str| -> Vec<Vec<String>> {
+        let out = temp_dir.join(format!("r{region_size}"));
+        fs::create_dir_all(&out).unwrap();
+        let output = Command::new(binary)
+            .args([
+                "-t",
+                "4",
+                "-r",
+                region_size,
+                "-q",
+                "0",
+                "--min-map-quality",
+                "0",
+            ])
+            .args(["--genomic-threshold", "2", "--genomic-depth-threshold", "1"])
+            .arg("--variants-output")
+            .arg(out.join("variants.tsv"))
+            .arg("--inconsistencies-output")
+            .arg(out.join("inconsistencies.tsv"))
+            .arg("--opportunities-output")
+            .arg(out.join("opportunities.tsv"))
+            .arg("--discount-output")
+            .arg(out.join("discounts.tsv"))
+            .arg(&fixture_bam)
+            .arg(&reference_fa)
+            .output()
+            .expect("failed to execute diagnostics binary");
+        assert!(
+            output.status.success(),
+            "diagnostics -r {region_size} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        tables
+            .iter()
+            .map(|t| sorted_lines(&out.join(format!("{t}.tsv"))))
+            .collect()
+    };
+
+    let whole = run("100000");
+    // Shared sites pass the threshold; ones near 1000 and 3000 straddle the cuts below.
+    let variant_positions: Vec<&str> = whole[0]
+        .iter()
+        .filter_map(|l| l.split('\t').nth(1))
+        .collect();
+    for site in ["950", "1000", "1001", "1050", "2990", "3000", "4500"] {
+        assert!(variant_positions.contains(&site), "missing variant {site}");
+    }
+    assert!(whole[1].len() > 1, "expected R1/R2 inconsistencies");
+
+    for region_size in ["1000", "1003", "250", "37"] {
+        let split = run(region_size);
+        for (t, (a, b)) in tables.iter().zip(whole.iter().zip(split.iter())) {
+            assert_eq!(a, b, "{t} differs between -r 100000 and -r {region_size}");
+        }
+    }
+}
