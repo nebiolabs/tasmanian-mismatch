@@ -758,21 +758,37 @@ pub fn process_paired_reads_with_overlap(
     let mut read1_overlap_map: HashMap<usize, (usize, u8, u8)> = HashMap::new();
     let mut read2_overlap_map: HashMap<usize, (usize, u8, u8)> = HashMap::new();
 
-    // Process both reads
-    for (record, is_first_read, overlap_map) in [
-        (record1, true, &mut read1_overlap_map),
-        (record2, false, &mut read2_overlap_map),
-    ] {
-        if should_skip_record_core(
+    let usable = |record: &Record| {
+        !should_skip_record_core(
             record,
             config.min_map_quality,
             config.required_flags,
             config.filter_flags,
             config.excl_flags,
             true,
-        ) {
+        ) && context
+            .tid_to_name
+            .get(&record.tid())
+            .is_some_and(|name| context.reference.contains_key(name.as_str()))
+    };
+    let usable_reads = [usable(record1), usable(record2)];
+    // Overlap bases are counted once per pair: from record1, or from record2 when record1
+    // is filtered out. Depth there counts every usable read.
+    let overlap_counter = if usable_reads[0] { 0 } else { 1 };
+    let overlap_depth = usable_reads.iter().filter(|&&u| u).count();
+
+    // Process both reads
+    for (index, (record, overlap_map)) in [
+        (record1, &mut read1_overlap_map),
+        (record2, &mut read2_overlap_map),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        if !usable_reads[index] {
             continue;
         }
+        let counts_overlap = index == overlap_counter;
 
         let tid = record.tid();
         if tid < 0 {
@@ -831,12 +847,8 @@ pub fn process_paired_reads_with_overlap(
                                 overlap_map.insert(genome_pos, (r_pos, seq[r_pos], qual[r_pos]));
                             }
 
-                            // Count mismatches in overlap. Gated on `is_first_read` so this
-                            // runs exactly once per pair (from record1's cigar walk) --
-                            // record2's walk only ever reaches this branch with
-                            // `is_first_read == false` and is skipped, so its base is never
-                            // added to genomic_counts here.
-                            if is_first_read {
+                            // Count mismatches in overlap once per pair, from one read.
+                            if counts_overlap {
                                 compare_and_count(
                                     &read_ctx,
                                     r_pos,
@@ -849,26 +861,18 @@ pub fn process_paired_reads_with_overlap(
 
                                 // Update genomic depth for overlap positions
                                 if let Some(depth) = counts.genomic_depth.as_mut() {
-                                    // Count both reads covering this position
-                                    depth
-                                        .entry(genome_pos as i64)
-                                        .and_modify(|d| *d += 2)
-                                        .or_insert(2);
+                                    *depth.entry(genome_pos as i64).or_insert(0) += overlap_depth;
                                 }
                             }
                         } else {
-                            // Not in overlap - count normally
+                            // Not in overlap: each read covers these bases alone.
                             compare_and_count(
                                 &read_ctx,
                                 r_pos,
                                 genome_pos,
                                 &config,
                                 counts.local_counts,
-                                if is_first_read {
-                                    counts.genomic_counts.as_deref_mut()
-                                } else {
-                                    None
-                                }, // Only track genomic counts once
+                                counts.genomic_counts.as_deref_mut(),
                                 chr_name,
                             );
 

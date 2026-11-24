@@ -1984,6 +1984,105 @@ mod tests {
         assert!(!depth.is_empty());
     }
 
+    /// Runs `process_paired_reads_with_overlap` on reads over ref ACGTACGTACGT... with the
+    /// overlap at 0-based 4..8; returns the genomic counts and depth.
+    fn paired_genomic_counts(
+        read1_sam: &[u8],
+        read2_sam: &[u8],
+        min_map_quality: u8,
+    ) -> (
+        HashMap<GenomicMismatchKey, GenomicMismatchValue>,
+        HashMap<i64, usize>,
+    ) {
+        let mut header = Header::new();
+        let mut sq = HeaderRecord::new(b"SQ");
+        sq.push_tag(b"SN", "chr1");
+        sq.push_tag(b"LN", 200);
+        header.push_record(&sq);
+        let header_view = HeaderView::from_header(&header);
+        let read1 = Record::from_sam(&header_view, read1_sam).unwrap();
+        let read2 = Record::from_sam(&header_view, read2_sam).unwrap();
+
+        let mut reference = HashMap::new();
+        reference.insert("chr1".to_string(), b"ACGTACGTACGTACGTACGT".to_vec());
+        let mut tid_to_name = HashMap::new();
+        tid_to_name.insert(0i32, "chr1".to_string());
+        let context = ProcessingContext {
+            reference: &reference,
+            tid_to_name: &tid_to_name,
+            bed_intervals: &[],
+        };
+        let config = ProcessingConfig {
+            softclip_threshold: 0.0,
+            min_base_quality: 0,
+            is_methylation: false,
+            mode_len: 8,
+            min_map_quality,
+            required_flags: 0,
+            filter_flags: 0,
+            excl_flags: 0,
+            use_insert_mode: false,
+            position_mode: PositionMode::Read,
+            overlap_mode: OverlapMode::Cut,
+            min_fragment_length: 0,
+            max_fragment_length: usize::MAX,
+            min_read_position: 0,
+            max_read_position: usize::MAX,
+        };
+
+        let mut local_counts: HashMap<MismatchKey, usize> = HashMap::new();
+        let mut overlap_counts: HashMap<MismatchKey, usize> = HashMap::new();
+        let mut inconsistency_counts: HashMap<InconsistencyKey, usize> = HashMap::new();
+        let mut genomic_counts: HashMap<GenomicMismatchKey, GenomicMismatchValue> = HashMap::new();
+        let mut depth: HashMap<i64, usize> = HashMap::new();
+        let mut counts = OverlapCounts {
+            local_counts: &mut local_counts,
+            overlap_counts: &mut overlap_counts,
+            inconsistency_counts: &mut inconsistency_counts,
+            opportunity_counts: None,
+            genomic_counts: Some(&mut genomic_counts),
+            genomic_depth: Some(&mut depth),
+        };
+        process_paired_reads_with_overlap(&read1, &read2, (4, 8), &mut counts, &context, config);
+        (genomic_counts, depth)
+    }
+
+    #[test]
+    fn test_paired_reads_record_read2_mismatch_outside_overlap() {
+        // read2 (0-based 4..12) carries T over the reference G at 10, past the overlap.
+        let (genomic, depth) = paired_genomic_counts(
+            b"r\t99\tchr1\t1\t60\t8M\t=\t5\t12\tACGTACGT\tIIIIIIII\tMC:Z:8M",
+            b"r\t147\tchr1\t5\t60\t8M\t=\t1\t-12\tACGTACTT\tIIIIIIII\tMC:Z:8M",
+            0,
+        );
+        let key = GenomicMismatchKey {
+            chromosome: "chr1".to_string(),
+            mismatch_type: "G>T".to_string(),
+            genomic_position: 10,
+        };
+        assert_eq!(genomic.get(&key).map(|v| v.count), Some(1), "{genomic:?}");
+        assert_eq!(depth.get(&10), Some(&1));
+        assert_eq!(depth.get(&5), Some(&2));
+    }
+
+    #[test]
+    fn test_paired_reads_count_overlap_from_read2_when_read1_is_filtered() {
+        // read1 fails MAPQ; read2 carries A over the reference C at 5, inside the overlap.
+        let (genomic, depth) = paired_genomic_counts(
+            b"r\t99\tchr1\t1\t0\t8M\t=\t5\t12\tACGTACGT\tIIIIIIII\tMC:Z:8M",
+            b"r\t147\tchr1\t5\t60\t8M\t=\t1\t-12\tAAGTACGT\tIIIIIIII\tMC:Z:8M",
+            10,
+        );
+        let key = GenomicMismatchKey {
+            chromosome: "chr1".to_string(),
+            mismatch_type: "C>A".to_string(),
+            genomic_position: 5,
+        };
+        assert_eq!(genomic.get(&key).map(|v| v.count), Some(1), "{genomic:?}");
+        assert_eq!(depth.get(&5), Some(&1));
+        assert_eq!(depth.get(&0), None, "filtered read1 must add no depth");
+    }
+
     #[test]
     fn test_process_paired_reads_with_overlap_counts_opportunities() {
         let mut header = Header::new();

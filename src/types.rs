@@ -74,8 +74,8 @@ pub struct GenomicMismatchKey {
     pub chromosome: String, // Chromosome/contig name
     /// Mismatch class such as `A>G` or `C>T`.
     pub mismatch_type: String, // e.g., "A>G", "C>T"
-    /// Genomic position associated with the event.
-    pub genomic_position: i64, // (1-based)
+    /// Genomic position associated with the event (0-based, as written to the variants table).
+    pub genomic_position: i64,
 }
 
 /// Aggregated details for a genomic mismatch site.
