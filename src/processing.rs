@@ -995,15 +995,19 @@ fn count_overlap_comparisons(
 /// * `reference` - Reference genome sequences.
 /// * `tid_to_name` - BAM target ID to contig-name mapping.
 /// * `rescaling_matrix` - Per-read-position mismatch scaling factors.
+/// * `max_read_len` - Length of the read-position axis the matrix was built on
+///   (the same value `tasmanian-mismatch --position-mode read` used).
 ///
 /// # Notes
-/// The current implementation computes quality-score modifications but does not
-/// write them back into the record.
+/// Matrix positions are 1-based and oriented 5'->3' along the read (see
+/// [`read_axis_position`]), so reverse-strand reads must be flipped before the
+/// lookup; using the raw BAM index would apply the profile back to front.
 pub fn rescale_phred_scores(
     record: &mut Record,
     reference: &ReferenceGenome,
     tid_to_name: &HashMap<i32, String>,
     rescaling_matrix: &RescalingMatrix,
+    max_read_len: usize,
 ) {
     let tid = record.tid();
     let Some(chr_name) = tid_to_name.get(&tid) else {
@@ -1059,9 +1063,11 @@ pub fn rescale_phred_scores(
                             ref_base
                         };
 
+                        let axis_pos =
+                            read_axis_position(r_pos, seq.len(), is_reverse, max_read_len);
                         let key = (
                             read_num,
-                            r_pos as u16,
+                            axis_pos as u16,
                             strand_adjusted_ref_base,
                             strand_adjusted_read_base,
                         );

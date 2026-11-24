@@ -40,7 +40,9 @@ fn integration_rescale_matrix_produces_rescaled_sam() {
     log_line(&log_path, "Starting rescale integration test (file matrix)");
 
     fs::write(&reference_fa, ">chr1\nACGTACGT\n").expect("failed to write reference");
-    fs::write(&matrix_tsv, "1\t4\tA\tT\t0.5\n").expect("failed to write matrix");
+    // Matrix positions are 1-based along the read axis: BAM index 4 of this
+    // forward read is position 5.
+    fs::write(&matrix_tsv, "1\t5\tA\tT\t0.5\n").expect("failed to write matrix");
     write_test_bam(&input_bam);
 
     index::build(&input_bam, None, index::Type::Bai, 1).expect("failed to build BAM index");

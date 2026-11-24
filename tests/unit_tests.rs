@@ -919,9 +919,45 @@ mod tests {
             &reference_genome,
             &tid_to_name,
             &rescaling_matrix,
+            10,
         );
 
         assert!(true);
+    }
+
+    /// Matrix positions follow the read's 5'->3' axis, so a reverse-strand read's
+    /// BAM index must be flipped before lookup (regression: it was used raw).
+    #[test]
+    fn test_rescale_phred_scores_uses_read_axis_for_both_strands() {
+        let header = Header::new();
+        let header_view = HeaderView::from_header(&header);
+        let mut reference_genome = HashMap::new();
+        // BAM index 1: reference G, read C.
+        reference_genome.insert("*".to_string(), b"AGGTACGTAC".to_vec());
+        let mut tid_to_name = HashMap::new();
+        tid_to_name.insert(-1i32, "*".to_string());
+
+        let rescale = |flag: u16, matrix: &HashMap<(u8, u16, char, char), f32>| {
+            let sam = format!("read1\t{flag}\t*\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII");
+            let mut record = Record::from_sam(&header_view, sam.as_bytes()).unwrap();
+            rescale_phred_scores(&mut record, &reference_genome, &tid_to_name, matrix, 10);
+            record.qual()[1]
+        };
+
+        // Forward read: BAM index 1 is read-axis position 2, bases G>C as-is.
+        let mut fwd = HashMap::new();
+        fwd.insert((1, 2u16, 'G', 'C'), 0.5f32);
+        assert_eq!(rescale(0, &fwd), 20);
+
+        // Reverse read: BAM index 1 is read-axis position 9, bases complemented (C>G).
+        let mut rev = HashMap::new();
+        rev.insert((1, 9u16, 'C', 'G'), 0.5f32);
+        assert_eq!(rescale(16, &rev), 20);
+
+        // The raw BAM index (old behaviour) must no longer match for a reverse read.
+        let mut raw = HashMap::new();
+        raw.insert((1, 2u16, 'C', 'G'), 0.5f32);
+        assert_eq!(rescale(16, &raw), 40);
     }
 
     #[allow(clippy::assertions_on_constants)]
@@ -950,6 +986,7 @@ mod tests {
             &reference_genome,
             &tid_to_name,
             &rescaling_matrix,
+            10,
         );
 
         assert!(true);

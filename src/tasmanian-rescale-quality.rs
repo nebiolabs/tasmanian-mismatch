@@ -32,6 +32,11 @@ struct Args {
     #[arg(short = 'o', long)]
     /// Output BAM file (default: stdout)
     output_file: Option<String>,
+
+    /// Read length of the matrix's position axis; omit to use the longest of the
+    /// first 10,000 reads (the same default tasmanian-mismatch uses)
+    #[arg(long, value_parser = clap::builder::RangedU64ValueParser::<usize>::new().range(1..))]
+    max_read_length: Option<usize>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -73,6 +78,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load rescaling matrix
     let rescaling_matrix = load_rescaling_matrix(matrix_path)?;
     log::info!("Loaded {} rescaling entries", rescaling_matrix.len());
+
+    let max_read_len = args
+        .max_read_length
+        .unwrap_or_else(|| compute_read_len_max_from_sample_bam(bam_path, 10_000));
+    log::info!("Max read length: {}", max_read_len);
 
     // Open BAM to read header and create regions
     let bam = Reader::from_path(bam_path)?;
@@ -150,6 +160,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     &reference_arc,
                                     &tid_to_name_arc,
                                     &matrix_arc,
+                                    max_read_len,
                                 );
                                 region_records.push(record);
                             }
@@ -183,7 +194,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for record_result in full_reader.records() {
         let mut record = record_result?;
         if record.tid() < 0 {
-            rescale_phred_scores(&mut record, &reference_arc, &tid_to_name_arc, &matrix_arc);
+            rescale_phred_scores(
+                &mut record,
+                &reference_arc,
+                &tid_to_name_arc,
+                &matrix_arc,
+                max_read_len,
+            );
             writer.write(&record)?;
             total_records += 1;
         }
