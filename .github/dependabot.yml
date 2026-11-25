@@ -1,0 +1,15 @@
+# Keeps the SHA-pinned actions current, nebiolabs/rust-ci included. Each
+# `uses: owner/action@<sha> # <version>` is bumped as a PR, SHA and comment together. The
+# cooldown holds a release back until it is a week old, so a hijacked release is usually
+# pulled before it is ever proposed here.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]

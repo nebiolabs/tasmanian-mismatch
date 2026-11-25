@@ -1,7 +1,8 @@
 # Tasmanian-mismatch
 
 [![CI](https://github.com/nebiolabs/tasmanian-mismatch/actions/workflows/ci.yml/badge.svg)](https://github.com/nebiolabs/tasmanian-mismatch/actions/workflows/ci.yml)
-[![Coverage](badges/coverage.svg)](https://github.com/nebiolabs/tasmanian-mismatch/actions/workflows/ci-metrics.yml)
+[![Coverage](badges/coverage.svg)](https://github.com/nebiolabs/tasmanian-mismatch/actions/workflows/ci.yml)
+[![Perf](badges/bench.svg)](benches/history/ci.csv)
 
 ## Abstract
 
@@ -373,6 +374,35 @@ Run the full test suite with:
 ```bash
 cargo test --all-targets
 ```
+
+CI comes from [nebiolabs/rust-ci](https://github.com/nebiolabs/rust-ci). It runs the test
+suite once under coverage instrumentation. To produce the same report locally, install
+grcov and clone rust-ci to `~/src/rust-ci`, then run:
+
+```bash
+python3 ~/src/rust-ci/scripts/coverage.py
+# HTML: target/coverage/html/index.html
+```
+
+## Performance
+
+Every push to `master` times `tasmanian-mismatch` with hyperfine on a GitHub runner. The
+input is the EM-seq paper's 10 ng FFPE library, chr20:57,000,001-58,000,000 subsampled to
+25% (about 43k reads), against a 1 Mb reference. `scripts/make_bench_fixtures.sh` builds
+it. The cases are
+defined under `[package.metadata.bench]` in `Cargo.toml`. Each result is appended to
+[`benches/history/ci.csv`](benches/history/ci.csv) and the chart below is redrawn:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="benches/history/time-ci-dark.svg">
+  <img alt="Wall-clock time for each benchmark across recorded runs" src="benches/history/time-ci-light.svg">
+</picture>
+
+On a pull request, CI comments with each result compared against `master`'s recent runs on
+the same CPU model. To record a local run, install hyperfine 2 and clone rust-ci to
+`~/src/rust-ci`, then run `python3 ~/src/rust-ci/scripts/bench.py`. History is kept per
+machine (`benches/history/<host>.csv`), because times from different machines are not
+comparable.
 
 ## Notes
 
