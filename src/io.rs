@@ -3,7 +3,7 @@
 use crate::types::{
     DiscountKey, GenomicMismatchKey, InconsistencyKey, InsertKey, MismatchKey,
     OverlapOpportunityCounts, OverlapOpportunityKey, PositionMode, ReferenceGenome, ReferenceOrder,
-    RescalingMatrix,
+    RescalingMatrix, SiteCounts,
 };
 use bio::io::fasta;
 use rust_htslib::bam::{Read, Reader};
@@ -80,14 +80,22 @@ pub fn compute_read_len_max_from_sample_bam(bam_path: &str, sample_size: usize) 
 /// Write genomic mismatch counts to a TSV file for potential variant review.
 ///
 /// # Arguments
-/// * `genomic_counts` - Genomic mismatch counts keyed by chromosome/position/mismatch.
+/// * `genomic_counts` - Per-site counts keyed by chromosome/position/mismatch.
 /// * `output_path` - Output TSV path.
+///
+/// Columns: `count` is the number of supporting reads and `depth` the number of
+/// reads covering the site under the same filters (both one per fragment where
+/// mates overlap), so `count / depth` is the observed allele fraction.
+/// `distinct_read_positions` is the number of distinct (mismatch type, read
+/// position, read number) keys among the supporting reads -- an artefact
+/// signal: real variants appear at many read positions, while duplicates and
+/// positional artefacts pile up on few.
 ///
 /// # Returns
 /// * `Ok(())` on success.
 /// * Any I/O error encountered while creating or writing the file.
 pub fn write_potential_variants_tsv(
-    genomic_counts: &HashMap<GenomicMismatchKey, (usize, usize)>,
+    genomic_counts: &HashMap<GenomicMismatchKey, SiteCounts>,
     output_path: &str,
 ) -> std::io::Result<()> {
     let file = File::create(output_path)?;
@@ -95,17 +103,23 @@ pub fn write_potential_variants_tsv(
 
     writeln!(
         writer,
-        "chromosome\tposition\treference_base\tmismatch_base\tcount\tdepth"
+        "chromosome\tposition\treference_base\tmismatch_base\tcount\tdepth\tdistinct_read_positions"
     )?;
 
     // Keep unsorted iteration for speed on large datasets.
-    for (key, count) in genomic_counts.iter() {
+    for (key, site) in genomic_counts.iter() {
         let parts: Vec<&str> = key.mismatch_type.split('>').collect();
         if parts.len() == 2 {
             writeln!(
                 writer,
-                "{}\t{}\t{}\t{}\t{}\t{}",
-                key.chromosome, key.genomic_position, parts[0], parts[1], count.0, count.1
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                key.chromosome,
+                key.genomic_position,
+                parts[0],
+                parts[1],
+                site.supporting_reads,
+                site.depth,
+                site.distinct_read_positions
             )?;
         }
     }

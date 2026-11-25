@@ -173,12 +173,12 @@ fn integration_methylation_mode_collapses_bisulfite_signature_but_not_real_snp()
     log_line(&log_path, &format!("variants_off.tsv:\n{}", off_text));
 
     assert!(
-        off_text.lines().any(|line| line == "chr1\t4\tG\tA\t1\t1"),
+        off_text.lines().any(|line| line == "chr1\t4\tG\tA\t1\t1\t1"),
         "expected uncollapsed G>A row at position 4 without methylation mode, got:\n{}",
         off_text
     );
     assert!(
-        off_text.lines().any(|line| line == "chr1\t12\tT\tG\t1\t1"),
+        off_text.lines().any(|line| line == "chr1\t12\tT\tG\t1\t1\t1"),
         "expected T>G SNP row at position 12 without methylation mode, got:\n{}",
         off_text
     );
@@ -204,7 +204,7 @@ fn integration_methylation_mode_collapses_bisulfite_signature_but_not_real_snp()
     log_line(&log_path, &format!("variants_on.tsv:\n{}", on_text));
 
     assert!(
-        !on_text.lines().any(|line| line == "chr1\t4\tG\tA\t1\t1"),
+        !on_text.lines().any(|line| line == "chr1\t4\tG\tA\t1\t1\t1"),
         "G>A row at position 4 should have collapsed under methylation mode, got:\n{}",
         on_text
     );
@@ -214,7 +214,7 @@ fn integration_methylation_mode_collapses_bisulfite_signature_but_not_real_snp()
         on_text
     );
     assert!(
-        on_text.lines().any(|line| line == "chr1\t12\tT\tG\t1\t1"),
+        on_text.lines().any(|line| line == "chr1\t12\tT\tG\t1\t1\t1"),
         "expected T>G SNP row at position 12 to be unaffected by methylation mode, got:\n{}",
         on_text
     );

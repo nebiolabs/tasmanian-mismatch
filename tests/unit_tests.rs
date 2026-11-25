@@ -194,6 +194,87 @@ mod tests {
         assert_eq!(local_counts.len(), 1);
     }
 
+    /// A site's supporting reads count every read; distinct_read_positions only
+    /// counts distinct (type, read position, read number) keys, so it saturates.
+    #[test]
+    fn test_genomic_site_counts_reads_and_distinct_read_positions_separately() {
+        let header = Header::new();
+        let header_view = HeaderView::from_header(&header);
+        let record = Record::from_sam(
+            &header_view,
+            b"r\t0\t*\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII",
+        )
+        .unwrap();
+        let seq = record.seq();
+        // Reference G at genome position 1; the read has C at read positions 1 and 5.
+        let ref_seq: &[u8] = b"AGGAACGTAC";
+        let read_ctx = ReadContext {
+            seq: &seq,
+            qual: record.qual(),
+            ref_seq,
+            is_reverse: false,
+            read_num: 1,
+        };
+        let config = ProcessingConfig {
+            softclip_threshold: 0.0,
+            min_base_quality: 0,
+            is_methylation: false,
+            mode_len: 10,
+            min_map_quality: 0,
+            required_flags: 0,
+            filter_flags: 0,
+            excl_flags: 0,
+            use_insert_mode: false,
+            position_mode: PositionMode::Read,
+            overlap_mode: OverlapMode::Cut,
+            min_fragment_length: 0,
+            max_fragment_length: usize::MAX,
+            min_read_position: 0,
+            max_read_position: usize::MAX,
+        };
+        let mut local_counts = HashMap::new();
+        let mut genomic: HashMap<GenomicMismatchKey, GenomicMismatchValue> = HashMap::new();
+        let key = GenomicMismatchKey {
+            chromosome: "chr1".to_string(),
+            mismatch_type: "G>C".to_string(),
+            genomic_position: 1,
+        };
+
+        // Two reads supporting the site from the same read position: 2 reads, 1 position.
+        for _ in 0..2 {
+            compare_and_count(
+                &read_ctx,
+                1,
+                1,
+                &config,
+                &mut local_counts,
+                Some(&mut genomic),
+                "chr1",
+            );
+        }
+        assert_eq!(genomic[&key].supporting_reads, 2);
+        assert_eq!(genomic[&key].distinct_read_positions(), 1);
+
+        // A third read supporting it from another read position adds both.
+        compare_and_count(
+            &read_ctx,
+            5,
+            1,
+            &config,
+            &mut local_counts,
+            Some(&mut genomic),
+            "chr1",
+        );
+        assert_eq!(genomic[&key].supporting_reads, 3);
+        assert_eq!(genomic[&key].distinct_read_positions(), 2);
+
+        // Merging another region's view of the same site sums reads and unions positions.
+        let mut merged = genomic[&key].clone();
+        merged.merge(genomic[&key].clone());
+        assert_eq!(merged.supporting_reads, 6);
+        assert_eq!(merged.distinct_read_positions(), 2);
+    }
+
     #[test]
     fn test_create_mismatch_key() {
         let ref_seq: &[u8] = b"GCGTACGTAC";
@@ -1061,7 +1142,11 @@ mod tests {
                 mismatch_type: "A>G".to_string(),
                 genomic_position: 42,
             },
-            (3, 10),
+            SiteCounts {
+                supporting_reads: 3,
+                depth: 10,
+                distinct_read_positions: 2,
+            },
         );
         genomic_counts.insert(
             GenomicMismatchKey {
@@ -1069,17 +1154,21 @@ mod tests {
                 mismatch_type: "INVALID".to_string(),
                 genomic_position: 7,
             },
-            (1, 2),
+            SiteCounts {
+                supporting_reads: 1,
+                depth: 2,
+                distinct_read_positions: 1,
+            },
         );
 
         let output_path = "test_potential_variants.tsv";
         write_potential_variants_tsv(&genomic_counts, output_path).unwrap();
 
         let output = std::fs::read_to_string(output_path).unwrap();
-        assert!(
-            output.contains("chromosome\tposition\treference_base\tmismatch_base\tcount\tdepth")
-        );
-        assert!(output.contains("chr1\t42\tA\tG\t3\t10"));
+        assert!(output.contains(
+            "chromosome\tposition\treference_base\tmismatch_base\tcount\tdepth\tdistinct_read_positions"
+        ));
+        assert!(output.contains("chr1\t42\tA\tG\t3\t10\t2"));
         assert!(!output.contains("chr2\t7"));
 
         std::fs::remove_file(output_path).unwrap();
@@ -2027,6 +2116,7 @@ mod tests {
         read1_sam: &[u8],
         read2_sam: &[u8],
         min_map_quality: u8,
+        min_base_quality: u8,
     ) -> (
         HashMap<GenomicMismatchKey, GenomicMismatchValue>,
         HashMap<i64, usize>,
@@ -2051,7 +2141,7 @@ mod tests {
         };
         let config = ProcessingConfig {
             softclip_threshold: 0.0,
-            min_base_quality: 0,
+            min_base_quality,
             is_methylation: false,
             mode_len: 8,
             min_map_quality,
@@ -2091,15 +2181,43 @@ mod tests {
             b"r\t99\tchr1\t1\t60\t8M\t=\t5\t12\tACGTACGT\tIIIIIIII\tMC:Z:8M",
             b"r\t147\tchr1\t5\t60\t8M\t=\t1\t-12\tACGTACTT\tIIIIIIII\tMC:Z:8M",
             0,
+            0,
         );
         let key = GenomicMismatchKey {
             chromosome: "chr1".to_string(),
             mismatch_type: "G>T".to_string(),
             genomic_position: 10,
         };
-        assert_eq!(genomic.get(&key).map(|v| v.count), Some(1), "{genomic:?}");
+        assert_eq!(
+            genomic.get(&key).map(|v| v.supporting_reads),
+            Some(1),
+            "{genomic:?}"
+        );
+        assert_eq!(
+            genomic.get(&key).map(|v| v.distinct_read_positions()),
+            Some(1)
+        );
         assert_eq!(depth.get(&10), Some(&1));
-        assert_eq!(depth.get(&5), Some(&2));
+        // Overlap (4..8): one fragment, one observation -- same unit as the mismatch count.
+        assert_eq!(depth.get(&5), Some(&1));
+    }
+
+    #[test]
+    fn test_paired_reads_depth_skips_bases_below_min_base_quality() {
+        // read1 (0-based 0..8) has Q2 ('#') at 2 (outside the overlap) and at 5 (inside
+        // it, where read1 is the counted mate); everything else is Q40 ('I').
+        let (_genomic, depth) = paired_genomic_counts(
+            b"r\t99\tchr1\t1\t60\t8M\t=\t5\t12\tACGTACGT\tII#II#II\tMC:Z:8M",
+            b"r\t147\tchr1\t5\t60\t8M\t=\t1\t-12\tACGTACGT\tIIIIIIII\tMC:Z:8M",
+            0,
+            20,
+        );
+        // A base dropped from the mismatch count must not count toward depth either.
+        assert_eq!(depth.get(&2), None, "{depth:?}");
+        assert_eq!(depth.get(&5), None, "{depth:?}");
+        assert_eq!(depth.get(&1), Some(&1));
+        assert_eq!(depth.get(&4), Some(&1));
+        assert_eq!(depth.get(&10), Some(&1));
     }
 
     #[test]
@@ -2109,13 +2227,22 @@ mod tests {
             b"r\t99\tchr1\t1\t0\t8M\t=\t5\t12\tACGTACGT\tIIIIIIII\tMC:Z:8M",
             b"r\t147\tchr1\t5\t60\t8M\t=\t1\t-12\tAAGTACGT\tIIIIIIII\tMC:Z:8M",
             10,
+            0,
         );
         let key = GenomicMismatchKey {
             chromosome: "chr1".to_string(),
             mismatch_type: "C>A".to_string(),
             genomic_position: 5,
         };
-        assert_eq!(genomic.get(&key).map(|v| v.count), Some(1), "{genomic:?}");
+        assert_eq!(
+            genomic.get(&key).map(|v| v.supporting_reads),
+            Some(1),
+            "{genomic:?}"
+        );
+        assert_eq!(
+            genomic.get(&key).map(|v| v.distinct_read_positions()),
+            Some(1)
+        );
         assert_eq!(depth.get(&5), Some(&1));
         assert_eq!(depth.get(&0), None, "filtered read1 must add no depth");
     }

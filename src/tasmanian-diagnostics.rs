@@ -1,7 +1,7 @@
 use clap::Parser;
 use rayon::prelude::*;
 use rust_htslib::bam::{FetchDefinition, IndexedReader, Read, Reader, Record};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tasmanian_mismatch::{OverlapMode, PositionMode, *};
@@ -56,7 +56,7 @@ struct Args {
     #[arg(long, default_value_t = 10_000)]
     max_fragment_length: usize,
 
-    /// Minimum mismatch count for reporting a genomic site
+    /// Minimum number of supporting reads for reporting a genomic site
     #[arg(long, default_value_t = 7)]
     genomic_threshold: usize,
 
@@ -126,7 +126,7 @@ struct SiteThresholds {
 /// Raw counts for genomic sites near region edges, merged across regions.
 #[derive(Default)]
 struct BoundaryCounts {
-    genomic: HashMap<GenomicMismatchKey, HashSet<MismatchKey>>,
+    genomic: HashMap<GenomicMismatchKey, GenomicMismatchValue>,
     depth: HashMap<(i32, i64), usize>,
 }
 
@@ -210,21 +210,28 @@ fn is_pairable(record: &Record) -> bool {
         && (record.pos() - record.mpos()).abs() < PAIR_WINDOW
 }
 
-/// Keep a genomic site that passes both thresholds and count its mismatch keys as discounts.
+/// Keep a genomic site whose supporting reads and depth pass the thresholds, and count its
+/// distinct mismatch keys as discounts.
 fn report_site(
     key: GenomicMismatchKey,
-    mismatch_keys: HashSet<MismatchKey>,
+    site: GenomicMismatchValue,
     depth: usize,
     thresholds: SiteThresholds,
-    genomic_counts: &mut HashMap<GenomicMismatchKey, (usize, usize)>,
+    genomic_counts: &mut HashMap<GenomicMismatchKey, SiteCounts>,
     discounts: &mut HashMap<MismatchKey, usize>,
 ) {
-    let count = mismatch_keys.len();
-    if count < thresholds.count || depth < thresholds.depth {
+    if site.supporting_reads < thresholds.count || depth < thresholds.depth {
         return;
     }
-    genomic_counts.insert(key, (count, depth));
-    for mismatch_key in mismatch_keys {
+    genomic_counts.insert(
+        key,
+        SiteCounts {
+            supporting_reads: site.supporting_reads,
+            depth,
+            distinct_read_positions: site.distinct_read_positions(),
+        },
+    );
+    for mismatch_key in site.mismatch_keys {
         *discounts.entry(mismatch_key).or_insert(0) += 1;
     }
 }
@@ -300,7 +307,7 @@ fn main() {
     let total_count = AtomicUsize::new(0);
     let overlap_pairs_count = AtomicUsize::new(0);
     let overreach_positions = AtomicUsize::new(0);
-    let genomic_mismatch_counts: Mutex<HashMap<GenomicMismatchKey, (usize, usize)>> =
+    let genomic_mismatch_counts: Mutex<HashMap<GenomicMismatchKey, SiteCounts>> =
         Mutex::new(HashMap::new());
     let inconsistency_counts: Mutex<HashMap<InconsistencyKey, usize>> = Mutex::new(HashMap::new());
     let mismatch_discounts: Mutex<HashMap<MismatchKey, usize>> = Mutex::new(HashMap::new());
@@ -493,13 +500,13 @@ fn main() {
                 for (genomic_key, genomic_value) in genomic_region_counts {
                     let position = genomic_key.genomic_position;
                     if !in_core(position) {
-                        boundary_sites.push((genomic_key, genomic_value.mismatch_keys));
+                        boundary_sites.push((genomic_key, genomic_value));
                         continue;
                     }
                     let depth = genomic_position_depth.get(&position).copied().unwrap_or(0);
                     report_site(
                         genomic_key,
-                        genomic_value.mismatch_keys,
+                        genomic_value,
                         depth,
                         thresholds,
                         &mut global_genomic_counts,
@@ -509,8 +516,8 @@ fn main() {
             }
             {
                 let mut boundary = boundary_counts.lock().expect("Lock poisoned");
-                for (key, keys) in boundary_sites {
-                    boundary.genomic.entry(key).or_default().extend(keys);
+                for (key, site) in boundary_sites {
+                    boundary.genomic.entry(key).or_default().merge(site);
                 }
                 let mut overreach = 0usize;
                 for (&position, &depth) in genomic_position_depth.iter() {
@@ -561,7 +568,7 @@ fn main() {
             .collect();
         let mut global_genomic_counts = genomic_mismatch_counts.lock().expect("Lock poisoned");
         let mut global_discount_counts = mismatch_discounts.lock().expect("Lock poisoned");
-        for (genomic_key, keys) in boundary.genomic {
+        for (genomic_key, site) in boundary.genomic {
             let tid = name_to_tid[genomic_key.chromosome.as_str()];
             let depth = boundary
                 .depth
@@ -570,7 +577,7 @@ fn main() {
                 .unwrap_or(0);
             report_site(
                 genomic_key,
-                keys,
+                site,
                 depth,
                 thresholds,
                 &mut global_genomic_counts,

@@ -79,12 +79,40 @@ pub struct GenomicMismatchKey {
 }
 
 /// Aggregated details for a genomic mismatch site.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct GenomicMismatchValue {
     /// Unique read-position mismatch keys observed at this genomic site.
     pub mismatch_keys: HashSet<MismatchKey>, // Set of all MismatchKey combinations that contributed
-    /// Total number of unique mismatch keys contributing to the site.
-    pub count: usize, // Total count (should match mismatch_keys.len())
+    /// Number of reads supporting the mismatch (one per fragment where mates
+    /// overlap) -- the same unit as genomic depth, so reads/depth is an allele
+    /// fraction. Unlike `mismatch_keys.len()`, this does not saturate when many
+    /// reads share a read position.
+    pub supporting_reads: usize,
+}
+
+impl GenomicMismatchValue {
+    /// Number of distinct (mismatch type, read position, read number) keys.
+    pub fn distinct_read_positions(&self) -> usize {
+        self.mismatch_keys.len()
+    }
+
+    /// Fold another region's observations of the same site into this one.
+    pub fn merge(&mut self, other: GenomicMismatchValue) {
+        self.mismatch_keys.extend(other.mismatch_keys);
+        self.supporting_reads += other.supporting_reads;
+    }
+}
+
+/// Per-site numbers written to `potential_variants.tsv`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SiteCounts {
+    /// Reads supporting the mismatch (the `count` column).
+    pub supporting_reads: usize,
+    /// Reads covering the site that passed the same filters (the `depth` column).
+    pub depth: usize,
+    /// Distinct (mismatch type, read position, read number) keys among the
+    /// supporting reads (the `distinct_read_positions` column).
+    pub distinct_read_positions: usize,
 }
 
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Ord, PartialOrd)]

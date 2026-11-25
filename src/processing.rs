@@ -14,7 +14,7 @@ use crate::types::{
 use crate::utils::{base_to_char, calculate_end_pos, complement, correct_read_len_with_mode};
 use rayon;
 use rust_htslib::bam::{FetchDefinition, IndexedReader, Read, Reader, Record, record::Aux};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Maps BAM target ID (tid) to chromosome name.
@@ -166,6 +166,13 @@ pub fn create_mismatch_key(
 /// * `genomic_counts` - Optional genomic mismatch summary to update.
 /// * `chromosome` - Chromosome or contig name, used for genomic summaries.
 ///
+/// # Returns
+/// * `true` if the base was evaluated (in range, at or above `min_base_quality`,
+///   and an A/C/G/T base in both read and reference), whether or not it was a
+///   mismatch; `false` if it was skipped. Callers count genomic depth only for
+///   evaluated bases, so depth and mismatch counts share one denominator and
+///   count/depth is a true observed allele fraction.
+///
 /// # Panics
 /// * This function does not panic intentionally, but it emits errors to stderr
 ///   and returns early when coordinates fall outside the supplied sequence data.
@@ -177,7 +184,7 @@ pub fn compare_and_count(
     local_counts: &mut HashMap<MismatchKey, usize>,
     genomic_counts: Option<&mut HashMap<GenomicMismatchKey, GenomicMismatchValue>>,
     chromosome: &str,
-) {
+) -> bool {
     let seq_len = read_ctx.seq.len();
     let ref_len = read_ctx.ref_seq.len();
 
@@ -189,7 +196,7 @@ pub fn compare_and_count(
             chromosome,
             genome_pos
         );
-        return;
+        return false;
     }
 
     if genome_pos >= ref_len {
@@ -199,19 +206,19 @@ pub fn compare_and_count(
             ref_len,
             chromosome
         );
-        return;
+        return false;
     }
 
     // Check base quality score (skip if below threshold)
     if r_pos >= read_ctx.qual.len() || read_ctx.qual[r_pos] < config.min_base_quality {
-        return;
+        return false;
     }
 
     let Some(read_base) = base_to_char(read_ctx.seq[r_pos]) else {
-        return;
+        return false;
     };
     let Some(ref_base) = base_to_char(read_ctx.ref_seq[genome_pos]) else {
-        return;
+        return false;
     };
 
     // Count both matches and mismatches
@@ -259,7 +266,7 @@ pub fn compare_and_count(
         // expected bisulfite signature, not a genomic variant, so it must not
         // be recorded at all rather than logged as a same-base "C>C"/"G>G" key.
         if meth_adjusted_read_base == ref_base {
-            return;
+            return true;
         }
 
         let genomic_key = GenomicMismatchKey {
@@ -269,16 +276,11 @@ pub fn compare_and_count(
             genomic_position: genome_pos as i64,
         };
 
-        let genomic_values =
-            genomic_counts
-                .entry(genomic_key)
-                .or_insert_with(|| GenomicMismatchValue {
-                    mismatch_keys: HashSet::new(),
-                    count: 0,
-                });
+        let genomic_values = genomic_counts.entry(genomic_key).or_default();
         genomic_values.mismatch_keys.insert(key);
-        genomic_values.count = genomic_values.mismatch_keys.len();
+        genomic_values.supporting_reads += 1;
     }
+    true
 }
 
 /// Determine the genomic overlap between two reads.
@@ -670,7 +672,7 @@ pub fn process_record(
                         continue;
                     }
 
-                    compare_and_count(
+                    let evaluated = compare_and_count(
                         &read_ctx,
                         r_pos,
                         genome_pos,
@@ -680,8 +682,9 @@ pub fn process_record(
                         chr_name,
                     );
 
-                    // Update genomic depth counts.
-                    if let Some(genomic_depth) = genomic_depth.as_mut() {
+                    // Depth counts only bases the mismatch count could have used
+                    // (same -q filter), so count/depth is an allele fraction.
+                    if evaluated && let Some(genomic_depth) = genomic_depth.as_mut() {
                         *genomic_depth.entry(genome_pos as i64).or_insert(0) += 1;
                     }
                 }
@@ -772,10 +775,10 @@ pub fn process_paired_reads_with_overlap(
             .is_some_and(|name| context.reference.contains_key(name.as_str()))
     };
     let usable_reads = [usable(record1), usable(record2)];
-    // Overlap bases are counted once per pair: from record1, or from record2 when record1
-    // is filtered out. Depth there counts every usable read.
+    // Overlap bases are counted once per pair (one fragment = one observation): from
+    // record1, or from record2 when record1 is filtered out. Depth there counts the same
+    // single base, so mismatch count and depth stay in the same unit (fragments).
     let overlap_counter = if usable_reads[0] { 0 } else { 1 };
-    let overlap_depth = usable_reads.iter().filter(|&&u| u).count();
 
     // Process both reads
     for (index, (record, overlap_map)) in [
@@ -849,7 +852,7 @@ pub fn process_paired_reads_with_overlap(
 
                             // Count mismatches in overlap once per pair, from one read.
                             if counts_overlap {
-                                compare_and_count(
+                                let evaluated = compare_and_count(
                                     &read_ctx,
                                     r_pos,
                                     genome_pos,
@@ -859,14 +862,15 @@ pub fn process_paired_reads_with_overlap(
                                     chr_name,
                                 );
 
-                                // Update genomic depth for overlap positions
-                                if let Some(depth) = counts.genomic_depth.as_mut() {
-                                    *depth.entry(genome_pos as i64).or_insert(0) += overlap_depth;
+                                // One fragment, one depth -- and only if the base
+                                // passed -q, exactly as for the mismatch count.
+                                if evaluated && let Some(depth) = counts.genomic_depth.as_mut() {
+                                    *depth.entry(genome_pos as i64).or_insert(0) += 1;
                                 }
                             }
                         } else {
                             // Not in overlap: each read covers these bases alone.
-                            compare_and_count(
+                            let evaluated = compare_and_count(
                                 &read_ctx,
                                 r_pos,
                                 genome_pos,
@@ -876,12 +880,8 @@ pub fn process_paired_reads_with_overlap(
                                 chr_name,
                             );
 
-                            // Update genomic depth
-                            if let Some(depth) = counts.genomic_depth.as_mut() {
-                                depth
-                                    .entry(genome_pos as i64)
-                                    .and_modify(|d| *d += 1)
-                                    .or_insert(1);
+                            if evaluated && let Some(depth) = counts.genomic_depth.as_mut() {
+                                *depth.entry(genome_pos as i64).or_insert(0) += 1;
                             }
                         }
                     }

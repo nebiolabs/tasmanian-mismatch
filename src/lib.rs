@@ -56,7 +56,7 @@ pub use types::{
     Args, BedFilterMode, DiscountKey, FragmentBase, GenomicMismatchKey, GenomicMismatchValue,
     GenomicRegion, InconsistencyKey, InsertKey, MismatchKey, OVERLAP_QUALITY_BIN_WIDTH,
     OverlapMode, OverlapOpportunityCounts, OverlapOpportunityKey, PositionMode, ProcessingConfig,
-    ReadInfo, ReferenceGenome, ReferenceOrder, SoftclipComparison,
+    ReadInfo, ReferenceGenome, ReferenceOrder, SiteCounts, SoftclipComparison,
 };
 pub use utils::{
     base_to_char, calculate_end_pos, complement, correct_read_len_with_mode, parse_md_tag,

@@ -176,8 +176,8 @@ Common options:
                                       --max-read-length so discount rows line up
 --min-fragment-length <LEN>           Minimum estimated fragment length for a read to be counted
 --max-fragment-length <LEN>           Maximum estimated fragment length for a read to be counted
---genomic-threshold <N>               Minimum mismatch count for reporting a genomic site
---genomic-depth-threshold <N>         Minimum depth for reporting a genomic site
+--genomic-threshold <N>               Minimum supporting reads for reporting a genomic site
+--genomic-depth-threshold <N>         Minimum depth (reads passing -q, one per overlapping pair) for reporting a genomic site
 -b, --bed-file <BED>                  BED file for masking/filtering
 --bed-filter-mode <mask|filter|include>  BED handling mode (requires -b)
 -f <FLAGS>                            SAM flags that must be present
@@ -298,11 +298,21 @@ If a group's total count is zero (e.g. after `--discount-table` has reduced ever
 ### `potential_variants.tsv`
 
 ```tsv
-chromosome	position	reference_base	mismatch_base	count	depth
-chr1	10452	C	T	12	38
-chr1	20891	G	A	9	27
-chr2	450103	A	C	15	41
+chromosome	position	reference_base	mismatch_base	count	depth	distinct_read_positions
+chr1	10452	C	T	12	38	11
+chr1	20891	G	A	9	27	9
+chr2	450103	A	C	15	41	13
 ```
+
+- `count`: reads supporting the mismatch.
+- `depth`: reads covering the site that pass the same filters (`-q`, MAPQ, flags).
+  Where mates overlap, each pair counts once in both `count` and `depth`, so
+  `count / depth` is the observed allele fraction.
+- `distinct_read_positions`: distinct (mismatch type, read position, read number)
+  combinations among the supporting reads. Real variants appear at many read
+  positions; PCR duplicates and position-dependent artefacts pile up on few, so a
+  low `distinct_read_positions / count` flags a suspicious site. It saturates at
+  high support (a 76 bp read pair offers at most ~150 combinations).
 
 ### `read_pair_inconsistencies.tsv`
 

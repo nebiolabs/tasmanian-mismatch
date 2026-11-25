@@ -144,7 +144,7 @@ fn integration_diagnostics_fixture_bam_produces_expected_outputs() {
     log_line(&log_path, &format!("variants.tsv:\n{}", variants));
     assert!(variants.contains("chromosome\tposition\treference_base\tmismatch_base\tcount\tdepth"));
     assert!(
-        variants.lines().any(|line| line == "chr1\t4\tA\tT\t1\t1"),
+        variants.lines().any(|line| line == "chr1\t4\tA\tT\t1\t1\t1"),
         "expected variant row in output, got:\n{}",
         variants
     );
