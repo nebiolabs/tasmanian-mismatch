@@ -4,6 +4,33 @@ version = "2.1.0"
 edition = "2024"
 license = "AGPL-3.0-or-later"
 
+# Tool versions used by nebiolabs/rust-ci's setup action.
+# Bumping one here will invalidate CI's cache of the compiled tool.
+[package.metadata.ci-tools]
+cargo-audit = "0.22.2"
+cargo-deny = "0.20.2"
+grcov = "0.10.7"
+hyperfine = "2.0.0"
+
+# What CI's benchmark times; see nebiolabs/rust-ci scripts/bench.py. The fixture is a
+# 1 Mb window of chr20 from an FFPE EM-seq library, built by
+# scripts/make_bench_fixtures.sh. It is coordinate-sorted and indexed, so it is used as it
+# is rather than repeated.
+[package.metadata.bench]
+threads = 4
+
+[package.metadata.bench.fixtures]
+emseq_ffpe = { path = "tests/fixtures/emseq_ffpe_chr20_57M.bam" }
+
+[[package.metadata.bench.cases]]
+name = "mismatch"
+command = "{bin} {input} tests/fixtures/chr20_57M.fa --threads {threads}"
+
+[package.metadata.coverage]
+# Debug level for this crate's library and binaries, so debug!() bodies and
+# log_enabled!(Debug) branches count as covered.
+env = { RUST_LOG = "rustmanian_mismatch=debug,tasmanian_mismatch=debug,tasmanian_diagnostics=debug,tasmanian_rescale_quality=debug" }
+
 [dependencies]
 rust-htslib = "0.44.1"
 rayon = "1.12"
